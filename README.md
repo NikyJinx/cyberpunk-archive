@@ -3,6 +3,10 @@
 Sito statico (HTML/CSS/JS, nessuna installazione) con:
 
 - **Database** di NPC, fazioni, luoghi e oggetti: immagine, nome, alias, fazione, ruolo, stato (vivo/flatlined…), rapporto col party, luogo, tag, descrizione, note e **campi personalizzati illimitati** (Cyberware, Armi, Debiti…). Ricerca e filtri per tipo, fazione, stato. Le fazioni mostrano in automatico i membri.
+- **Galleria immagini**: ogni scheda può avere più immagini (la prima è la copertina). Nel dossier si scorrono con le frecce a schermo, le frecce della tastiera o lo swipe sul telefono; clic per lo schermo intero.
+- **Calendario** dal 2045: vista mese per mese, clic su un giorno per la pagina con gli eventi dettagliati (ora, tipo, luogo, NPC coinvolti con link al database). La "data in gioco" si imposta da ⚙ o dalla pagina del giorno.
+- **Meteo** (manuale, giorno per giorno): 14 condizioni ispirate al DLC gratuito *Night City Weather* di R. Talsorian (sereno, smog, pioggia acida, pioggia di sangue, tempesta di cenere, vento radioattivo…) con icona e temperatura in °C. Si vede nelle celle del mese, nella pagina del giorno e in home accanto alla data in gioco. Condizioni e unità di misura si cambiano in cima a `js/app.js` (`WEATHER`, `TEMP_UNIT`).
+- **Appunti**: note libere con categoria, tag, ricerca e note fissate in cima.
 - **Tracce**: canzoni con copertina, testo, note; audio **caricato dal PC**, **da file nella cartella `music/`** o **link Suno** (con player Suno incorporato).
 - Tutto **modificabile dal sito** (pulsanti *Nuovo*, *Modifica*, *Elimina*, e ⚙ per titolo/introduzione della home).
 - **Backup** in un file JSON (⚙ → Esporta / Importa).

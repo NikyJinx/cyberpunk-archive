@@ -94,18 +94,29 @@ window.Store = (() => {
     if (cloud) {
       const { error } = await sb.from("records").delete().eq("id", rec.id);
       if (error) throw error;
-      const paths = fileRefs(rec).map(storagePath).filter(Boolean);
-      if (paths.length) await sb.storage.from(BUCKET).remove(paths).catch(() => {});
     } else {
       await tx("records", "readwrite", s => s.delete(col + ":" + rec.id));
-      for (const ref of fileRefs(rec)) {
-        if (ref.startsWith("idb:")) await tx("files", "readwrite", s => s.delete(ref.slice(4)));
+    }
+    await deleteFiles(fileRefs(rec));
+  }
+
+  // elimina file caricati (ignora URL esterni e percorsi locali tipo music/…)
+  async function deleteFiles(refs) {
+    refs = [...new Set(refs.filter(Boolean))];
+    if (cloud) {
+      const paths = refs.map(storagePath).filter(Boolean);
+      if (paths.length) await sb.storage.from(BUCKET).remove(paths).catch(() => {});
+    } else {
+      for (const ref of refs) {
+        if (ref.startsWith("idb:")) await tx("files", "readwrite", s => s.delete(ref.slice(4))).catch(() => {});
       }
     }
   }
 
   function fileRefs(rec) {
-    return ["image", "cover", "audio"].map(k => rec[k]).filter(v => typeof v === "string" && v);
+    const one = ["image", "cover", "audio"].map(k => rec[k]);
+    const many = Array.isArray(rec.images) ? rec.images : [];
+    return [...one, ...many].filter(v => typeof v === "string" && v);
   }
   function storagePath(url) {
     const marker = "/storage/v1/object/public/" + BUCKET + "/";
@@ -166,6 +177,7 @@ window.Store = (() => {
       for (const r of recs) {
         const rec = { ...r };
         for (const k of ["image", "cover", "audio"]) if (rec[k] && idMap[rec[k]]) rec[k] = idMap[rec[k]];
+        if (Array.isArray(rec.images)) rec.images = rec.images.map(r => idMap[r] || r);
         const keepDates = { createdAt: rec.createdAt };
         await save(col, { ...rec, ...keepDates });
         n++;
@@ -182,7 +194,7 @@ window.Store = (() => {
   async function signOut() { await sb.auth.signOut(); }
 
   return {
-    init, list, save, remove, uploadFile, resolve, exportAll, importAll,
+    init, list, save, remove, uploadFile, deleteFiles, resolve, exportAll, importAll,
     signIn, signOut,
     onAuth: fn => authListeners.add(fn),
     get mode() { return cloud ? "cloud" : "local"; },
