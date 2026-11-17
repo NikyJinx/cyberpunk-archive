@@ -1,0 +1,7 @@
+Metti qui i tuoi file audio (mp3, ogg, wav, m4a).
+
+Poi nel sito, in "Tracce" → "Nuova traccia", scrivi nel campo "File audio"
+il percorso, per esempio:   music/la-mia-canzone.mp3
+
+Consiglio: nomi senza spazi né accenti (es. neon-blues.mp3).
+I file in questa cartella vengono pubblicati insieme al sito.
