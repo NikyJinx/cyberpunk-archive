@@ -32,6 +32,13 @@ Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del perso
 
 La scheda **Equipaggiamento** raccoglie eddies, armi, armature, oggetti e veicoli.
 
+### 📖 Diario e Quest — `// BRAINDANCE_LOG`
+La cronaca della campagna, scritta come un racconto.
+- Il diario è diviso in **capitoli** e ogni capitolo in **scene**, con riassunto, luoghi e personaggi coinvolti (collegati al database).
+- Le storie si intrecciano: ogni scena può appartenere a **più quest**. La pagina di una quest raccoglie in ordine tutte le sue scene, anche quando sono sparse tra più capitoli, e mostra se la quest è in corso, in sospeso o conclusa.
+- Nel testo si possono inserire riquadri in stile terminale per le **architetture di rete** (piano per piano), i **log** (orari, dialoghi, agende) e le note.
+- Le scene con una data in gioco compaiono anche nel calendario.
+
 ### 📅 Calendario — `// NC_CHRONOLOG`
 La cronologia della campagna, **dal 2045 in avanti**.
 - Vista mensile con gli eventi colorati per tipo: storia, gig, combattimento, incontro, viaggio.
@@ -76,6 +83,8 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 | Collezione | Contenuto |
 |---|---|
 | `entries` | PG, NPC, fazioni, luoghi, oggetti, con galleria, campi personalizzati, cyberware ed equipaggiamento |
+| `diary` | scene del diario: capitolo, quest, luoghi, personaggi, racconto |
+| `quests` | quest con stato e riassunto |
 | `events` | eventi del calendario, collegati ai personaggi |
 | `weather` | meteo e temperatura per giorno |
 | `notes` | appunti |
