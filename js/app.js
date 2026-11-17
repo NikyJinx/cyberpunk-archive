@@ -440,11 +440,13 @@
     ["arm_r", "Braccio destro"], ["arm_l", "Braccio sinistro"], ["leg_r", "Gamba destra"], ["leg_l", "Gamba sinistra"],
   ];
   // slot base + slot personalizzati della scheda (alternati a sinistra e destra)
-  const slotsOf = e => [...CYBER_SLOTS, ...((e.cyber && e.cyber.extra) || []).map((x, i) => ({
+  // e.cyber.hidden = slot standard rimossi da questa scheda
+  const hiddenSlots = e => (e.cyber && e.cyber.hidden) || [];
+  const slotsOf = e => [...CYBER_SLOTS.filter(s => !hiddenSlots(e).includes(s.id)), ...((e.cyber && e.cyber.extra) || []).map((x, i) => ({
     id: x.id, label: x.label || "Slot personalizzato", zone: x.zone || "", col: i % 2 ? "r" : "l",
     max: x.max === "" || x.max == null ? 2 : Number(x.max), custom: true,
   }))];
-  const slotDef = (e, id) => slotsOf(e).find(s => s.id === id) || { id, label: id, col: "l", zone: "", max: 2 };
+  const slotDef = (e, id) => slotsOf(e).find(s => s.id === id) || CYBER_SLOTS.find(s => s.id === id) || { id, label: id, col: "l", zone: "", max: 2 };
   const hasVal = v => v !== "" && v != null;
   const itemMax = (e, it) => hasVal(it.max) ? Number(it.max) : slotDef(e, it.slot).max;
   const GEAR_CATS = [
@@ -466,10 +468,11 @@
     const cost = inst.reduce((t, it) => t + num(it.cost), 0), hl = inst.reduce((t, it) => t + num(it.hl), 0);
     const maxLoss = inst.reduce((t, it) => t + itemMax(e, it), 0);
     const start = e.cyber && hasVal(e.cyber.humanity) ? num(e.cyber.humanity) : null;
+    const therapy = e.cyber ? num(e.cyber.therapy) : 0;          // umanità recuperata con la terapia
     const max = start == null ? null : start - maxLoss;
-    // l'umanità attuale non può superare la massima
-    const current = start == null ? null : Math.min(start - hl, max);
-    return { inst, plan, cost, hl, maxLoss, planCost: plan.reduce((t, it) => t + num(it.cost), 0), start, max, current };
+    // la terapia restituisce umanità, ma l'attuale non può mai superare la massima
+    const current = start == null ? null : Math.min(start - hl + therapy, max);
+    return { inst, plan, cost, hl, maxLoss, therapy, planCost: plan.reduce((t, it) => t + num(it.cost), 0), start, max, current };
   }
 
   // sagoma olografica: limbi = linee spesse semi-trasparenti + linea centrale
@@ -529,7 +532,9 @@
         ${st.planCost ? `<div class="cy-stat plan"><span class="l">Pianificato</span><span class="n">${fmtEb(st.planCost)}</span></div>` : ""}
         <div class="cy-stat hl"><span class="l">Perdita umanità</span><span class="n">${st.hl}</span></div>
         <div class="cy-stat mx"><span class="l">Umanità max persa</span><span class="n">${st.maxLoss}</span></div>
+        ${st.therapy ? `<div class="cy-stat th"><span class="l">Recuperata (terapia)</span><span class="n">+${st.therapy}</span></div>` : ""}
         <div class="cy-stat hum">
+          ${Store.canEdit() ? `<button type="button" class="cy-hum-edit" data-action="edit-humanity" data-id="${esc(e.id)}" title="Modifica umanità iniziale e terapia">✎ Umanità</button>` : ""}
           ${st.start != null ? `
             <span class="l">Umanità <b>${st.current}</b> · max <b>${st.max}</b> · iniziale ${st.start}</span>
             <span class="cy-bar" title="Barra chiara = umanità massima, barra piena = umanità attuale"><i class="mx" style="width:${pct(st.max)}%"></i><i style="width:${pct(st.current)}%"></i></span>
@@ -598,7 +603,10 @@
         <button type="button" class="btn ghost small" data-slot-del>Elimina slot</button>
       </div>` : ""}
       <div class="cy-rows">${items.map(it => cyRow(it, s.max)).join("")}</div>
-      <button type="button" class="btn ghost small cyan" data-row-add="cy">+ Aggiungi impianto</button>
+      <div class="cy-edit-actions">
+        <button type="button" class="btn ghost small cyan" data-row-add="cy">+ Aggiungi impianto</button>
+        ${s.custom ? "" : `<button type="button" class="btn ghost small" data-slot-del>Rimuovi slot</button>`}
+      </div>
     </fieldset>`;
   const gearRow = (it = {}) => `
     <div class="gear-row">
@@ -611,6 +619,54 @@
     </div>`;
   const readRows = (root, sel) => $$(sel, root).map(r => Object.fromEntries($$("[data-f]", r).map(i => [i.dataset.f, i.type === "checkbox" ? i.checked : i.value.trim()])));
 
+  // finestra rapida: solo umanità iniziale e recuperata con la terapia
+  function editHumanity(id) {
+    const e = state.entries.find(x => x.id === id); if (!e) return;
+    const c = e.cyber || {}, st = cyberStats(e);
+    openModal(`
+      <form class="form" id="hum-form">
+        <div class="modal-head"><h2>// UMANITÀ · ${esc(e.name)}</h2><button type="button" class="x" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="cyber" aria-label="Chiudi">×</button></div>
+        <div class="modal-body">
+          <div class="fields">
+            <div class="field"><label for="h-start">Umanità iniziale</label>
+              <input id="h-start" name="humanity" type="number" min="0" step="1" value="${esc(c.humanity ?? "")}" placeholder="EMP × 10, es. 70"></div>
+            <div class="field"><label for="h-th">Recuperata con la terapia</label>
+              <div class="temp-row"><button type="button" class="gp-btn" data-th="-1" aria-label="Meno uno">−</button>
+              <input id="h-th" name="therapy" type="number" min="0" step="1" value="${esc(c.therapy ?? "")}" placeholder="0">
+              <button type="button" class="gp-btn" data-th="1" aria-label="Più uno">+</button></div></div>
+          </div>
+          <p class="hint" style="margin-top:12px">Impianti installati: perdita umanità <b>${st.hl}</b>, umanità massima tolta <b>${st.maxLoss}</b>.
+            L'umanità attuale = iniziale − perdita + terapia, e non può superare la massima (iniziale − ${st.maxLoss}).</p>
+          <p class="hint hum-preview" aria-live="polite"></p>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost small left" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="cyber">Annulla</button>
+          <button type="submit" class="btn">Salva umanità</button>
+        </div>
+      </form>`, true);
+    const form = $("#hum-form"), prev = $(".hum-preview", form);
+    const update = () => {
+      const s = form.humanity.value === "" ? null : num(form.humanity.value);
+      if (s == null) { prev.textContent = ""; return; }
+      const max = s - st.maxLoss, cur = Math.min(s - st.hl + num(form.therapy.value), max);
+      prev.innerHTML = `Risultato: umanità <b>${cur}</b> · max <b>${max}</b> · EMP effettiva <b>${Math.max(0, Math.floor(cur / 10))}</b>${cur <= 0 ? " · ⚠ cyberpsicosi" : ""}`;
+    };
+    form.addEventListener("input", update);
+    form.addEventListener("click", ev => {
+      const b = ev.target.closest("[data-th]");
+      if (b) { form.therapy.value = Math.max(0, num(form.therapy.value) + num(b.dataset.th)); update(); }
+    });
+    update();
+    form.addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const h = form.humanity.value, t = form.therapy.value;
+      try {
+        const saved = await Store.save("entries", { ...e, cyber: { ...(e.cyber || {}), humanity: h === "" ? null : num(h), therapy: t === "" ? null : num(t) } });
+        upsert(state.entries, saved); toast("Umanità salvata", "ok"); openEntry(saved.id, "cyber");
+      } catch (err) { fail(err); }
+    });
+  }
+
   function editCyber(id) {
     const e = state.entries.find(x => x.id === id); if (!e) return;
     const slots = (e.cyber && e.cyber.slots) || {};
@@ -620,11 +676,15 @@
         <div class="modal-body">
           <div class="fields">
             <div class="field"><label for="cy-hum">Umanità iniziale</label><input id="cy-hum" name="humanity" type="number" min="0" step="1" value="${esc(e.cyber && e.cyber.humanity != null ? e.cyber.humanity : "")}" placeholder="EMP × 10, es. 70"></div>
-            <div class="field"><span class="lbl">Legenda</span><span class="hint">Spunta = installato, senza spunta = pianificato (non conta nei totali). <b>eb</b> = costo · <b>HL</b> = umanità persa · <b>max</b> = umanità massima tolta: vuoto = standard dello slot (2, borgware 4, fashionware 0), oppure scrivi il valore modificato (es. 1).</span></div>
+            <div class="field"><label for="cy-th">Recuperata con la terapia</label><input id="cy-th" name="therapy" type="number" min="0" step="1" value="${esc(e.cyber && e.cyber.therapy != null ? e.cyber.therapy : "")}" placeholder="0"></div>
+            <div class="field full"><span class="lbl">Legenda</span><span class="hint">Spunta = installato, senza spunta = pianificato (non conta nei totali). <b>eb</b> = costo · <b>HL</b> = umanità persa · <b>max</b> = umanità massima tolta: vuoto = standard dello slot (2, borgware 4, fashionware 0), oppure scrivi il valore modificato (es. 1).</span></div>
           </div>
           <datalist id="dl-cyber">${allCyberNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
           <div id="cy-fieldsets">${slotsOf(e).map(s => cyFieldset(s, slots[s.id] || [])).join("")}</div>
-          <button type="button" class="btn ghost small yellow" data-slot-add style="margin-top:14px">+ Aggiungi slot personalizzato</button>
+          <div class="cy-slot-tools">
+            <button type="button" class="btn ghost small yellow" data-slot-add>+ Aggiungi slot personalizzato</button>
+            <div id="cy-restore"></div>
+          </div>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn ghost small left" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="cyber">Annulla</button>
@@ -632,7 +692,21 @@
         </div>
       </form>`);
     const form = $("#cyber-form");
+    // slot standard rimossi → pulsanti per ripristinarli
+    const refreshRestore = () => {
+      const gone = CYBER_SLOTS.filter(s => !$(`fieldset[data-slot="${s.id}"]`, form));
+      $("#cy-restore", form).innerHTML = gone.length
+        ? `<span class="lbl">Slot standard rimossi:</span> ${gone.map(s => `<button type="button" class="chip" data-slot-restore="${s.id}">+ ${esc(s.label)}</button>`).join(" ")}` : "";
+    };
+    refreshRestore();
     form.addEventListener("click", async ev => {
+      const rs = ev.target.closest("[data-slot-restore]");
+      if (rs) {
+        const s = CYBER_SLOTS.find(x => x.id === rs.dataset.slotRestore);
+        $("#cy-fieldsets", form).insertAdjacentHTML("beforeend", cyFieldset(s, []));
+        refreshRestore(); $(`fieldset[data-slot="${s.id}"]`, form).scrollIntoView({ block: "center" });
+        return;
+      }
       const add = ev.target.closest("[data-row-add]"), del = ev.target.closest("[data-row-del]");
       if (add) {
         const fs = add.closest("fieldset"), box = $(".cy-rows", fs);
@@ -648,7 +722,7 @@
       const sd = ev.target.closest("[data-slot-del]");
       if (sd) {
         const fs = sd.closest("fieldset"), n = $$(".cy-row", fs).length;
-        if (!n || await askConfirm(`Eliminare lo slot e i suoi ${n} impianti?`, "Elimina slot")) fs.remove();
+        if (!n || await askConfirm(`Rimuovere lo slot e i suoi ${n} impianti? Diventa definitivo quando salvi.`, "Rimuovi slot")) { fs.remove(); refreshRestore(); }
       }
     });
     form.addEventListener("submit", async ev => {
@@ -666,9 +740,12 @@
         }
         if (items.length) out[fs.dataset.slot] = items;
       }
-      const hum = form.humanity.value;
+      const hum = form.humanity.value, th = form.therapy.value;
+      const hidden = CYBER_SLOTS.filter(s => !$(`fieldset[data-slot="${s.id}"]`, form)).map(s => s.id);
       try {
-        const saved = await Store.save("entries", { ...e, cyber: { humanity: hum === "" ? null : num(hum), slots: out, extra } });
+        const saved = await Store.save("entries", { ...e, cyber: {
+          humanity: hum === "" ? null : num(hum), therapy: th === "" ? null : num(th), slots: out, extra, hidden,
+        } });
         upsert(state.entries, saved); toast("Cyberware salvato", "ok"); openEntry(saved.id, "cyber");
       } catch (err) { fail(err); }
     });
@@ -1617,6 +1694,7 @@
         break;
       case "open-entry-tab": openEntry(id, el.dataset.tab); break;
       case "edit-cyber": editCyber(id); break;
+      case "edit-humanity": editHumanity(id); break;
       case "edit-gear": editGear(id); break;
       case "new-entry": editEntry(null); break;
       case "edit-entry": editEntry(id); break;
