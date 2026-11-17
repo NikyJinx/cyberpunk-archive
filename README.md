@@ -16,12 +16,21 @@ L'archivio è pensato come un terminale trafugato dai server di Night City: inte
 ## Sezioni
 
 ### 🗂 Database — `// NCPD_LEAKED_DB`
-Schede per **NPC, fazioni, luoghi e oggetti**.
+Schede per **personaggi del party (PG), NPC, fazioni, luoghi e oggetti**.
 - Alias, fazione, ruolo (Solo, Netrunner, Fixer, Rockerboy…), stato (vivo, *flatlined*, disperso), rapporto con il party, luogo, tag, descrizione e note.
 - **Campi personalizzati illimitati** per tutto il resto: cyberware, armi, debiti, contatti.
 - **Galleria di immagini** per ogni scheda, con carosello sfogliabile tramite frecce, tastiera o swipe e visualizzazione a schermo intero.
 - Le fazioni elencano automaticamente i propri membri. Ogni dossier mostra gli eventi del calendario in cui il personaggio è coinvolto.
 - Ricerca libera e filtri per tipo, fazione e stato. I personaggi morti compaiono in bianco e nero, marchiati **FLATLINED**.
+
+#### ◈ Cyberware ed equipaggiamento
+Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del personaggio:
+- una **sagoma olografica** al centro, con i punti del corpo che si accendono dove ci sono impianti;
+- slot per **cyberaudio, cyberocchi, cyberbracci, cybergambe, cyberware interno ed esterno, neuralware, borgware e fashionware**, più **slot personalizzati**;
+- per ogni impianto costo, **perdita di umanità** e **umanità massima tolta**. Quest'ultima segue la regola standard (2, borgware 4, fashionware 0) ma si può cambiare impianto per impianto, per esempio per gli impianti modificati;
+- impianti **installati** o solo **pianificati**, con i totali di costo, l'umanità attuale e massima, l'EMP effettiva e l'avviso di **cyberpsicosi**.
+
+La scheda **Equipaggiamento** raccoglie eddies, armi, armature, oggetti e veicoli.
 
 ### 📅 Calendario — `// NC_CHRONOLOG`
 La cronologia della campagna, **dal 2045 in avanti**.
@@ -66,7 +75,7 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 
 | Collezione | Contenuto |
 |---|---|
-| `entries` | NPC, fazioni, luoghi, oggetti, con galleria e campi personalizzati |
+| `entries` | PG, NPC, fazioni, luoghi, oggetti, con galleria, campi personalizzati, cyberware ed equipaggiamento |
 | `events` | eventi del calendario, collegati ai personaggi |
 | `weather` | meteo e temperatura per giorno |
 | `notes` | appunti |
@@ -90,6 +99,7 @@ js/store.js             livello dati: Supabase o IndexedDB
 js/app.js               interfaccia, routing e logica delle sezioni
 supabase/schema.sql     tabella, regole di accesso e storage
 tools/suno-import.js    importa le playlist Suno come tracce
+tools/lista-import.js   converte una lista di schede in testo in un file importabile
 music/                  file audio pubblicati con il sito
 ```
 

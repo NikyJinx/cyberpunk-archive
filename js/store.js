@@ -172,14 +172,31 @@ window.Store = (() => {
       const blob = await (await fetch(f.data)).blob();
       idMap["idb:" + oldId] = await uploadFile(blob, f.name, "import");
     }
+    // merge: true → i campi del file aggiornano la scheda esistente (stesso id o stesso nome),
+    // tutto il resto (immagini, cyberware, modifiche fatte dal sito) resta com'è
+    const merge = json.merge === true;
     let n = 0;
     for (const [col, recs] of Object.entries(json.records || {})) {
+      const existing = merge ? await list(col) : [];
       for (const r of recs) {
-        const rec = { ...r };
+        let rec = { ...r };
         for (const k of ["image", "cover", "audio"]) if (rec[k] && idMap[rec[k]]) rec[k] = idMap[rec[k]];
         if (Array.isArray(rec.images)) rec.images = rec.images.map(r => idMap[r] || r);
-        const keepDates = { createdAt: rec.createdAt };
-        await save(col, { ...rec, ...keepDates });
+        if (merge) {
+          const same = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+          const old = existing.find(x => x.id === rec.id) || existing.find(x => x.name && same(x.name, rec.name) && x.kind === rec.kind);
+          if (old) {
+            rec = { ...old, ...rec, id: old.id, createdAt: old.createdAt };
+            // campi personalizzati: aggiungo quelli nuovi, aggiorno quelli con lo stesso nome
+            if (Array.isArray(r.custom) && Array.isArray(old.custom)) {
+              const out = old.custom.map(c => ({ ...c }));
+              for (const c of r.custom) { const o = out.find(x => same(x.k, c.k)); if (o) o.v = c.v; else out.push(c); }
+              rec.custom = out;
+            }
+            if (Array.isArray(r.tags) && Array.isArray(old.tags)) rec.tags = [...new Set([...old.tags, ...r.tags])];
+          }
+        }
+        await save(col, { ...rec, createdAt: rec.createdAt });
         n++;
       }
     }

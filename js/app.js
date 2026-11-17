@@ -10,6 +10,7 @@
 
   // ---------- costanti di gioco (modificabili) ----------
   const KINDS = [
+    { id: "pg",      label: "PG",      plural: "Party",   color: "var(--green)" },
     { id: "npc",     label: "NPC",     plural: "NPC",     color: "var(--cyan)" },
     { id: "fazione", label: "Fazione", plural: "Fazioni", color: "var(--red)" },
     { id: "luogo",   label: "Luogo",   plural: "Luoghi",  color: "var(--yellow)" },
@@ -243,7 +244,7 @@
         <a class="stat" href="#/calendario" style="--c:var(--yellow)"><div class="n">${state.events.length}</div><div class="l">Eventi</div></a>
         <a class="stat" href="#/appunti" style="--c:var(--green)"><div class="n">${state.notes.length}</div><div class="l">Appunti</div></a>
         <a class="stat" href="#/tracce" style="--c:var(--magenta)"><div class="n">${state.songs.length}</div><div class="l">Tracce</div></a>
-        <div class="stat" style="--c:var(--muted)"><div class="n">${npcs.filter(e => e.status === "morto").length}</div><div class="l">Flatlined</div></div>
+        <div class="stat" style="--c:var(--muted)"><div class="n">${state.entries.filter(e => isPerson(e) && e.status === "morto").length}</div><div class="l">Flatlined</div></div>
       </section>
       <div class="section-title"><h2>Ultimi aggiornamenti</h2><a class="see-all" href="#/database">tutto il database →</a></div>
       ${recent.length ? `<div class="grid">${recent.map(cardEntry).join("")}</div>` : emptyDb()}
@@ -337,7 +338,8 @@
           <div class="meta">
             ${e.faction ? `<span class="badge faction">${esc(e.faction)}</span>` : ""}
             ${e.role ? `<span class="badge">${esc(e.role)}</span>` : ""}
-            ${st && e.kind === "npc" ? `<span class="status s-${st.id}">${esc(st.label)}</span>` : ""}
+            ${st && isPerson(e) ? `<span class="status s-${st.id}">${esc(st.label)}</span>` : ""}
+            ${cyberCount(e) ? `<span class="badge cyber" title="Cyberware installato">◈ ${cyberCount(e)}</span>` : ""}
           </div>
         </div>
       </button>`;
@@ -413,10 +415,325 @@
   }
   function closeLightbox() { if (lightbox) { lightbox.el.remove(); lightbox = null; } }
 
+  // ---------- CYBERWARE & EQUIPAGGIAMENTO ----------
+  // Slot del corpo: col = colonna nella scheda (l = sinistra, r = destra, top/bottom = centro),
+  // zone = punto acceso sulla sagoma. "Destro" del personaggio = sinistra di chi guarda.
+  // max = quanta umanità MASSIMA toglie ogni impianto installato, se non specificato sull'impianto
+  // (regola base: 2; borgware 4; fashionware 0). Si può cambiare impianto per impianto.
+  const CYBER_SLOTS = [
+    { id: "audio",      label: "Cyberaudio",          col: "top",    zone: "ears",    max: 2 },
+    { id: "occhio_dx",  label: "Cyberocchio destro",  col: "l",      zone: "eye_r",   max: 2 },
+    { id: "braccio_dx", label: "Cyberbraccio destro", col: "l",      zone: "arm_r",   max: 2 },
+    { id: "esterni",    label: "Cyberware esterno",   col: "l",      zone: "skin",    max: 2 },
+    { id: "gamba_dx",   label: "Cybergamba destra",   col: "l",      zone: "leg_r",   max: 2 },
+    { id: "borgware",   label: "Borgware",            col: "l",      zone: "core",    max: 4 },
+    { id: "occhio_sx",  label: "Cyberocchio sinistro", col: "r",     zone: "eye_l",   max: 2 },
+    { id: "braccio_sx", label: "Cyberbraccio sinistro", col: "r",    zone: "arm_l",   max: 2 },
+    { id: "interni",    label: "Cyberware interno",   col: "r",      zone: "torso",   max: 2 },
+    { id: "gamba_sx",   label: "Cybergamba sinistra", col: "r",      zone: "leg_l",   max: 2 },
+    { id: "fashion",    label: "Fashionware",         col: "r",      zone: "fashion", max: 0 },
+    { id: "neural",     label: "Neuralware",          col: "bottom", zone: "brain",   max: 2 },
+  ];
+  const BODY_ZONES = [
+    ["", "Nessuna"], ["brain", "Testa / cervello"], ["eye_r", "Occhio destro"], ["eye_l", "Occhio sinistro"], ["ears", "Orecchie"],
+    ["skin", "Pelle / esterno"], ["fashion", "Pelle (fashion)"], ["torso", "Torso / interno"], ["core", "Centro del corpo"],
+    ["arm_r", "Braccio destro"], ["arm_l", "Braccio sinistro"], ["leg_r", "Gamba destra"], ["leg_l", "Gamba sinistra"],
+  ];
+  // slot base + slot personalizzati della scheda (alternati a sinistra e destra)
+  const slotsOf = e => [...CYBER_SLOTS, ...((e.cyber && e.cyber.extra) || []).map((x, i) => ({
+    id: x.id, label: x.label || "Slot personalizzato", zone: x.zone || "", col: i % 2 ? "r" : "l",
+    max: x.max === "" || x.max == null ? 2 : Number(x.max), custom: true,
+  }))];
+  const slotDef = (e, id) => slotsOf(e).find(s => s.id === id) || { id, label: id, col: "l", zone: "", max: 2 };
+  const hasVal = v => v !== "" && v != null;
+  const itemMax = (e, it) => hasVal(it.max) ? Number(it.max) : slotDef(e, it.slot).max;
+  const GEAR_CATS = [
+    { id: "armi",     label: "Armi",            color: "var(--red)",     hint: "es. 3d6 · ROF 1 · Caricatore 8" },
+    { id: "armature", label: "Armature",        color: "var(--cyan)",    hint: "es. SP 11 · Testa / Corpo" },
+    { id: "equip",    label: "Equipaggiamento", color: "var(--yellow)",  hint: "es. Agente, kit medico, grimaldelli" },
+    { id: "veicoli",  label: "Veicoli",         color: "var(--magenta)", hint: "es. Supermoto potenziata" },
+    { id: "altro",    label: "Altro",           color: "var(--muted)",   hint: "" },
+  ];
+  const isPerson = e => e.kind === "npc" || e.kind === "pg";
+  const num = v => (v === "" || v == null || isNaN(Number(v))) ? 0 : Number(v);
+  const fmtEb = n => `${Math.round(n).toLocaleString("it-IT")} eb`;
+  const cyberItems = e => Object.entries((e.cyber && e.cyber.slots) || {}).flatMap(([slot, list]) => (list || []).map(it => ({ ...it, slot })));
+  const cyberCount = e => cyberItems(e).filter(it => it.installed !== false).length;
+  const gearItems = e => (e.gear && e.gear.items) || [];
+
+  function cyberStats(e) {
+    const all = cyberItems(e), inst = all.filter(it => it.installed !== false), plan = all.filter(it => it.installed === false);
+    const cost = inst.reduce((t, it) => t + num(it.cost), 0), hl = inst.reduce((t, it) => t + num(it.hl), 0);
+    const maxLoss = inst.reduce((t, it) => t + itemMax(e, it), 0);
+    const start = e.cyber && hasVal(e.cyber.humanity) ? num(e.cyber.humanity) : null;
+    const max = start == null ? null : start - maxLoss;
+    // l'umanità attuale non può superare la massima
+    const current = start == null ? null : Math.min(start - hl, max);
+    return { inst, plan, cost, hl, maxLoss, planCost: plan.reduce((t, it) => t + num(it.cost), 0), start, max, current };
+  }
+
+  // sagoma olografica: limbi = linee spesse semi-trasparenti + linea centrale
+  const BODY_SVG = `
+    <svg class="cy-body" viewBox="0 0 200 440" aria-hidden="true">
+      <defs><radialGradient id="cyglow" cx="50%" cy="40%" r="60%"><stop offset="0" stop-color="rgba(0,240,255,.25)"/><stop offset="1" stop-color="rgba(0,240,255,0)"/></radialGradient></defs>
+      <ellipse cx="100" cy="200" rx="95" ry="190" fill="url(#cyglow)"/>
+      <ellipse class="cy-ring" cx="100" cy="425" rx="62" ry="9"/>
+      <ellipse class="cy-ring r2" cx="100" cy="425" rx="40" ry="5"/>
+      <g class="cy-limb">
+        <path d="M88 70 L88 84 M112 70 L112 84"/>
+        <path d="M70 92 L56 160 L46 236"/><path d="M130 92 L144 160 L154 236"/>
+        <path d="M88 214 L84 318 L80 412"/><path d="M112 214 L116 318 L120 412"/>
+      </g>
+      <g class="cy-line">
+        <ellipse cx="100" cy="42" rx="21" ry="26"/>
+        <path d="M70 88 Q100 78 130 88 L136 150 Q130 196 122 216 L78 216 Q70 196 64 150 Z"/>
+        <path d="M70 92 L56 160 L46 236"/><path d="M130 92 L144 160 L154 236"/>
+        <path d="M88 214 L84 318 L80 412"/><path d="M112 214 L116 318 L120 412"/>
+        <path d="M100 90 L100 210 M78 120 Q100 130 122 120 M80 150 Q100 158 120 150" class="thin"/>
+      </g>
+      ${[["brain", 100, 24], ["eye_r", 91, 40], ["eye_l", 109, 40], ["ears", 100, 48], ["fashion", 118, 104], ["skin", 64, 128],
+         ["torso", 100, 136], ["core", 100, 190], ["arm_r", 54, 172], ["arm_l", 146, 172], ["leg_r", 85, 320], ["leg_l", 115, 320]]
+        .map(([z, x, y]) => `<g class="cy-zone" data-zone="${z}" transform="translate(${x} ${y})"><circle class="cy-ping" r="9"/><circle class="cy-dot" r="3.2"/></g>`).join("")}
+    </svg>`;
+
+  function slotCard(e, s) {
+    const items = ((e.cyber && e.cyber.slots && e.cyber.slots[s.id]) || []).map(it => ({ ...it, slot: s.id }));
+    const inst = items.filter(it => it.installed !== false);
+    return `
+      <section class="cy-slot ${inst.length ? "has" : ""} ${items.length ? "" : "vacant"} ${s.custom ? "custom" : ""}" data-zone="${s.zone}">
+        <header><span class="cy-title">${esc(s.label)}</span>
+          ${inst.length ? `<span class="cy-sum">${fmtEb(inst.reduce((t, it) => t + num(it.cost), 0))} · ${inst.reduce((t, it) => t + num(it.hl), 0)} HL</span>` : ""}</header>
+        ${items.length ? `<ul>${items.map(it => {
+          const m = itemMax(e, it), changed = hasVal(it.max) && Number(it.max) !== s.max;
+          return `
+          <li class="${it.installed === false ? "planned" : ""}" ${it.note ? `title="${esc(it.note)}"` : ""}>
+            <span class="cy-chk" aria-label="${it.installed === false ? "pianificato" : "installato"}">${it.installed === false ? "◇" : "◆"}</span>
+            <span class="cy-name">${esc(it.name)}${it.note ? `<small>${esc(it.note)}</small>` : ""}</span>
+            <span class="cy-cost">${hasVal(it.cost) ? esc(num(it.cost).toLocaleString("it-IT")) : "—"}</span>
+            <span class="cy-hl">${hasVal(it.hl) ? esc(it.hl) : "—"}</span>
+            <span class="cy-max ${changed ? "changed" : ""}" title="Umanità massima tolta${changed ? " (modificata, standard " + s.max + ")" : ""}">${m ? "−" + m : "0"}</span>
+          </li>`; }).join("")}</ul>` : `<div class="cy-free">— slot libero —</div>`}
+      </section>`;
+  }
+
+  function cyberHtml(e) {
+    const st = cyberStats(e);
+    const slots = slotsOf(e);
+    const zonesOn = new Set(st.inst.map(it => slotDef(e, it.slot).zone).filter(Boolean));
+    const pct = v => st.start ? Math.max(0, Math.min(100, (v / st.start) * 100)) : 0;
+    const psycho = st.current != null && st.current <= 0;
+    const col = c => slots.filter(s => s.col === c).map(s => slotCard(e, s)).join("");
+    return `
+      <div class="cy-summary ${psycho ? "psycho" : ""}">
+        <div class="cy-stat"><span class="l">Costo installato</span><span class="n">${fmtEb(st.cost)}</span></div>
+        ${st.planCost ? `<div class="cy-stat plan"><span class="l">Pianificato</span><span class="n">${fmtEb(st.planCost)}</span></div>` : ""}
+        <div class="cy-stat hl"><span class="l">Perdita umanità</span><span class="n">${st.hl}</span></div>
+        <div class="cy-stat mx"><span class="l">Umanità max persa</span><span class="n">${st.maxLoss}</span></div>
+        <div class="cy-stat hum">
+          ${st.start != null ? `
+            <span class="l">Umanità <b>${st.current}</b> · max <b>${st.max}</b> · iniziale ${st.start}</span>
+            <span class="cy-bar" title="Barra chiara = umanità massima, barra piena = umanità attuale"><i class="mx" style="width:${pct(st.max)}%"></i><i style="width:${pct(st.current)}%"></i></span>
+            <span class="cy-emp">EMP effettiva ${Math.max(0, Math.floor(st.current / 10))}${psycho ? ` · <b>⚠ CYBERPSICOSI</b>` : ""}</span>`
+            : `<span class="l">Umanità</span><span class="cy-emp">Umanità iniziale non impostata</span>`}
+        </div>
+      </div>
+      <div class="cy-legend"><span>◆ installato</span><span>◇ pianificato</span><span>colonne: costo (eb) · HL = umanità persa · −N = umanità massima tolta (in giallo se modificata)</span></div>
+      <div class="cy-layout">
+        <div class="cy-col">${col("l")}</div>
+        <div class="cy-center">
+          ${col("top")}
+          <div class="cy-figure" data-zones="${[...zonesOn].join(" ")}">${BODY_SVG}</div>
+          ${col("bottom")}
+        </div>
+        <div class="cy-col">${col("r")}</div>
+      </div>`;
+  }
+
+  function gearHtml(e) {
+    const items = gearItems(e), money = e.gear && e.gear.money;
+    if (!items.length && (money === "" || money == null)) return `<div class="empty"><div class="big">// INVENTARIO VUOTO</div>Nessun equipaggiamento registrato.</div>`;
+    return `
+      ${money !== "" && money != null ? `<div class="cy-summary"><div class="cy-stat"><span class="l">Eddies</span><span class="n">${fmtEb(num(money))}</span></div>
+        <div class="cy-stat"><span class="l">Oggetti</span><span class="n">${items.length}</span></div></div>` : ""}
+      <div class="gear-grid">
+        ${GEAR_CATS.map(c => {
+          const list = items.filter(it => (it.cat || "altro") === c.id);
+          if (!list.length) return "";
+          return `<section class="gear-sec" style="--c:${c.color}">
+            <header>${esc(c.label)} <span>${list.length}</span></header>
+            <ul>${list.map(it => `<li>
+              <span class="g-qty">${num(it.qty) > 1 ? "×" + num(it.qty) : ""}</span>
+              <span class="g-name">${esc(it.name)}${it.detail ? `<small>${esc(it.detail)}</small>` : ""}${it.note ? `<em>${esc(it.note)}</em>` : ""}</span>
+            </li>`).join("")}</ul></section>`;
+        }).join("")}
+      </div>`;
+  }
+
+  // evidenzia sulla sagoma lo slot sotto il mouse
+  document.addEventListener("mouseover", ev => {
+    const s = ev.target.closest && ev.target.closest(".cy-slot");
+    const fig = $("#modal .cy-figure"); if (!fig) return;
+    $$(".cy-zone", fig).forEach(z => z.classList.toggle("hover", !!s && z.dataset.zone === s.dataset.zone));
+  });
+
+  const allCyberNames = () => [...new Set(state.entries.flatMap(x => cyberItems(x).map(it => it.name)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it"));
+  const cyRow = (it = {}, def = 2) => `
+    <div class="cy-row">
+      <label class="cy-inst" title="Installato (togli la spunta se è solo pianificato)"><input type="checkbox" data-f="installed" ${it.installed === false ? "" : "checked"}><span></span></label>
+      <input data-f="name" placeholder="Nome impianto" list="dl-cyber" value="${esc(it.name)}">
+      <input data-f="cost" type="number" min="0" step="1" placeholder="eb" title="Costo in eddies" value="${esc(it.cost ?? "")}">
+      <input data-f="hl" type="number" min="0" step="1" placeholder="HL" title="Umanità persa (HL)" value="${esc(it.hl ?? "")}">
+      <input data-f="max" type="number" min="0" step="1" placeholder="max ${def}" title="Umanità massima tolta — vuoto = ${def} (standard dello slot)" value="${esc(it.max ?? "")}">
+      <input data-f="note" placeholder="Nota (opzioni, effetti…)" value="${esc(it.note)}">
+      <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button>
+    </div>`;
+  const zoneSelect = (z = "") => `<select data-slot-f="zone" title="Punto acceso sulla sagoma">${BODY_ZONES.map(([v, l]) => `<option value="${v}" ${v === z ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  const cyFieldset = (s, items) => `
+    <fieldset class="cy-edit ${s.custom ? "custom" : ""}" data-slot="${esc(s.id)}" data-max="${s.max}">
+      <legend>${s.custom ? "Slot personalizzato" : `${esc(s.label)} <small>· max standard ${s.max}</small>`}</legend>
+      ${s.custom ? `<div class="cy-slot-head">
+        <input data-slot-f="label" placeholder="Nome dello slot (es. Chipware, Opzioni occhi…)" value="${esc(s.label === "Slot personalizzato" ? "" : s.label)}">
+        ${zoneSelect(s.zone)}
+        <input data-slot-f="max" type="number" min="0" step="1" value="${esc(s.max)}" title="Umanità massima standard per questo slot">
+        <button type="button" class="btn ghost small" data-slot-del>Elimina slot</button>
+      </div>` : ""}
+      <div class="cy-rows">${items.map(it => cyRow(it, s.max)).join("")}</div>
+      <button type="button" class="btn ghost small cyan" data-row-add="cy">+ Aggiungi impianto</button>
+    </fieldset>`;
+  const gearRow = (it = {}) => `
+    <div class="gear-row">
+      <select data-f="cat">${GEAR_CATS.map(c => `<option value="${c.id}" ${(it.cat || "equip") === c.id ? "selected" : ""}>${c.label}</option>`).join("")}</select>
+      <input data-f="name" placeholder="Nome" value="${esc(it.name)}">
+      <input data-f="qty" type="number" min="1" step="1" placeholder="Q.tà" value="${esc(it.qty ?? 1)}">
+      <input data-f="detail" placeholder="Dettagli (danno, SP, ROF…)" value="${esc(it.detail)}">
+      <input data-f="note" placeholder="Nota" value="${esc(it.note)}">
+      <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button>
+    </div>`;
+  const readRows = (root, sel) => $$(sel, root).map(r => Object.fromEntries($$("[data-f]", r).map(i => [i.dataset.f, i.type === "checkbox" ? i.checked : i.value.trim()])));
+
+  function editCyber(id) {
+    const e = state.entries.find(x => x.id === id); if (!e) return;
+    const slots = (e.cyber && e.cyber.slots) || {};
+    openModal(`
+      <form class="form" id="cyber-form">
+        <div class="modal-head"><h2>// CYBERWARE · ${esc(e.name)}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+        <div class="modal-body">
+          <div class="fields">
+            <div class="field"><label for="cy-hum">Umanità iniziale</label><input id="cy-hum" name="humanity" type="number" min="0" step="1" value="${esc(e.cyber && e.cyber.humanity != null ? e.cyber.humanity : "")}" placeholder="EMP × 10, es. 70"></div>
+            <div class="field"><span class="lbl">Legenda</span><span class="hint">Spunta = installato, senza spunta = pianificato (non conta nei totali). <b>eb</b> = costo · <b>HL</b> = umanità persa · <b>max</b> = umanità massima tolta: vuoto = standard dello slot (2, borgware 4, fashionware 0), oppure scrivi il valore modificato (es. 1).</span></div>
+          </div>
+          <datalist id="dl-cyber">${allCyberNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+          <div id="cy-fieldsets">${slotsOf(e).map(s => cyFieldset(s, slots[s.id] || [])).join("")}</div>
+          <button type="button" class="btn ghost small yellow" data-slot-add style="margin-top:14px">+ Aggiungi slot personalizzato</button>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost small left" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="cyber">Annulla</button>
+          <button type="submit" class="btn">Salva cyberware</button>
+        </div>
+      </form>`);
+    const form = $("#cyber-form");
+    form.addEventListener("click", async ev => {
+      const add = ev.target.closest("[data-row-add]"), del = ev.target.closest("[data-row-del]");
+      if (add) {
+        const fs = add.closest("fieldset"), box = $(".cy-rows", fs);
+        const def = fs.classList.contains("custom") ? num($("[data-slot-f=max]", fs).value) : num(fs.dataset.max);
+        box.insertAdjacentHTML("beforeend", cyRow({}, def)); $(".cy-row:last-child [data-f=name]", box).focus();
+      }
+      if (del) del.closest(".cy-row").remove();
+      if (ev.target.closest("[data-slot-add]")) {
+        const id = "x-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        $("#cy-fieldsets", form).insertAdjacentHTML("beforeend", cyFieldset({ id, label: "", zone: "", max: 2, custom: true }, []));
+        const fs = $(`fieldset[data-slot="${id}"]`, form); fs.scrollIntoView({ block: "center" }); $("[data-slot-f=label]", fs).focus();
+      }
+      const sd = ev.target.closest("[data-slot-del]");
+      if (sd) {
+        const fs = sd.closest("fieldset"), n = $$(".cy-row", fs).length;
+        if (!n || await askConfirm(`Eliminare lo slot e i suoi ${n} impianti?`, "Elimina slot")) fs.remove();
+      }
+    });
+    form.addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const out = {}, extra = [];
+      for (const fs of $$("fieldset[data-slot]", form)) {
+        const items = readRows(fs, ".cy-row").filter(it => it.name).map(it => ({
+          name: it.name, installed: it.installed, cost: it.cost === "" ? null : num(it.cost), hl: it.hl === "" ? null : num(it.hl),
+          max: it.max === "" ? null : num(it.max), note: it.note,
+        }));
+        if (fs.classList.contains("custom")) {
+          const label = $("[data-slot-f=label]", fs).value.trim();
+          if (!label && !items.length) continue;              // slot vuoto e senza nome: lo scarto
+          extra.push({ id: fs.dataset.slot, label: label || "Slot personalizzato", zone: $("[data-slot-f=zone]", fs).value, max: num($("[data-slot-f=max]", fs).value) });
+        }
+        if (items.length) out[fs.dataset.slot] = items;
+      }
+      const hum = form.humanity.value;
+      try {
+        const saved = await Store.save("entries", { ...e, cyber: { humanity: hum === "" ? null : num(hum), slots: out, extra } });
+        upsert(state.entries, saved); toast("Cyberware salvato", "ok"); openEntry(saved.id, "cyber");
+      } catch (err) { fail(err); }
+    });
+  }
+
+  function editGear(id) {
+    const e = state.entries.find(x => x.id === id); if (!e) return;
+    openModal(`
+      <form class="form" id="gear-form">
+        <div class="modal-head"><h2>// EQUIPAGGIAMENTO · ${esc(e.name)}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+        <div class="modal-body">
+          <div class="fields"><div class="field"><label for="g-money">Eddies</label><input id="g-money" name="money" type="number" step="1" value="${esc(e.gear && e.gear.money != null ? e.gear.money : "")}" placeholder="es. 2500"></div></div>
+          <div class="gear-rows">${gearItems(e).map(gearRow).join("")}</div>
+          <button type="button" class="btn ghost small cyan" data-row-add="gear" style="margin-top:10px">+ Aggiungi oggetto</button>
+          <p class="hint" style="margin-top:10px">${GEAR_CATS.filter(c => c.hint).map(c => `<b>${c.label}</b>: ${esc(c.hint)}`).join(" · ")}</p>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost small left" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="gear">Annulla</button>
+          <button type="submit" class="btn">Salva equipaggiamento</button>
+        </div>
+      </form>`);
+    const form = $("#gear-form");
+    form.addEventListener("click", ev => {
+      if (ev.target.closest("[data-row-add]")) { $(".gear-rows", form).insertAdjacentHTML("beforeend", gearRow()); $(".gear-row:last-child [data-f=name]", form).focus(); }
+      const del = ev.target.closest("[data-row-del]"); if (del) del.closest(".gear-row").remove();
+    });
+    form.addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const items = readRows(form, ".gear-row").filter(it => it.name).map(it => ({ ...it, qty: Math.max(1, num(it.qty) || 1) }));
+      const money = form.money.value;
+      try {
+        const saved = await Store.save("entries", { ...e, gear: { money: money === "" ? null : num(money), items } });
+        upsert(state.entries, saved); toast("Equipaggiamento salvato", "ok"); openEntry(saved.id, "gear");
+      } catch (err) { fail(err); }
+    });
+  }
+
   // ---------- dettaglio record ----------
-  function openEntry(id) {
+  function openEntry(id, tab = "dossier") {
     const e = state.entries.find(x => x.id === id);
     if (!e) return;
+    if (!isPerson(e)) tab = "dossier";
+    const edit = Store.canEdit();
+    const tabs = isPerson(e) ? `
+      <div class="dossier-tabs" role="tablist">
+        ${[["dossier", "Dossier"], ["cyber", `Cyberware${cyberCount(e) ? ` <span>${cyberCount(e)}</span>` : ""}`], ["gear", `Equipaggiamento${gearItems(e).length ? ` <span>${gearItems(e).length}</span>` : ""}`]]
+          .map(([t, l]) => `<button type="button" role="tab" class="${t === tab ? "active" : ""}" aria-selected="${t === tab}" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="${t}">${l}</button>`).join("")}
+      </div>` : "";
+    if (tab !== "dossier") {
+      const k = kindOf(e.kind);
+      openModal(`
+        <div class="modal-head"><h2>// ${tab === "cyber" ? "CYBERWARE" : "EQUIPAGGIAMENTO"} · ${esc(k.label)}</h2><button class="x" data-action="close" aria-label="Chiudi">×</button></div>
+        <div class="modal-body">
+          <div class="tab-title"><h1>${esc(e.name || "Senza nome")}</h1>${e.handle ? `<span class="handle">“${esc(e.handle)}”</span>` : ""}</div>
+          ${tabs}
+          ${tab === "cyber" ? cyberHtml(e) : gearHtml(e)}
+        </div>
+        ${edit ? `<div class="modal-foot">
+          <button class="btn cyan" data-action="${tab === "cyber" ? "edit-cyber" : "edit-gear"}" data-id="${esc(e.id)}">Modifica ${tab === "cyber" ? "cyberware" : "equipaggiamento"}</button>
+        </div>` : ""}`);
+      const fig = $("#modal .cy-figure");
+      if (fig) fig.dataset.zones.split(" ").filter(Boolean).forEach(z => $$(`.cy-zone[data-zone="${z}"]`, fig).forEach(n => n.classList.add("on")));
+      if (location.hash !== "#/database/" + e.id && location.hash.startsWith("#/database")) history.replaceState(null, "", "#/database/" + e.id);
+      return;
+    }
     const k = kindOf(e.kind), st = statusOf(e.status), imgs = imagesOf(e);
     const fac = e.faction ? factionEntry(e.faction) : null;
     const facts = [
@@ -435,6 +752,7 @@
     openModal(`
       <div class="modal-head"><h2>// DOSSIER · ${esc(k.label)}</h2><button class="x" data-action="close" aria-label="Chiudi">×</button></div>
       <div class="modal-body">
+        ${tabs}
         <div class="dossier">
           ${carouselHtml(imgs, e.name)}
           <div>
@@ -1297,6 +1615,9 @@
         if (!location.hash.startsWith("#/database")) { location.hash = "#/database/" + id; }
         else openEntry(id);
         break;
+      case "open-entry-tab": openEntry(id, el.dataset.tab); break;
+      case "edit-cyber": editCyber(id); break;
+      case "edit-gear": editGear(id); break;
       case "new-entry": editEntry(null); break;
       case "edit-entry": editEntry(id); break;
       case "delete-entry": confirmDelete("entries", state.entries, id, r => r.name, r => { state.entries = state.entries.filter(x => x.id !== r.id); }); break;
