@@ -1,4 +1,6 @@
 .claude/
+PROMEMORIA.md
 *.bak
 Thumbs.db
 desktop.ini
+suno-import.json

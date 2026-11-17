@@ -986,14 +986,38 @@
   }
 
   // ---------- TRACCE ----------
+  const NO_DISC = "Singoli";
+  const discOf = s => (s.disc || "").trim() || NO_DISC;
+  const fmtDur = sec => sec ? `${Math.floor(sec / 60)}:${pad(Math.round(sec % 60))}` : "";
+  const fmtTotal = sec => { const m = Math.round(sec / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${pad(m % 60)}m` : `${m} min`; };
+  const sortSongs = list => [...list].sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || (a.createdAt || "").localeCompare(b.createdAt || ""));
+  const discs = () => [...new Set(state.songs.map(discOf))]
+    .sort((a, b) => (a === NO_DISC) - (b === NO_DISC) || a.localeCompare(b, "it", { numeric: true }));
+  state.disc = ls.get("nc-disc", "all");
+
   function viewSongs() {
-    const list = [...state.songs].sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || (a.createdAt || "").localeCompare(b.createdAt || ""));
+    const all = discs();
+    if (state.disc !== "all" && !all.includes(state.disc)) state.disc = "all";
+    const shown = state.disc === "all" ? all : [state.disc];
+    const groups = shown.map(d => ({ disc: d, songs: sortSongs(state.songs.filter(s => discOf(s) === d)) }));
     return `
       <div class="page-head">
         <div><div class="kicker">// PIRATE_RADIO 98.7</div><h1>Tracce</h1><p>Le canzoni create per la campagna — file locali e link Suno.</p></div>
         ${Store.canEdit() ? `<button class="btn" data-action="new-song">+ Nuova traccia</button>` : ""}
       </div>
-      ${list.length ? `<div class="tracks">${list.map(cardSong).join("")}</div>` :
+      ${all.length > 1 ? `<div class="toolbar"><div class="chips" id="disc-chips">
+        ${["all", ...all].map(d => `<button class="chip ${state.disc === d ? "active" : ""}" data-disc="${esc(d)}">${d === "all" ? "Tutti" : esc(d)}<span class="count">${d === "all" ? state.songs.length : state.songs.filter(s => discOf(s) === d).length}</span></button>`).join("")}
+      </div></div>` : ""}
+      ${state.songs.length ? groups.map(g => {
+        const album = g.songs.find(s => s.album)?.album, tot = g.songs.reduce((t, s) => t + (s.duration || 0), 0);
+        return `
+          ${all.length > 1 || g.disc !== NO_DISC ? `<div class="disc-head">
+            <span class="disc-icon" aria-hidden="true"></span>
+            <div><h2>${esc(g.disc)}</h2>${album ? `<div class="disc-album">${esc(album)}</div>` : ""}</div>
+            <span class="disc-meta">${g.songs.length} tracce${tot ? " · " + fmtTotal(tot) : ""}</span>
+          </div>` : ""}
+          <div class="tracks">${g.songs.map(cardSong).join("")}</div>`;
+      }).join("") :
         `<div class="empty"><div class="big">// RADIO SILENCE</div>Nessuna traccia ancora.
           ${Store.canEdit() ? `<br><button class="btn" data-action="new-song">+ Aggiungi la prima traccia</button>` : ""}</div>`}`;
   }
@@ -1001,7 +1025,7 @@
   function cardSong(s, i) {
     const embed = sunoEmbed(s.suno);
     return `
-      <article class="track" data-num="TRK ${String(i + 1).padStart(2, "0")}" data-song="${esc(s.id)}">
+      <article class="track" data-num="TRK ${String(i + 1).padStart(2, "0")}${s.duration ? " · " + fmtDur(s.duration) : ""}" data-song="${esc(s.id)}">
         <div class="track-cover">${s.cover ? imgTag(s.cover, s.title) : `<div class="vinyl"></div>`}</div>
         <div class="track-main">
           <div>
@@ -1034,6 +1058,10 @@
               <div class="field full"><label class="req" for="s-title">Titolo</label><input id="s-title" name="title" required value="${esc(s.title)}"></div>
               <div class="field"><label for="s-artist">Artista / crediti</label><input id="s-artist" name="artist" value="${esc(s.artist)}" placeholder="es. Il nostro Rockerboy"></div>
               <div class="field"><label for="s-session">Sessione / momento</label><input id="s-session" name="session" value="${esc(s.session)}" placeholder="es. Sessione 5 — Il colpo"></div>
+              <div class="field"><label for="s-disc">Disco</label><input id="s-disc" name="disc" list="dl-disc" value="${esc(s.disc)}" placeholder="es. CD 1"></div>
+              <div class="field"><label for="s-album">Album</label><input id="s-album" name="album" list="dl-album" value="${esc(s.album)}" placeholder="es. Echo's Songs"></div>
+              <datalist id="dl-disc">${discs().filter(d => d !== NO_DISC).map(d => `<option value="${esc(d)}">`).join("")}</datalist>
+              <datalist id="dl-album">${[...new Set(state.songs.map(x => x.album).filter(Boolean))].map(a => `<option value="${esc(a)}">`).join("")}</datalist>
               <div class="field"><label for="s-mood">Genere / mood</label><input id="s-mood" name="mood" value="${esc(s.mood)}" placeholder="es. synthwave, industrial"></div>
               <div class="field"><label for="s-order">Posizione in lista</label><input id="s-order" name="order" type="number" value="${esc(s.order ?? "")}" placeholder="1, 2, 3…"></div>
               <div class="field full"><label for="s-suno">Link Suno</label><input id="s-suno" name="suno" type="url" value="${esc(s.suno)}" placeholder="https://suno.com/song/…"><span class="hint">Incolla il link della canzone: verrà mostrato il player Suno incorporato.</span></div>
@@ -1075,6 +1103,7 @@
           ...s,
           title: fd.get("title").trim(), artist: fd.get("artist").trim(), session: fd.get("session").trim(),
           mood: fd.get("mood").trim(), order: ord === "" ? null : Number(ord),
+          disc: fd.get("disc").trim(), album: fd.get("album").trim(),
           suno: fd.get("suno").trim(), lyrics: fd.get("lyrics").trim(), notes: fd.get("notes").trim(),
           cover: await commitPicker(form, "cover", "covers"),
           audio: await commitPicker(form, "audio", "audio"),
@@ -1205,6 +1234,12 @@
         f.kind = c.dataset.kind; saveFilter();
         $$(".chip", ev.currentTarget).forEach(x => x.classList.toggle("active", x === c));
         refreshResults();
+      });
+    }
+    if (page === "tracce" && $("#disc-chips")) {
+      $("#disc-chips").addEventListener("click", ev => {
+        const c = ev.target.closest("[data-disc]"); if (!c) return;
+        state.disc = c.dataset.disc; ls.set("nc-disc", state.disc); route();
       });
     }
     if (page === "appunti") {
