@@ -67,14 +67,45 @@ window.Store = (() => {
   }
 
   // ---------- records ----------
-  async function list(col) {
+  // limit: solo gli N record aggiornati più di recente (es. il log dei dadi)
+  async function list(col, { limit } = {}) {
     if (cloud) {
-      const { data, error } = await sb.from("records").select("id,data,updated_at").eq("collection", col);
+      let q = sb.from("records").select("id,data,updated_at").eq("collection", col);
+      if (limit) q = q.order("updated_at", { ascending: false }).limit(limit);
+      const { data, error } = await q;
       if (error) throw error;
       return data.map(r => ({ ...r.data, id: r.id }));
     }
     const all = await tx("records", "readonly", s => s.getAll());
-    return all.filter(r => r._col === col).map(({ _key, _col, ...r }) => r);
+    let out = all.filter(r => r._col === col).map(({ _key, _col, ...r }) => r);
+    if (limit) out = out.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(0, limit);
+    return out;
+  }
+
+  // ---------- tempo reale (tavolo di gioco) ----------
+  // cloud: canale "broadcast" di Supabase Realtime (non serve configurare il database)
+  // locale: BroadcastChannel tra le schede dello stesso browser
+  let chan = null, bc = null, liveOk = false;
+  function live(onMsg, onStatus) {
+    if (cloud) {
+      chan = sb.channel("nc-table", { config: { broadcast: { self: false } } });
+      chan.on("broadcast", { event: "m" }, ({ payload }) => onMsg(payload));
+      chan.subscribe(status => {
+        const was = liveOk;
+        liveOk = status === "SUBSCRIBED";
+        if (onStatus && was !== liveOk) onStatus(liveOk, was);
+      });
+    } else if ("BroadcastChannel" in window) {
+      bc = new BroadcastChannel("nc-table");
+      bc.onmessage = ev => onMsg(ev.data);
+      liveOk = true;
+    }
+  }
+  function send(msg) {
+    try {
+      if (chan) chan.send({ type: "broadcast", event: "m", payload: msg });
+      else if (bc) bc.postMessage(msg);
+    } catch (e) { console.warn("realtime", e); }
   }
 
   async function save(col, rec) {
@@ -212,7 +243,8 @@ window.Store = (() => {
 
   return {
     init, list, save, remove, uploadFile, deleteFiles, resolve, exportAll, importAll,
-    signIn, signOut,
+    signIn, signOut, live, send,
+    get liveOk() { return liveOk; },
     onAuth: fn => authListeners.add(fn),
     get mode() { return cloud ? "cloud" : "local"; },
     get user() { return session && session.user ? session.user.email : null; },
