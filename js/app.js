@@ -926,9 +926,11 @@
     }
     if (type === "skill" || type === "cskill") {
       const k = skillByKey(e, type + ":" + a); if (!k) return;
-      return sheetCheck(e, k.label, [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }]);
+      return sheetCheck(e, k.label, [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...(k.custom ? [] : roleSkillBonus(e, k.id))]);
     }
     if (type === "ability") {
+      const r = rolesOf(e)[0], R = r && RL.roleById(r.id);
+      if (R) return sheetCheck(e, R.abilityIt, [{ l: R.abilityIt, v: clamp(num(r.rank), 0, 10) }]);
       const s = sheetOf(e);
       return sheetCheck(e, s.ability || CPR.ROLE_ABILITIES[e.role] || "Role Ability", [{ l: "Rank", v: num(s.rank) }]);
     }
@@ -954,7 +956,7 @@
       note: `Penalità ${pen} → ${pen + 1} per il prossimo Death Save` };
   }
   function rollInitiative(e, extra = {}) {
-    const d = CPR.die(10), ref = statEff(e, "REF"), im = modsFor(sheetOf(e).mods, ["init"]);
+    const d = CPR.die(10), ref = statEff(e, "REF"), im = modsFor([...(sheetOf(e).mods || []), ...roleMods(e)], ["init"]);
     return postRoll({ kind: "init", who: e.name, entryId: e.id, label: "Initiative", dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }, ...im], total: d + ref + im.reduce((t, m) => t + m.v, 0), ...extra });
   }
 
@@ -977,8 +979,9 @@
   }
   function refreshSheetView(id) {
     const e = state.entries.find(x => x.id === id); if (!e) return;
-    const box = $(`#modal .sh[data-sheet="${CSS.escape(id)}"]`), dt = $(`#modal .nd-tab[data-deck-tab="${CSS.escape(id)}"]`), cb = $(`#modal .cb[data-combat="${CSS.escape(id)}"]`);
-    if (!box && !dt && !cb) return;
+    const box = $(`#modal .sh[data-sheet="${CSS.escape(id)}"]`), dt = $(`#modal .nd-tab[data-deck-tab="${CSS.escape(id)}"]`), cb = $(`#modal .cb[data-combat="${CSS.escape(id)}"]`), rt = $(`#modal .rl-tab[data-roles-tab="${CSS.escape(id)}"]`);
+    if (!box && !dt && !cb && !rt) return;
+    if (rt) { const keep = $$("details[open]", rt).map(d => [...rt.querySelectorAll("details")].indexOf(d)); rt.outerHTML = rolesTabHtml(e); const n = $(`#modal .rl-tab[data-roles-tab="${CSS.escape(id)}"]`); keep.forEach(k => { const d = n.querySelectorAll("details")[k]; if (d) d.open = true; }); }
     const y = $("#modal").scrollTop;
     if (box) box.outerHTML = sheetHtml(e);
     if (cb) cb.outerHTML = combatHtml(e);
@@ -1016,7 +1019,7 @@
       const list = skills.filter(k => k.group === g && (showAll || k.lvl > 0));
       if (!list.length) return "";
       return `<section class="sk-group"><header>${esc(g)}</header>${list.map(k => roll(k.key, `
-        <span class="sk-n">${esc(k.label)}${k.x2 ? ` <i title="Costo doppio">×2</i>` : ""}</span><span class="sk-s">${k.stat}</span><span class="sk-l">${k.lvl}</span><span class="sk-b">${statEff(e, k.stat) + k.lvl}</span>`,
+        <span class="sk-n">${esc(k.label)}${k.x2 ? ` <i title="Costo doppio">×2</i>` : ""}</span><span class="sk-s">${k.stat}</span><span class="sk-l">${k.lvl}</span><span class="sk-b">${(() => { const rb = k.custom ? 0 : roleSkillBonus(e, k.id).reduce((t, b) => t + b.v, 0); return statEff(e, k.stat) + k.lvl + rb + (rb ? `<i class="sk-rb" title="Bonus di Ruolo">+${rb}</i>` : ""); })()}</span>`,
         "sk " + (k.lvl ? "" : "zero"), `Tira ${k.label}: ${k.stat} + livello + 1d10`)).join("")}</section>`;
     }).join("");
     const weapons = s.weapons || [];
@@ -1036,8 +1039,9 @@
             ${edit ? adjBtns(e.id, "hp", [-5, -1, 1, 5]) : ""}
           </div>
           <div class="sh-box">
-            <span class="l">Role · ${esc(e.role || "—")}</span>
-            ${roll("ability", `<span class="n sm">${esc(ability)}</span><span class="sh-sub">Rank ${num(s.rank)} · tira Rank + 1d10</span>`, "sh-rollbox")}
+            <span class="l">Role · ${esc(rolesOf(e).map(r => (RL.roleById(r.id) || {}).it).filter(Boolean).join(" / ") || e.role || "—")}</span>
+            ${rolesOf(e).length ? `<button type="button" class="sh-rollbox" data-action="open-entry-tab" data-id="${id}" data-tab="roles"><span class="n sm">${rolesOf(e).map(r => `${esc((RL.roleById(r.id) || {}).abilityIt || "")} ${clamp(num(r.rank), 0, 10)}`).join(" · ")}</span><span class="sh-sub">apri la tab Ruoli →</span></button>`
+              : roll("ability", `<span class="n sm">${esc(ability)}</span><span class="sh-sub">Rank ${num(s.rank)} · tira Rank + 1d10</span>`, "sh-rollbox")}
           </div>
           <div class="sh-box">
             <span class="l">Humanity</span>
@@ -1072,6 +1076,250 @@
   }
 
 
+
+  // ---------- RUOLI: più Ruoli per personaggio, ognuno con il suo grado (sheet.roles) ----------
+  // ruolo = { id, rank, ca{…} (Solo), tech{field,upgrade,fabricate,invent}, med{surgery,pharma,cryo}, recipes[], team[{name,job,loyalty}],
+  //           stable[{kind,name,upgrades[],active}], notes } · le schede vecchie hanno solo e.role + sheet.ability/rank
+  const roleFromOld = e => { const s = sheetOf(e); const id = RL.guessRole(e && e.role) || ((RL.ROLES.find(r => r.ability.toLowerCase() === String(s.ability || "").trim().toLowerCase()) || {}).id || "");
+    return id ? [{ id, rank: hasVal(s.rank) ? num(s.rank) : 4 }] : []; };
+  const rolesOf = e => { const s = sheetOf(e); return Array.isArray(s.roles) ? s.roles : roleFromOld(e); };
+  const migrateRoles = (s, e) => { if (!Array.isArray(s.roles)) s.roles = JSON.parse(JSON.stringify(roleFromOld({ ...e, sheet: s }))); return s; };
+  const roleOfE = (e, id) => rolesOf(e).find(r => r.id === id) || null;
+  const roleRankOf = (e, id) => { const r = roleOfE(e, id); return r ? clamp(num(r.rank), 0, 10) : 0; };
+  const caOf = e => { const r = roleOfE(e, "solo"); return r ? { ...CPR.autoCA(0), ...(r.ca || CPR.autoCA(clamp(num(r.rank), 0, 10))) } : null; };
+  const techOf = e => { const r = roleOfE(e, "tech"); return r ? { field: 0, upgrade: 0, fabricate: 0, invent: 0, ...(r.tech || {}) } : null; };
+  const medOf = e => { const r = roleOfE(e, "medtech"); return r ? { surgery: 0, pharma: 0, cryo: 0, ...(r.med || {}) } : null; };
+  // Sensi da Combattimento: Attacco Preciso agli attacchi, Reazione all'iniziativa (come i modificatori speciali)
+  function roleMods(e) {
+    const ca = caOf(e), out = [];
+    if (ca && num(ca.precise)) out.push({ name: "Attacco Preciso", target: "attack", value: num(ca.precise) });
+    if (ca && num(ca.reaction)) out.push({ name: "Reazione", target: "init", value: num(ca.reaction) });
+    return out;
+  }
+  // bonus dei ruoli alle abilità: Individuare Minacce, Esperienza sul Campo, Garage
+  function roleSkillBonus(e, skillId) {
+    const out = [], ca = caOf(e), t = techOf(e), nomad = roleRankOf(e, "nomad");
+    if (ca && num(ca.threat) && skillId === "perception") out.push({ l: "Individuare Minacce", v: num(ca.threat) });
+    if (t && num(t.field) && RL.MAKER_SKILLS.includes(skillId)) out.push({ l: "Esperienza sul Campo", v: num(t.field) });
+    if (nomad && RL.GARAGE_SKILLS.includes(skillId)) out.push({ l: "Garage", v: nomad });
+    return out;
+  }
+  const skillLvl = (e, id) => { const k = skillByKey(e, "skill:" + id); return k ? k.lvl : 0; };
+
+  function rolesTabHtml(e) {
+    const id = esc(e.id), edit = Store.canEdit(), roles = rolesOf(e);
+    const free = RL.ROLES.filter(r => !roles.some(x => x.id === r.id));
+    return `<div class="rl-tab" data-roles-tab="${id}">
+      <div class="sh-bar"><label class="sh-mod" title="Modificatore situazionale aggiunto ai tiri">MOD <input type="number" step="1" data-sheet-mod value="${sheetMod}"></label>
+        <span class="hint">Si parte con un Ruolo a grado 4. Un secondo Ruolo (a grado 1, con i Punti Miglioramento) si prende solo con il precedente almeno a 4.</span>
+        <button type="button" class="btn ghost small cyan" data-action="dice-open">⬢ Dice log</button></div>
+      ${roles.length ? roles.map((r, i) => roleCard(e, r, i, edit)).join("") : `<p class="hint">Nessun Ruolo: aggiungine uno qui sotto.</p>`}
+      ${edit && free.length ? `<div class="rl-add"><select data-rl-new aria-label="Ruolo da aggiungere">${free.map(r => `<option value="${r.id}">${esc(r.it)} · ${esc(r.abilityIt)}</option>`).join("")}</select>
+        <button type="button" class="btn small yellow" data-action="rl-op" data-id="${id}" data-op="add">+ Ruolo</button>
+        ${roles.length && !RL.canAddRole(roles) ? `<span class="hint warn-t">Per le regole il Ruolo precedente deve essere almeno a grado 4.</span>` : ""}</div>` : ""}
+    </div>`;
+  }
+  function roleCard(e, r, i, edit) {
+    const R = RL.roleById(r.id) || { it: r.id, abilityIt: "", ability: "" }, rank = clamp(num(r.rank), 0, 10), id = esc(e.id);
+    const at = `data-id="${id}" data-r="${i}"`;
+    const roll = (k, inner, cls = "btn small", title = "") => `<button type="button" class="${cls}" data-action="rl-roll" ${at} data-k="${k}" ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
+    const op = (o, inner, cls = "gp-btn", title = "") => edit ? `<button type="button" class="${cls}" data-action="rl-op" ${at} data-op="${o}" ${title ? `title="${esc(title)}" aria-label="${esc(title)}"` : ""}>${inner}</button>` : "";
+    const numIn = (path, v, max, title = "") => `<input type="number" min="0" max="${max}" data-rl="${i}" data-rf="${path}" data-rid="${id}" value="${num(v)}" ${edit ? "" : "disabled"} ${title ? `title="${esc(title)}"` : ""}>`;
+    let body = "";
+    if (r.id === "rocker") {
+      const B = RL.band(RL.ROCKER, rank);
+      body = `<div class="rl-acts">${RL.FAN_DV.map(f => roll("fan:" + f.id, `${esc(f.label)} <b>VD ${f.dv}</b>`, "btn small", `Creare Fan o chiedere un favore: Impatto Carismatico + 1d10 vs VD ${f.dv}`)).join("")}</div>
+        ${B ? `<table class="rl-t"><tr><th>Grado ${B.min}${B.max > B.min ? "–" + B.max : ""}</th><td colspan="2">${esc(B.venue)}</td></tr>
+          <tr><th>Singolo (VD 8)</th><td colspan="2">${esc(B.single)}</td></tr><tr><th>Piccolo Gruppo (VD 10)</th><td colspan="2">${esc(B.small)}</td></tr><tr><th>Grande Gruppo (VD 12)</th><td colspan="2">${esc(B.large)}</td></tr></table>` : ""}
+        <p class="hint">Il GM decide se il favore rientra nel grado. Se il tiro fallisce non puoi chiedere a quei fan per una settimana.</p>`;
+    } else if (r.id === "solo") {
+      const ca = { ...CPR.autoCA(0), ...(r.ca || CPR.autoCA(rank)) }, used = CPR.caCost(ca);
+      body = `<p class="hint">Con un'Azione (all'inizio dello scontro, o quando vuoi fuori dallo scontro) distribuisci ${rank} punti; la configurazione resta finché non la cambi. I bonus sono già nei tiri.</p>
+        <div class="rl-ca">${CPR.CA_USES.map(u => `<label><span>${esc(u.label)} <small>${u.id === "precise" ? "3 pt = +1 (max +3)" : u.id === "deflect" ? "2 pt = −1 (max −5)" : u.id === "recover" ? "4 pt" : "1 pt = +1"} · ${esc(u.unit)}</small></span>${numIn("ca." + u.id, ca[u.id], u.max)}</label>`).join("")}</div>
+        <div class="en-budget ${used > rank ? "over" : ""}">Punti usati <b>${used}</b> / ${rank}${used > rank ? " · troppi!" : ""} ${op("ca-auto", "Distribuisci da solo", "btn ghost small")}</div>`;
+    } else if (r.id === "netrunner") {
+      body = `<p>Interfaccia ${rank}: <b>${CPR.netActions(rank)}</b> Azioni NET per turno. Capacità d'Interfaccia, programmi e Black ICE si tirano dal Cyberdeck.</p>
+        <button type="button" class="btn small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="deck">Apri il Cyberdeck →</button>`;
+    } else if (r.id === "tech") {
+      const t = { field: 0, upgrade: 0, fabricate: 0, invent: 0, ...(r.tech || {}) }, used = RL.TECH_SPECS.reduce((a, x) => a + num(t[x.id]), 0), over = RL.TECH_SPECS.some(x => num(t[x.id]) > rank);
+      const skSel = `<select data-rl-skill aria-label="Abilità">${RL.MAKER_SKILLS.map(k => `<option value="${k}">${esc(CPR.skill(k).label)} ${skillLvl(e, k)}</option>`).join("")}</select>`;
+      body = `<p class="hint">A ogni grado: +1 in due Specializzazioni diverse (al massimo il grado del Creatore in ognuna).</p>
+        <div class="rl-ca">${RL.TECH_SPECS.map(x => `<label title="${esc(x.eff)}"><span>${esc(x.label)} <small>${esc(x.eff.split(". ")[0])}.</small></span>${numIn("tech." + x.id, t[x.id], rank)}</label>`).join("")}</div>
+        <div class="en-budget ${used > 2 * rank || over ? "over" : ""}">Punti <b>${used}</b> / ${2 * rank}${over ? " · una Specializzazione supera il grado" : ""} ${op("tech-auto", "Distribuisci da solo", "btn ghost small")}</div>
+        <div class="rl-acts"><span class="sh-k">Abilità</span>${skSel}
+          ${roll("repair", `Riparazione Temporanea <b>+${num(t.field)}</b>`, "btn small", "TECH + abilità + Esperienza sul Campo + 1d10, contro la VD della riparazione completa")}</div>
+        <div class="rl-acts"><span class="sh-k">Prezzo</span><select data-rl-price aria-label="Categoria di prezzo">${RL.PRICE_DV.map(p => `<option value="${p.id}">${esc(p.label)} · VD ${p.dv} · ${esc(p.time)}</option>`).join("")}</select>
+          ${roll("make:upgrade", `Upgrade <b>+${num(t.upgrade)}</b>`)}${roll("make:fabricate", `Fabbricare <b>+${num(t.fabricate)}</b>`)}${roll("make:invent", `Inventare <b>+${num(t.invent)}</b>`)}</div>
+        <details class="rl-more"><summary>Cosa fa ogni Specializzazione</summary>${RL.TECH_SPECS.map(x => `<p><b>${esc(x.label)}</b>: ${esc(x.eff)}</p>`).join("")}</details>`;
+    } else if (r.id === "medtech") {
+      const m = { surgery: 0, pharma: 0, cryo: 0, ...(r.med || {}) }, used = num(m.surgery) + num(m.pharma) + num(m.cryo);
+      const surg = Math.min(10, 2 * num(m.surgery)), mt = Math.min(10, num(m.pharma) + num(m.cryo)), rec = r.recipes || [];
+      body = `<p class="hint">Ogni grado di Medicina dà 1 punto a una Specializzazione.</p>
+        <div class="rl-ca">${RL.MED_SPECS.map(x => `<label title="${esc(x.eff)}"><span>${esc(x.label)} <small>${esc(x.eff)}</small></span>${numIn("med." + x.id, m[x.id], x.id === "surgery" ? 5 : x.id === "cryo" ? 5 : 10)}</label>`).join("")}</div>
+        <div class="en-budget ${used > rank ? "over" : ""}">Punti <b>${used}</b> / ${rank} · Surgery ${surg} · Medical Tech ${mt}</div>
+        <div class="rl-acts">${roll("surgery", `Surgery <b>${statEff(e, "TECH") + surg}</b>`, "btn small", "TECH + Surgery + 1d10")}${roll("medtech", `Medical Tech <b>${statEff(e, "TECH") + mt}</b>`, "btn small", "TECH + Medical Tech + 1d10")}${num(m.pharma) ? roll("synth", "Sintesi VD 13", "btn small yellow", "200 E$ di materiali, 1 ora: Medical Tech vs VD 13 → dosi pari al livello di Medical Tech") : ""}</div>
+        ${num(m.pharma) ? `<div class="rl-sub"><span class="sh-k">Ricette ${rec.length} / ${num(m.pharma)}</span>${RL.RECIPES.map(x => `<label class="check" title="${esc(x.eff)}"><input type="checkbox" data-rl="${i}" data-rf="recipes" data-rv="${x.id}" data-rid="${id}" ${rec.includes(x.id) ? "checked" : ""} ${edit && (rec.includes(x.id) || rec.length < num(m.pharma)) ? "" : "disabled"}> ${esc(x.label)} <small>${esc(x.eff)}</small></label>`).join("")}</div>` : ""}
+        ${num(m.cryo) ? `<div class="rl-sub"><span class="sh-k">Criosistemi</span>${RL.CRYO.map((c, k) => `<p class="${k < num(m.cryo) ? "on" : "off"}">${k < num(m.cryo) ? "✓" : "·"} ${esc(c)}</p>`).join("")}</div>` : ""}`;
+    } else if (r.id === "media") {
+      const B = RL.band(RL.MEDIA, rank);
+      body = `<div class="rl-acts">${roll("rumor", "Pettegolezzo passivo", "btn small", "Il GM tira 1d10 + Credibilità almeno 2 volte a settimana")}
+          <label class="check"><input type="checkbox" data-rl-proof1> almeno 1 prova verificabile (+1)</label><label class="check"><input type="checkbox" data-rl-proof4> più di 4 prove (+2)</label>
+          ${roll("publish", `Pubblica una storia <b>${B ? B.believe : 0}/10</b>`, "btn small yellow", "1d10 contro l'Attendibilità (niente Fortuna)")}</div>
+        <table class="rl-t"><tr><th>Livello</th><th>Passivo</th><th>Attivo</th><th></th></tr>${RL.RUMORS.map(x => `<tr><th>${esc(x.label)}</th><td>${x.passive}</td><td>${x.active}</td><td>${esc(x.eff)}</td></tr>`).join("")}</table>
+        ${B ? `<table class="rl-t"><tr><th>Fonti</th><td>${esc(B.sources)}</td></tr><tr><th>Pubblico</th><td>${esc(B.audience)}</td></tr><tr><th>Attendibilità</th><td>${B.believe} su 10</td></tr><tr><th>Impatto</th><td>${esc(B.impact)}</td></tr></table>` : ""}
+        <p class="hint">Pettegolezzo attivo: tiri STAT + abilità adatta + 1d10 contro la colonna «Attivo».</p>`;
+    } else if (r.id === "exec") {
+      const team = r.team || [], max = RL.teamSize(rank);
+      body = `<ul class="rl-list">${RL.EXEC_BENEFITS.map(b => `<li class="${b.r <= rank ? "on" : "off"}">${b.r <= rank ? "✓" : "·"} <b>Grado ${b.r}</b> ${esc(b.eff)}</li>`).join("")}</ul>
+        <div class="rl-sub"><span class="sh-k">Squadra ${team.length} / ${max}</span>
+          ${team.map((m, k) => `<div class="rl-row">
+            <input data-rl="${i}" data-rf="team.${k}.name" data-rid="${id}" placeholder="Nome" value="${esc(m.name || "")}" ${edit ? "" : "disabled"}>
+            <select data-rl="${i}" data-rf="team.${k}.job" data-rid="${id}" ${edit ? "" : "disabled"}>${RL.EXEC_JOBS.map(j => `<option ${j === m.job ? "selected" : ""}>${esc(j)}</option>`).join("")}</select>
+            <span class="rl-loy">Lealtà ${numIn(`team.${k}.loyalty`, m.loyalty, 99, "Lealtà (massimo 10 tra una sessione e l'altra)")}</span>
+            ${roll("order:" + k, "Ordine 1d6", "btn small", "Il GM tira 1d6: l'ordine viene eseguito se esce meno della Lealtà")}${roll("loyal:" + k, "Lealtà iniziale", "btn ghost small", "1d6 + 1")}
+            ${op("team-del:" + k, "✕", "gp-btn del", "Togli il membro")}</div>`).join("")}
+          ${edit && team.length < max ? op("team-add", "+ Membro della Squadra", "btn ghost small cyan") : ""}
+          <p class="hint">Lealtà a 0: tradisce; sotto 0 a fine sessione si dimette. Sostituire un membro morto costa 200 E$ e il nuovo parte con −1. Indossa solo corazze leggere e non guadagna IP.<br>${RL.LOYALTY_MODS.map(([v, t]) => `${v > 0 ? "+" : ""}${v} ${esc(t)}`).join(" · ")}</p></div>`;
+    } else if (r.id === "lawman") {
+      body = `<div class="rl-acts"><span class="sh-k">Chiami il grado</span><select data-rl-grade aria-label="Grado dei rinforzi">${Array.from({ length: Math.max(1, rank) }, (_, k) => k + 1).reverse().map(g => `<option value="${g}">${g} · ${esc((RL.band(RL.BACKUP, g) || {}).name || "")}</option>`).join("")}</select>
+          ${roll("call", "📡 Chiama i rinforzi", "btn small yellow", "Azione: 1d10 ≤ grado chiamato = arrivano; poi 1d6 round di attesa, con un 6 arriva il grado superiore")}</div>
+        <table class="rl-t"><tr><th>Grado</th><th>Chi</th><th>Comb.</th><th>SP</th><th>PF</th><th>MOVE/BODY</th><th>Armi</th></tr>
+          ${RL.BACKUP.map(b => `<tr class="${b.min <= rank ? "" : "off"}"><th>${b.min}${b.max > b.min ? "–" + b.max : ""}<br><small>${esc(b.name)}</small></th><td>${esc(b.who)}</td><td>${b.combat}</td><td>${esc(b.sp)}</td><td>${b.hp}</td><td>${b.move}</td><td>${esc(b.weapons)}${b.extra ? `<br><small>${esc(b.extra)}</small>` : ""}</td></tr>`).join("")}</table>
+        <p class="hint">I rinforzi non schivano i proiettili. Abusarne porta multe o il licenziamento.</p>`;
+    } else if (r.id === "fixer") {
+      const B = RL.band(RL.FIXER, rank), tr = skillLvl(e, "trading");
+      body = `<div class="rl-acts">${roll("haggle", `Contrattare <b>${statEff(e, "COOL") + tr + rank}</b>`, "btn small", "Tiro contrapposto: COOL + Trading + Operatore + 1d10 (un accordo per transazione)")}</div>
+        ${B ? `<table class="rl-t"><tr><th>Contatti</th><td>${esc(B.contacts)}</td></tr><tr><th>Portata</th><td>${esc(B.reach)}</td></tr><tr><th>Contrattare</th><td>${esc(B.haggle)}</td></tr><tr><th>Oliare</th><td>${esc(B.grease)}</td></tr></table>` : ""}
+        <details class="rl-more"><summary>Tutti i gradi</summary>${RL.FIXER.map(b => `<p><b>Grado ${b.min}${b.max > b.min ? "–" + b.max : ""}</b>: ${esc(b.reach)} ${esc(b.haggle)} ${esc(b.grease)}</p>`).join("")}</details>`;
+    } else if (r.id === "nomad") {
+      const st = r.stable || [], used = st.reduce((a, v) => a + 1 + (v.upgrades || []).length, 0), kinds = RL.vehiclesFor(rank);
+      const upg = RL.NOMAD_UPGRADES.filter(u => u.g <= Math.max(1, rank));
+      body = `<p class="hint">Garage ${rank} è già sommato a Drive, Pilot e tecnologie dei veicoli. A ogni grado (e per ogni punto di partenza) un veicolo nuovo o un upgrade. Usi un veicolo alla volta${rank >= 10 ? " (a grado 10 tutti insieme)" : ""}; se è distrutto la Famiglia lo ripara in una settimana per 500 E$.</p>
+        <div class="en-budget ${used > rank ? "over" : ""}">Scuderia: <b>${used}</b> / ${rank} scelte · veicoli sbloccati: ${esc(kinds.join(", "))}</div>
+        ${st.map((v, k) => `<div class="rl-veh ${v.active ? "on" : ""}">
+          <div class="rl-row"><label class="check" title="In uso"><input type="checkbox" data-rl="${i}" data-rf="stable.${k}.active" data-rid="${id}" ${v.active ? "checked" : ""} ${edit ? "" : "disabled"}> in uso</label>
+            <select data-rl="${i}" data-rf="stable.${k}.kind" data-rid="${id}" ${edit ? "" : "disabled"}>${[...new Set([...kinds, v.kind].filter(Boolean))].map(x => `<option ${x === v.kind ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>
+            <input data-rl="${i}" data-rf="stable.${k}.name" data-rid="${id}" placeholder="Nome o modello" value="${esc(v.name || "")}" ${edit ? "" : "disabled"}>
+            ${op("stable-del:" + k, "✕", "gp-btn del", "Togli il veicolo")}</div>
+          <div class="st-chips">${(v.upgrades || []).map((u, j) => { const U = RL.upgradeById(u) || { name: u, eff: "" }; return `<span class="st-chip" title="${esc(U.eff)}">${esc(U.name)} ${op(`upg-del:${k}:${j}`, "✕", "gp-btn del", "Togli l'upgrade")}</span>`; }).join("")}
+            ${edit ? `<select class="st-add" data-rl-upg="${i}:${k}" data-rid="${id}" aria-label="Aggiungi un upgrade"><option value="">+ upgrade…</option>${upg.filter(u => u.multi || !(v.upgrades || []).includes(u.id)).map(u => `<option value="${u.id}">[${u.g}] ${esc(u.name)} · ${esc(u.on)}</option>`).join("")}</select>` : ""}</div>
+        </div>`).join("")}
+        ${op("stable-add", "+ Veicolo", "btn ghost small cyan")}
+        <details class="rl-more"><summary>Upgrade disponibili (grado ≤ ${rank})</summary>${upg.map(u => `<p><b>[${u.g}] ${esc(u.name)}</b> <small>${esc(u.on)}${u.multi ? " · più volte" : ""}</small>: ${esc(u.eff)}</p>`).join("")}
+          <p class="hint">Sul libero mercato gli upgrade di grado 1 sono Molto Onerosi (1.000 E$), gli altri Lussuosi (5.000 E$).</p></details>`;
+    }
+    return `<section class="rl-card">
+      <header class="rl-h"><span class="rl-name">${esc(R.it)} <small>${esc(R.name)}</small></span>
+        <span class="rl-ab">${esc(R.abilityIt)} <small>${esc(R.ability)}</small></span>
+        <span class="rl-rank">${op("rank:-1", "−", "gp-btn", "Grado −1")}<b>${rank}</b>${op("rank:1", "+", "gp-btn", "Grado +1")}</span>
+        ${roll("ability", `⚄ ${esc(R.abilityIt)} <b>${rank}</b>`, "btn small", "Grado + 1d10")}
+        ${op("del", "✕", "gp-btn del", "Togli il Ruolo")}</header>
+      <div class="role-body">${body}</div>
+      <textarea class="rl-notes" data-rl="${i}" data-rf="notes" data-rid="${id}" rows="1" placeholder="Note su questo Ruolo" ${edit ? "" : "disabled"}>${esc(r.notes || "")}</textarea>
+    </section>`;
+  }
+
+  // modifica dei Ruoli dalla tab: percorso tipo "ca.precise", "team.0.loyalty", "stable.1.name"
+  function setPath(o, path, v) { const ks = path.split("."); let x = o; ks.slice(0, -1).forEach((k, j) => { if (x[k] == null) x[k] = /^\d+$/.test(ks[j + 1]) ? [] : {}; x = x[k]; }); x[ks[ks.length - 1]] = v; }
+  function roleSet(el) {
+    const e = state.entries.find(x => x.id === el.dataset.rid); if (!e || !Store.canEdit()) return;
+    const i = num(el.dataset.rl), f = el.dataset.rf;
+    sheetPatch(e.id, s => {
+      migrateRoles(s, e); const r = s.roles[i]; if (!r) return s;
+      if (f === "recipes") { const set = new Set(r.recipes || []); if (el.checked) set.add(el.dataset.rv); else set.delete(el.dataset.rv); r.recipes = [...set]; return s; }
+      if (f.startsWith("ca.") && !r.ca) r.ca = CPR.autoCA(clamp(num(r.rank), 0, 10));
+      if (f.endsWith(".active") && r.id === "nomad" && el.checked && num(r.rank) < 10) (r.stable || []).forEach(v => { v.active = false; });   // un veicolo alla volta
+      setPath(r, f, el.type === "checkbox" ? el.checked : el.type === "number" ? Math.max(0, num(el.value)) : el.value);
+      return s;
+    });
+  }
+  async function roleOp(el) {
+    const e = state.entries.find(x => x.id === el.dataset.id); if (!e || !Store.canEdit()) return;
+    const op = el.dataset.op, i = num(el.dataset.r);
+    if (op === "add") {
+      const sel = $(`.rl-tab[data-roles-tab="${CSS.escape(e.id)}"] [data-rl-new]`), id = sel && sel.value, roles = rolesOf(e);
+      if (!id) return;
+      if (roles.length && !RL.canAddRole(roles) && !(await askConfirm(`Per le regole serve il Ruolo precedente almeno a grado 4 (ora è ${num(roles[roles.length - 1].rank)}). Aggiungere comunque?`, "Aggiungi"))) return;
+      return sheetPatch(e.id, s => { migrateRoles(s, e); s.roles.push({ id, rank: s.roles.length ? 1 : 4 }); return s; });
+    }
+    if (op === "del") { const R = RL.roleById((rolesOf(e)[i] || {}).id) || {}; if (!(await askConfirm(`Togliere il Ruolo ${R.it || ""} con tutte le sue scelte?`, "Togli"))) return; }
+    sheetPatch(e.id, s => {
+      migrateRoles(s, e); const r = s.roles[i]; if (!r) return s;
+      const [o, a, b] = op.split(":");
+      if (o === "del") s.roles.splice(i, 1);
+      if (o === "rank") r.rank = clamp(num(r.rank) + num(a), 0, 10);
+      if (o === "ca-auto") r.ca = CPR.autoCA(clamp(num(r.rank), 0, 10));
+      if (o === "tech-auto") { const n = clamp(num(r.rank), 0, 10); r.tech = { field: n, upgrade: n, fabricate: 0, invent: 0 }; }
+      if (o === "team-add") { r.team = r.team || []; r.team.push({ name: "", job: RL.EXEC_JOBS[0], loyalty: 1 + CPR.die(6) }); }
+      if (o === "team-del") (r.team || []).splice(num(a), 1);
+      if (o === "stable-add") { r.stable = r.stable || []; r.stable.push({ kind: RL.vehiclesFor(num(r.rank))[0], name: "", upgrades: [], active: !r.stable.length }); }
+      if (o === "stable-del") (r.stable || []).splice(num(a), 1);
+      if (o === "upg-del") { const v = (r.stable || [])[num(a)]; if (v) (v.upgrades || []).splice(num(b), 1); }
+      return s;
+    });
+  }
+  function roleRoll(el) {
+    const e = state.entries.find(x => x.id === el.dataset.id); if (!e) return;
+    const r = rolesOf(e)[num(el.dataset.r)]; if (!r) return;
+    const R = RL.roleById(r.id) || {}, rank = clamp(num(r.rank), 0, 10), card = el.closest(".rl-card");
+    const k = el.dataset.k, [kind, arg] = k.split(":");
+    const vsDv = (parts, dv, label, extra = {}) => {
+      const x = CPR.check([...parts, ...sheetExtra(e)]), ok = x.total > dv;
+      return postRoll({ kind: "check", who: e.name, entryId: e.id, label, ...x, hit: { ok, text: `vs VD ${dv} → ${ok ? `riuscito, supera di ${x.total - dv}` : "fallito"}` }, ...extra });
+    };
+    const val = sel => { const s = card && $(sel, card); return s ? s.value : ""; };
+    if (kind === "ability") return sheetCheck(e, `${R.abilityIt || R.ability}`, [{ l: R.abilityIt || "Grado", v: rank }]);
+    if (r.id === "rocker" && kind === "fan") {
+      const F = RL.FAN_DV.find(f => f.id === arg), B = RL.band(RL.ROCKER, rank);
+      return vsDv([{ l: "Impatto Carismatico", v: rank }], F.dv, `Impatto Carismatico · ${F.label}`, { note: B ? `Grado ${rank} (${B.venue}): ${B[arg]}` : "" });
+    }
+    if (r.id === "tech") {
+      const t = techOf(e), sk = val("[data-rl-skill]") || "basictech", K = CPR.skill(sk);
+      if (kind === "repair") return sheetCheck(e, `Riparazione Temporanea (${K.label})`, [{ l: "TECH", v: statEff(e, "TECH") }, { l: K.label, v: skillLvl(e, sk) }, { l: "Esperienza sul Campo", v: num(t.field) }],
+        { note: `vs la VD della riparazione completa · l'oggetto funziona per ${10 * num(t.field)} minuti, poi torna danneggiato e non si rappezza più` });
+      if (kind === "make") {
+        const S = RL.TECH_SPECS.find(x => x.id === arg), P = RL.PRICE_DV.find(p => p.id === val("[data-rl-price]")) || RL.PRICE_DV[0];
+        return vsDv([{ l: "TECH", v: statEff(e, "TECH") }, { l: K.label, v: skillLvl(e, sk) }, { l: S.label, v: num(t[arg]) }], P.dv, `${S.label} · ${P.label}`,
+          { note: `Tempo: ${P.time} · materiali pari alla Categoria di Prezzo${arg === "upgrade" ? " (un upgrade per oggetto; se fallisci a metà ricominci senza perdere i materiali)" : ""}` });
+      }
+    }
+    if (r.id === "medtech") {
+      const m = medOf(e), surg = Math.min(10, 2 * num(m.surgery)), mt = Math.min(10, num(m.pharma) + num(m.cryo)), tech = { l: "TECH", v: statEff(e, "TECH") };
+      if (kind === "surgery") return sheetCheck(e, "Surgery", [tech, { l: "Surgery", v: surg }]);
+      if (kind === "medtech") return sheetCheck(e, "Medical Tech", [tech, { l: "Medical Tech", v: mt }]);
+      if (kind === "synth") return vsDv([tech, { l: "Medical Tech", v: mt }], 13, "Sintesi (Farmaceutica)", { note: `200 E$ di materiali, 1 ora · se riesce: ${mt} dosi; se fallisce i materiali sono persi · ricette: ${(r.recipes || []).map(x => (RL.RECIPES.find(y => y.id === x) || {}).label).filter(Boolean).join(", ") || "nessuna scelta"}` });
+    }
+    if (r.id === "media") {
+      if (kind === "rumor") {
+        const d = CPR.die(10), tot = d + rank, got = [...RL.RUMORS].reverse().find(x => tot >= x.passive);
+        return postRoll({ kind: "check", who: e.name, entryId: e.id, label: "Pettegolezzo passivo", dice: [{ v: d, s: 10 }], mods: [{ l: "Credibilità", v: rank }], total: tot,
+          hit: { ok: !!got, text: got ? `Pettegolezzo ${got.label}: ${got.eff}` : "Nessun pettegolezzo questa volta" } });
+      }
+      if (kind === "publish") {
+        const B = RL.band(RL.MEDIA, rank) || { believe: 0 }, bon = (card && $("[data-rl-proof4]", card).checked ? 2 : 0) + (card && $("[data-rl-proof1]", card).checked ? 1 : 0);
+        const target = B.believe + bon, d = CPR.die(10), ok = d <= target;
+        return postRoll({ kind: "check", who: e.name, entryId: e.id, label: "Pubblicare una storia", dice: [{ v: d, s: 10 }], mods: [], total: d,
+          hit: { ok, text: `Attendibilità ${B.believe}${bon ? ` + ${bon} (prove)` : ""} = ${target} su 10 → ${ok ? "il pubblico ci crede" : "non ci crede"}` }, note: `Impatto: ${B.impact || ""} · niente Fortuna su questo tiro` });
+      }
+    }
+    if (r.id === "exec" && (kind === "order" || kind === "loyal")) {
+      const m = (r.team || [])[num(arg)]; if (!m) return;
+      if (kind === "loyal") { const d = CPR.die(6); sheetPatch(e.id, s => { migrateRoles(s, e); const x = s.roles[num(el.dataset.r)]; if (x && x.team && x.team[num(arg)]) x.team[num(arg)].loyalty = d + 1; return s; });
+        return postRoll({ kind: "check", who: e.name, entryId: e.id, label: `Lealtà iniziale · ${m.name || m.job}`, dice: [{ v: d, s: 6 }], mods: [{ l: "", v: 1 }], total: d + 1 }); }
+      const d = CPR.die(6), ok = d < num(m.loyalty);
+      return postRoll({ kind: "check", who: e.name, entryId: e.id, label: `Ordine a ${m.name || m.job}`, dice: [{ v: d, s: 6 }], mods: [], total: d,
+        hit: { ok, text: `Lealtà ${num(m.loyalty)} → ${ok ? "esegue l'ordine" : "non lo esegue"}` } });
+    }
+    if (r.id === "lawman" && kind === "call") {
+      const g = clamp(num(val("[data-rl-grade]")) || rank, 1, Math.max(1, rank)), d = CPR.die(10), ok = d <= g;
+      let note = "Se fallisce puoi ritentare nel prossimo turno.";
+      if (ok) { const w = CPR.die(6), up = w === 6, B = RL.band(RL.BACKUP, up ? Math.min(10, g + 1) : g) || {};
+        note = `Arrivano tra ${w} round: ${B.name} (${B.who}, Comb. ${B.combat}, SP ${B.sp}, PF ${B.hp}, ${B.weapons})${up ? (g >= 10 ? " · con il 6 a grado 10 arrivano due squadre" : " · con il 6 arriva il grado superiore") : ""}`; }
+      return postRoll({ kind: "check", who: e.name, entryId: e.id, label: `Rinforzi · grado ${g}`, dice: [{ v: d, s: 10 }], mods: [], total: d, hit: { ok, text: `1d10 ≤ ${g} → ${ok ? "arrivano" : "nessuno risponde"}` }, note });
+    }
+    if (r.id === "fixer" && kind === "haggle") return sheetCheck(e, "Contrattare", [{ l: "COOL", v: statEff(e, "COOL") }, { l: "Trading", v: skillLvl(e, "trading") }, { l: "Operatore", v: rank }], { note: (RL.band(RL.FIXER, rank) || {}).haggle || "" });
+  }
+
   // ---------- tab COMBATTIMENTO: HP, armatura, iniziativa, stati, modificatori, armi, Critical Injury ----------
   // ---------- ARMI: la stessa scheda per PG/NPC con scheda e per i nemici del GM ----------
   // X = sorgente dell'arma: addendi del colpo singolo e dell'autofire, danno, tabelle delle VD, come salvare e ridisegnare.
@@ -1096,7 +1344,9 @@
     const s = sheetOf(e), w = (s.weapons || [])[i]; if (!w) return null;
     const k = skillByKey(e, weaponSkillKey(w.skill)) || skillByKey(e, "skill:handgun"), af = skillByKey(e, "skill:autofire");
     return finishSrc({
-      kind: "pc", id: e.id, i, key: `pc:${e.id}:${i}`, w, cat: sheetWeaponCat(w), mods: s.mods, skillLabel: k.label,
+      kind: "pc", id: e.id, i, key: `pc:${e.id}:${i}`, w, cat: sheetWeaponCat(w), mods: [...(s.mods || []), ...roleMods(e)], skillLabel: k.label,
+      weakness: num((caOf(e) || {}).weakness),
+      fix: r => { const ca = caOf(e); if (ca && num(ca.recover) && CPR.FIREARMS.includes(sheetWeaponCat(w)) && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il dado conta come 1)"; } },
       single: [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }],
       auto: [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: af ? af.lvl : 0 }], afLvl: af ? af.lvl : 0,
       extra: () => sheetExtra(e), edit: Store.canEdit(),
@@ -1160,13 +1410,11 @@
     const reach = bands.filter(b => b.hit).map(b => b.label + (b.mult ? ` ×${b.mult}` : "")).join(", ");
     const aimed = aimLoc ? CPR.AIMED.find(a => a.id === aimLoc) : null;
     const hit = X.melee ? null : T ? { ok: !!reach, table: T.label, bands: bands.filter(b => b.hit).map(b => b.label + (b.mult ? ` ×${b.mult}` : "")), text: `${T.label}: ${reach ? `colpisce a ${reach}` : "fuori portata a ogni distanza"}` } : null;
-    const note = [r.note || "",
-      X.melee ? "vs DEX + Evasion + 1d10 del difensore" : "",
-      mode === "auto" ? `autofire (10 colpi): danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}` : mode === "supp" ? "fuoco di soppressione (10 colpi): chi è entro 25 m tira WILL + Concentration contro questo totale" : "",
-      aimed ? `mirato: ${aimed.label} · ${aimed.eff}` : "",
-      X.ammo.id ? `${X.ammo.name}${X.ammo.eff ? `: ${X.ammo.eff}` : ""}` : "",
-    ].filter(Boolean).join(" · ");
-    X.post({ kind: "check", label: `${X.w.name} · ${{ single: aimed ? `aimed shot (${aimed.label})` : "attack", auto: "autofire", supp: "suppressive fire" }[mode]}`, ...r, note, ...(hit ? { hit } : {}) });
+    // attacco: come prima (chi, cosa, totale e addendi) + la riga delle distanze; gli effetti stanno nel tiro del danno
+    const note = [r.note || "", X.melee ? "vs DEX + Evasion + 1d10 del difensore" : "",
+      mode === "supp" ? "chi è entro 25 m tira WILL + Concentration contro questo totale" : ""].filter(Boolean).join(" · ");
+    const what = { single: aimed ? `aimed shot (${aimed.label})` : "attack", auto: `autofire ×${X.autoMax}`, supp: "suppressive fire" }[mode];
+    X.post({ kind: "check", label: `${X.w.name} · ${what}${X.ammo.id ? ` · ${X.ammo.name}` : ""}`, ...r, note, ...(hit ? { hit } : {}) });
     X.refresh();
   }
   function cbDamage(X, mult) {
@@ -1175,7 +1423,8 @@
     const r = CPR.rollExpr(auto ? X.afDmg : X.dmg, { damage: true });
     if (!r) return toast(`Danno non valido: "${auto ? X.afDmg : X.dmg}"`, "err");
     if (auto && mult > 1) { const raw = r.total - (r.crit === "injury" ? 5 : 0), add = raw * (mult - 1); r.mods.push({ l: `× ${mult} autofire`, v: add }); r.total += add; }
-    [...(num(X.ammo.dmgMod) ? [{ l: X.ammo.name, v: num(X.ammo.dmgMod) }] : []), ...modsFor(X.mods, ["damage"])].forEach(m => { r.mods.push({ l: m.l, v: m.v }); r.total += m.v; });
+    const weak = X.weakness && (cbMem[X.key] || {}).weak ? [{ l: "Individuare Debolezze", v: X.weakness }] : [];
+    [...(num(X.ammo.dmgMod) ? [{ l: X.ammo.name, v: num(X.ammo.dmgMod) }] : []), ...modsFor(X.mods, ["damage"]), ...weak].forEach(m => { r.mods.push({ l: m.l, v: m.v }); r.total += m.v; });
     const aimed = L && L.aim && !auto ? CPR.AIMED.find(a => a.id === L.aim) : null;
     const note = [aimed ? `${aimed.label}: ${aimed.eff}` : "", X.ammo.eff ? `${X.ammo.name}: ${X.ammo.eff}` : "", r.crit === "injury" ? "Due 6: tira la Critical Injury dalla scheda del bersaglio" : ""].filter(Boolean).join(" · ");
     X.post({ kind: "damage", label: `${X.w.name} · damage${auto ? ` (autofire ×${mult})` : aimed ? ` (aimed: ${aimed.label})` : ""}`, ...r, note });
@@ -1218,6 +1467,7 @@
         <select class="cb-loc" data-cb-loc ${A} aria-label="Dove miri" ${M.aim ? "" : "disabled"}>${CPR.AIMED.map(a => `<option value="${a.id}" ${a.id === (M.loc || "head") ? "selected" : ""}>${a.label}</option>`).join("")}</select>
         ${X.autoMax ? btn(`data-action="cb-roll" ${A} data-mode="auto"`, `Autofire <b>${X.afBase}</b> ×${X.autoMax}`, "btn small ghost", `REF + Autofire ${X.afLvl} + 1d10, 10 colpi: danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}`) + btn(`data-action="cb-roll" ${A} data-mode="supp"`, "Soppressione", "btn small ghost", "Fuoco di soppressione, 10 colpi") : ""}
         ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo ${A} ${X.edit ? "" : "disabled"}>${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>` : ""}
+        ${X.weakness ? `<label class="check cb-aim" title="Individuare Debolezze: +${X.weakness} al danno del primo colpo a segno del round (prima dell'armatura)"><input type="checkbox" data-cb-weak ${A} ${M.weak ? "checked" : ""}> 1° colpo del round +${X.weakness}</label>` : ""}
         <span class="cb-dmg">${dmg}</span>
       </div>
       ${X.ammo.eff ? `<p class="hint">${esc(X.ammo.name)}: ${esc(X.ammo.eff)}</p>` : ""}
@@ -1240,7 +1490,8 @@
     const arm = loc => spBar(loc === "head" ? "Head" : "Body", armorOf(e, loc), edit && (d => `data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="${d}"`));
     const weapons = s.weapons || [];
     const mods = (s.mods || []).filter(m => m.on !== false && num(m.value));
-    const im = modsFor(s.mods, ["init"]).reduce((t, m) => t + m.v, 0);
+    const im = modsFor([...(s.mods || []), ...roleMods(e)], ["init"]).reduce((t, m) => t + m.v, 0);
+    const ca = caOf(e);
     return `
       <div class="cb sh" data-combat="${id}">
         <div class="sh-bar">
@@ -1254,6 +1505,7 @@
             <span class="n">${hp}<small> / ${max}</small></span>
             <span class="sh-hpbar"><i style="width:${pct(hp)}%"></i><b style="left:${pct(CPR.seriousAt(max))}%" title="Seriously Wounded"></b></span>
             <span class="sh-sub">${w.label}${w.pen ? ` · ${w.pen} to all Actions` : ""}</span>
+            ${ca && num(ca.deflect) ? `<span class="sh-sub rl-hint">Deflettere Danni: −${num(ca.deflect)} al primo danno subito nel round</span>` : ""}
             ${edit ? adjBtns(e.id, "hp", [-5, -1, 1, 5]) : ""}
           </div>
           <div class="sh-box"><span class="l">Armor · SP</span>${arm("head")}${arm("body")}</div>
@@ -1317,8 +1569,7 @@
           <div class="sh-stat-in">${CPR.STATS.map(st => `<label><span>${st.id}</span><input name="st-${st.id}" type="number" min="0" max="20" step="1" value="${esc(stats[st.id] ?? "")}" title="${st.label}"></label>`).join("")}</div>
           <p class="hint">HP max calcolati: <b id="sh-auto-hp">${autoHp}</b> (10 + 5 × (BODY + WILL) / 2, arrotondato per eccesso). L'EMP si abbassa da sola con l'umanità del cyberware.</p>
           <div class="fields">
-            <div class="field"><label for="sh-ab">Role Ability</label><input id="sh-ab" name="ability" value="${esc(s.ability || "")}" placeholder="${esc(CPR.ROLE_ABILITIES[e.role] || "es. Combat Awareness")}"></div>
-            <div class="field"><label for="sh-rank">Rank</label><input id="sh-rank" name="rank" type="number" min="0" max="10" value="${esc(s.rank ?? "")}"></div>
+            <div class="field full"><span class="lbl">Ruoli e gradi</span><span class="hint">Si gestiscono nella tab «Ruoli» del dossier (anche più di uno): ${esc(rolesOf(e).map(r => `${(RL.roleById(r.id) || {}).it} ${num(r.rank)}`).join(", ") || "nessuno")}.</span></div>
             <div class="field"><label for="sh-hpm">HP max (vuoto = automatici)</label><input id="sh-hpm" name="hpMax" type="number" min="1" value="${esc(s.hpMax ?? "")}" placeholder="${autoHp}"></div>
             <div class="field"><label for="sh-hp">HP attuali (vuoto = pieni)</label><input id="sh-hp" name="hp" type="number" value="${esc(s.hp ?? "")}"></div>
             ${[["head", "ah", "testa"], ["body", "ab", "corpo"]].map(([loc, p, l]) => { const ar = a(loc), ty = sheetArmorType(ar); return `
@@ -1405,7 +1656,7 @@
         armor[loc] = { type: $(`[data-sh-arm=${p}]`, form).value, name: v(p + "-name"), sp, cur: sp == null ? null : Math.min(old.cur, sp) };
         if (old.sp !== sp) armor[loc].cur = sp;
       }
-      const sheet = { ...s, owner: v("owner"), ability: v("ability"), rank: nv("rank"), stats, skills, custom, weapons, armor, armorNoPen: form.elements["armorNoPen"].checked,
+      const sheet = { ...migrateRoles(JSON.parse(JSON.stringify(s)), e), owner: v("owner"), stats, skills, custom, weapons, armor, armorNoPen: form.elements["armorNoPen"].checked,
         hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes"), mods };
       try {
         const saved = await Store.save("entries", { ...e, sheet });
@@ -1550,8 +1801,8 @@
   // nel salvataggio porto le schede vecchie (deck singolo) all'elenco
   const migrateDecks = s => { if (!Array.isArray(s.decks)) s.decks = s.deck ? [s.deck] : []; delete s.deck; s.deckActive = clamp(num(s.deckActive), 0, Math.max(0, s.decks.length - 1)); return s; };
   const isNetrunner = e => /netrunner/i.test((e && e.role) || "") || /^(interface|interfaccia)$/i.test(String(sheetOf(e).ability || "").trim())
-    || decksOf(e).some(d => (d.items || []).length);
-  const ifaceOf = e => num(sheetOf(e).rank);
+    || rolesOf(e).some(r => r.id === "netrunner") || decksOf(e).some(d => (d.items || []).length);
+  const ifaceOf = e => roleOfE(e, "netrunner") ? roleRankOf(e, "netrunner") : num(sheetOf(e).rank);
   const clsTag = I => I.hw ? "Hardware" : I.ice ? `Black ICE · ${(NET.CLASSES[I.cls] || {}).short || ""}` : (NET.CLASSES[I.cls] || {}).label || "";
   const vsOf = I => I.cls === "antiprogram" ? "vs DEF + 1d10 di un programma o Black ICE" : "vs Interface + 1d10 del Netrunner";
 
@@ -1850,7 +2101,20 @@
       ${r.local ? `<div class="rl-note">solo su questo dispositivo · accedi per condividere i tiri</div>` : ""}
     </div>`;
   }
-  const logItems = () => state.rolls.length ? state.rolls.map(rollCard).join("") : `<div class="rl-empty">// nessun tiro ancora.<br>Clicca un'abilità nella scheda o scrivi <b>2d6+3</b> qui sotto.</div>`;
+  const logItems = () => {
+    const cut = ls.get("nc-log-cleared", ""), list = cut ? state.rolls.filter(r => (r.at || r.createdAt || "") > cut) : state.rolls;
+    return list.length ? list.map(rollCard).join("") : `<div class="rl-empty">// ${cut && state.rolls.length ? "log pulito." : "nessun tiro ancora."}<br>Clicca un'abilità nella scheda o scrivi <b>2d6+3</b> qui sotto.${cut && state.rolls.length ? `<br><button type="button" class="btn ghost small" data-action="log-unclear">Mostra di nuovo i tiri vecchi</button>` : ""}</div>`;
+  };
+  // cancella tutti i tiri dal database (solo GM): gli altri ricevono un avviso e svuotano il loro log
+  async function wipeLog() {
+    if (!(await askConfirm("Eliminare DEFINITIVAMENTE tutti i tiri e i messaggi del Dice log, per tutti? Non si può annullare.", "Elimina tutti"))) return;
+    try {
+      const all = await Store.list("rolls");
+      for (const r of all) await Store.remove("rolls", r);
+      state.rolls = []; renderLogs(); Store.send({ t: "wipe", col: "rolls" });
+      toast(`Dice log svuotato: ${all.length} tiri eliminati`, "ok");
+    } catch (err) { fail(err); }
+  }
   const rollAs = () => { const id = ls.get("nc-as", null); const e = id && state.entries.find(x => x.id === id); return e || myPg() || null; };
   const asOptions = () => {
     const cur = rollAs(), people = state.entries.filter(isPerson).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "pg" ? -1 : 1) || (a.name || "").localeCompare(b.name || "", "it"));
@@ -1863,6 +2127,8 @@
       <form class="roll-form ${secretRoll && isGm() ? "is-secret" : ""}" data-roll-form autocomplete="off">
         <div class="roll-quick">${["1d10", "1d6", "2d6", "3d6", "4d6", "5d6", "6d6", "3d6kh2"].map(x => `<button type="button" class="chip" data-quick="${x}">${x}</button>`).join("")}<button type="button" class="chip" data-quick="check" title="Prova: 1d10 con critico sul 10 e fallimento sull'1">CHECK</button>
           ${isGm() && Store.gmReady ? `<label class="roll-secret" title="I tuoi tiri e messaggi li vedono solo i GM"><input type="checkbox" data-secret ${secretRoll ? "checked" : ""}> 🔒 Segreto</label>` : ""}</div>
+        <div class="roll-tools"><button type="button" class="chip" data-action="log-clear" title="Nasconde i tiri fatti finora, solo su questo dispositivo">🧹 Pulisci</button>
+          ${isGm() || !Store.gmReady ? `<button type="button" class="chip r" data-action="log-wipe" title="Elimina tutti i tiri dal database, per tutti">🗑 Elimina tutti</button>` : ""}</div>
         <div class="roll-in">
           <select data-roll-as title="Tira come" aria-label="Tira come">${asOptions()}</select>
           <input data-roll-text placeholder="2d6+3 · /c 14 · messaggio" aria-label="Tiro o messaggio">
@@ -1939,12 +2205,12 @@
     const edit = Store.canEdit();
     const tabs = isPerson(e) ? `
       <div class="dossier-tabs" role="tablist">
-        ${[["dossier", "Dossier"], ["sheet", `Scheda${hasSheet(e) ? ` <span>${hpOf(e)}/${hpMaxOf(e)}</span>` : ""}`], ["combat", `Combattimento${(sheetOf(e).weapons || []).length ? ` <span>${sheetOf(e).weapons.length}</span>` : ""}`], ["cyber", `Cyberware${cyberCount(e) ? ` <span>${cyberCount(e)}</span>` : ""}`], ["gear", `Equipaggiamento${gearItems(e).length ? ` <span>${gearItems(e).length}</span>` : ""}`], ...(isNetrunner(e) ? [["deck", `Cyberdeck${decksOf(e).length > 1 ? ` <span>${decksOf(e).length}</span>` : ""}`]] : [])]
+        ${[["dossier", "Dossier"], ["sheet", `Scheda${hasSheet(e) ? ` <span>${hpOf(e)}/${hpMaxOf(e)}</span>` : ""}`], ["roles", `Ruoli${rolesOf(e).length > 1 ? ` <span>${rolesOf(e).length}</span>` : ""}`], ["combat", `Combattimento${(sheetOf(e).weapons || []).length ? ` <span>${sheetOf(e).weapons.length}</span>` : ""}`], ["cyber", `Cyberware${cyberCount(e) ? ` <span>${cyberCount(e)}</span>` : ""}`], ["gear", `Equipaggiamento${gearItems(e).length ? ` <span>${gearItems(e).length}</span>` : ""}`], ...(isNetrunner(e) ? [["deck", `Cyberdeck${decksOf(e).length > 1 ? ` <span>${decksOf(e).length}</span>` : ""}`]] : [])]
           .map(([t, l]) => `<button type="button" role="tab" class="${t === tab ? "active" : ""}" aria-selected="${t === tab}" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="${t}">${l}</button>`).join("")}
       </div>` : "";
     if (tab !== "dossier") {
       const k = kindOf(e.kind);
-      const T = { sheet: ["SCHEDA", sheetHtml, "edit-sheet", "scheda"], combat: ["COMBATTIMENTO", combatHtml, "edit-sheet", "scheda"], cyber: ["CYBERWARE", cyberHtml, "edit-cyber", "cyberware"], gear: ["EQUIPAGGIAMENTO", gearHtml, "edit-gear", "equipaggiamento"], deck: ["CYBERDECK", deckTabHtml, "edit-decks", "cyberdeck"] }[tab] || [];
+      const T = { sheet: ["SCHEDA", sheetHtml, "edit-sheet", "scheda"], combat: ["COMBATTIMENTO", combatHtml, "edit-sheet", "scheda"], roles: ["RUOLI", rolesTabHtml, "edit-sheet", "scheda"], cyber: ["CYBERWARE", cyberHtml, "edit-cyber", "cyberware"], gear: ["EQUIPAGGIAMENTO", gearHtml, "edit-gear", "equipaggiamento"], deck: ["CYBERDECK", deckTabHtml, "edit-decks", "cyberdeck"] }[tab] || [];
       if (!T.length) return openEntry(id);
       openModal(`
         <div class="modal-head"><h2>// ${T[0]} · ${esc(k.label)}</h2><button class="x" data-action="close" aria-label="Chiudi">×</button></div>
@@ -1953,7 +2219,7 @@
           ${tabs}
           ${T[1](e)}
         </div>
-        ${edit && (!["sheet", "combat"].includes(tab) || hasSheet(e)) ? `<div class="modal-foot">
+        ${edit && tab !== "roles" && (!["sheet", "combat"].includes(tab) || hasSheet(e)) ? `<div class="modal-foot">
           <button class="btn cyan" data-action="${T[2]}" data-id="${esc(e.id)}">Modifica ${T[3]}</button>
         </div>` : ""}`);
       const fig = $("#modal .cy-figure");
@@ -4796,6 +5062,7 @@
       return removeLive(col, id);
     }
     if (msg.t === "rec" && msg.rec && msg.rec.id) return applyLive(col, msg.rec, false);
+    if (msg.t === "wipe" && col === "rolls") { state.rolls = []; renderLogs(); return; }
     if (msg.t === "del" && ["rolls", "tokens", "maps", "netview", "netarch"].includes(col) && msg.id) return removeLive(col, String(msg.id));
   }
 
@@ -5234,6 +5501,11 @@
       case "edit-sheet": editSheet(id); break;
       case "edit-decks": editDecks(id); break;
       case "sheet-roll": { const e = state.entries.find(x => x.id === id); if (e) sheetRoll(e, el.dataset.roll); break; }
+      case "rl-op": roleOp(el); break;
+      case "rl-roll": roleRoll(el); break;
+      case "log-clear": ls.set("nc-log-cleared", new Date().toISOString()); renderLogs(); toast("Dice log pulito su questo dispositivo: i tiri restano salvati"); break;
+      case "log-wipe": wipeLog(); break;
+      case "log-unclear": ls.set("nc-log-cleared", ""); renderLogs(); break;
       case "cb-roll": cbRoll(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), el.dataset.mode || "single"); break;
       case "cb-dmg": cbDamage(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.mult)); break;
       case "sheet-status": { const e = state.entries.find(x => x.id === el.dataset.stSheet); if (e && Store.canEdit()) statusOp(el, sheetStatusApply(e)); break; }
@@ -5288,17 +5560,24 @@
   document.addEventListener("change", ev => {
     const t = ev.target;
     // armi: mirato (solo su questo dispositivo), munizioni e tabelle (nell'arma)
-    if (t.matches("[data-cb-aim], [data-cb-loc], [data-cb-ammo], [data-cb-table], [data-cb-atable]")) {
+    if (t.matches("[data-cb-aim], [data-cb-loc], [data-cb-ammo], [data-cb-table], [data-cb-atable], [data-cb-weak]")) {
       const X = wSrc(t.dataset.src, t.dataset.id, t.dataset.i, t.dataset.tok); if (!X) return;
-      if (t.matches("[data-cb-aim], [data-cb-loc]")) {
+      if (t.matches("[data-cb-aim], [data-cb-loc], [data-cb-weak]")) {
         const M = cbMem[X.key] = cbMem[X.key] || {};
-        if (t.matches("[data-cb-aim]")) M.aim = t.checked; else M.loc = t.value;
+        if (t.matches("[data-cb-aim]")) M.aim = t.checked; else if (t.matches("[data-cb-weak]")) M.weak = t.checked; else M.loc = t.value;
         X.refresh(); return;
       }
       if (!X.edit) return;
       const f = t.matches("[data-cb-ammo]") ? "ammo" : t.matches("[data-cb-table]") ? "range" : "autoRange";
       if (f !== "ammo" && cbMem[X.key]) delete cbMem[X.key].last;
       X.save(f, t.value);
+      return;
+    }
+    // tab Ruoli
+    if (t.matches("[data-rl][data-rf]")) { roleSet(t); return; }
+    if (t.matches("select[data-rl-upg]")) {
+      const e = state.entries.find(x => x.id === t.dataset.rid), [ri, vi] = t.dataset.rlUpg.split(":").map(num), u = t.value;
+      if (e && u && Store.canEdit()) sheetPatch(e.id, s => { migrateRoles(s, e); const v = ((s.roles[ri] || {}).stable || [])[vi]; if (v) (v.upgrades = v.upgrades || []).push(u); return s; });
       return;
     }
     if (t.matches("select[data-st-op=add]")) {
