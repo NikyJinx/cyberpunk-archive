@@ -934,18 +934,25 @@
     }
     if (type === "wpn") {
       const w = (sheetOf(e).weapons || [])[+a]; if (!w) return;
-      return b === "dmg" ? cbDamage(e, +a) : cbRoll(e, +a, "single");
+      return b === "dmg" ? cbDamage(pcSrc(e, +a)) : cbRoll(pcSrc(e, +a), "single");
     }
     if (type === "init") return rollInitiative(e);
     if (type === "death") {
       const d = CPR.die(10), pen = num(sheetOf(e).dsp), body = statBase(e, "BODY");
-      const total = d + pen;
-      return postRoll({ kind: "death", who: e.name, entryId: e.id, label: "Death Save",
-        dice: [{ v: d, s: 10, t: d === 10 ? "fumble" : "" }], mods: pen ? [{ l: "Death Save Penalty", v: pen }] : [], total,
-        note: d === 10 ? "Natural 10: always a failure" : `vs BODY ${body}`, crit: d === 10 ? "fail" : "" });
+      const r = deathRoll(d, pen, body);
+      // ogni Death Save fatto alza di 1 la penalità dei successivi
+      if (Store.canEdit()) sheetPatch(e.id, x => { x.dsp = pen + 1; return x; });
+      return postRoll({ kind: "death", who: e.name, entryId: e.id, label: "Death Save", ...r });
     }
   }
 
+  // Death Save: 1d10 + penalità ≤ BODY; un 10 naturale fallisce sempre; dopo il tiro la penalità sale di 1
+  function deathRoll(d, pen, body) {
+    const total = d + pen, ok = d !== 10 && total <= body;
+    return { dice: [{ v: d, s: 10, t: d === 10 ? "fumble" : "" }], mods: pen ? [{ l: "Death Save Penalty", v: pen }] : [], total, crit: d === 10 ? "fail" : "",
+      hit: { ok, text: d === 10 ? "10 naturale: fallito" : ok ? `Riuscito (≤ BODY ${body})` : `Fallito (BODY ${body})` },
+      note: `Penalità ${pen} → ${pen + 1} per il prossimo Death Save` };
+  }
   function rollInitiative(e, extra = {}) {
     const d = CPR.die(10), ref = statEff(e, "REF"), im = modsFor(sheetOf(e).mods, ["init"]);
     return postRoll({ kind: "init", who: e.name, entryId: e.id, label: "Initiative", dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }, ...im], total: d + ref + im.reduce((t, m) => t + m.v, 0), ...extra });
@@ -1066,107 +1073,163 @@
 
 
   // ---------- tab COMBATTIMENTO: HP, armatura, iniziativa, stati, modificatori, armi, Critical Injury ----------
-  // per ogni arma: colpo mirato e ultimo tiro restano in memoria (per dispositivo), munizioni e tabella delle VD nella scheda
+  // ---------- ARMI: la stessa scheda per PG/NPC con scheda e per i nemici del GM ----------
+  // X = sorgente dell'arma: addendi del colpo singolo e dell'autofire, danno, tabelle delle VD, come salvare e ridisegnare.
+  // Colpo mirato e ultimo tiro restano in memoria (per dispositivo); munizioni e tabelle si salvano nell'arma.
   const cbMem = {};
-  const cbKey = (e, i) => e.id + ":" + i;
-  function cbInfo(e, i) {
-    const s = sheetOf(e), w = (s.weapons || [])[i]; if (!w) return null;
-    const cat = sheetWeaponCat(w), T = CPR.weaponType(cat) || {}, melee = CPR.isMelee(cat);
-    const k = skillByKey(e, weaponSkillKey(w.skill)) || skillByKey(e, "skill:handgun"), af = skillByKey(e, "skill:autofire");
-    const autoMax = num(w.auto) || T.auto || 0;
-    const RT = melee ? null : CPR.rangeById(w.range == null ? CPR.rangeDefault(cat) : w.range || CPR.rangeDefault(cat));
-    const AT = autoMax ? CPR.autoById(w.autoRange || CPR.autoDefault(cat) || "smg") : null;
-    const ammo = ammoOf(cat, w.ammo || "");
+  function finishSrc(X) {
+    const w = X.w, T = CPR.weaponType(X.cat) || {};
+    X.T = T; X.melee = CPR.isMelee(X.cat);
+    X.autoMax = num(w.auto) || T.auto || 0;
+    X.RT = X.melee ? null : CPR.rangeById(w.range || CPR.rangeDefault(X.cat));
+    X.AT = X.autoMax ? CPR.autoById(w.autoRange || CPR.autoDefault(X.cat) || "smg") : null;
+    X.ammo = ammoOf(X.cat, w.ammo || "");
+    X.dmg = X.ammo.dmg && CPR.parse(X.ammo.dmg) ? X.ammo.dmg : (X.baseDmg || w.dmg || T.dmg || "");
     // autofire: danno e moltiplicatore massimo si possono cambiare per l'arma (es. modificata dal Tech)
-    const afDmg = w.afDmg && CPR.parse(w.afDmg) ? String(w.afDmg).replace(/\s+/g, "") : "2d6";
-    const afBase = statEff(e, "REF") + (af ? af.lvl : 0);
-    return { s, w, cat, T, melee, k, af, autoMax, afDmg, afBase, RT, AT, ammo, dmg: ammo.dmg && CPR.parse(ammo.dmg) ? ammo.dmg : (w.dmg || T.dmg || "") };
+    X.afDmg = w.afDmg && CPR.parse(w.afDmg) ? String(w.afDmg).replace(/\s+/g, "") : "2d6";
+    X.base = X.single.reduce((t, p) => t + p.v, 0);
+    X.afBase = X.auto.reduce((t, p) => t + p.v, 0);
+    X.attrs = `data-src="${X.kind}" data-id="${esc(X.id)}" data-i="${X.i}"${X.tok ? ` data-tok="${esc(X.tok)}"` : ""}`;
+    return X;
   }
-  function cbParts(e, X, mode, aimLoc) {
+  function pcSrc(e, i) {
+    const s = sheetOf(e), w = (s.weapons || [])[i]; if (!w) return null;
+    const k = skillByKey(e, weaponSkillKey(w.skill)) || skillByKey(e, "skill:handgun"), af = skillByKey(e, "skill:autofire");
+    return finishSrc({
+      kind: "pc", id: e.id, i, key: `pc:${e.id}:${i}`, w, cat: sheetWeaponCat(w), mods: s.mods, skillLabel: k.label,
+      single: [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }],
+      auto: [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: af ? af.lvl : 0 }], afLvl: af ? af.lvl : 0,
+      extra: () => sheetExtra(e), edit: Store.canEdit(),
+      post: r => postRoll({ ...r, who: e.name, entryId: e.id }),
+      save: (f, v) => sheetPatch(e.id, x => { if (x.weapons && x.weapons[i]) x.weapons[i][f] = v; return x; }),
+      refresh: () => refreshSheetView(e.id),
+    });
+  }
+  // nemico: valori derivati dalla scheda (malus dell'armatura, bonus di ruolo); dal token valgono le sue ferite e i suoi stati
+  function enSrc(id, i, tokId) {
+    const e = state.entries.find(x => x.id === id); if (!e || !e.enemy) return null;
+    const D = enemyD(e), wp = D.weapons[i]; if (!wp) return null;
+    const t = tokId ? state.tokens.find(x => x.id === tokId) : null;
+    const pen = D.pen, arm = stat => pen && CPR.PEN_STATS.includes(stat) ? [{ l: "Armor", v: pen }] : [];
+    const hp = t && tokHp(t), wd = hp && !D.painImmune ? CPR.wound(hp.hp, hp.max) : null;
+    const extra = [...(wd && wd.pen ? [{ l: wd.label, v: wd.pen }] : []), ...(t ? statusParts(t.status) : [])];
+    const af = D.skills.find(s => s.id === "autofire"), ca = D.ability && D.ability.ca;
+    const raw = (enemyOf(e).weapons || [])[i] || {};
+    return finishSrc({
+      kind: "en", id: e.id, i, tok: t ? t.id : "", key: `en:${e.id}:${t ? t.id : "m"}:${i}`, w: { ...raw, name: wp.name }, cat: wp.cat, baseDmg: wp.dmg, mods: [], skillLabel: wp.skillLabel,
+      sub: `${formula(wp, pen)}${wp.hq ? " · HQ" : wp.poor ? " · Poor: si inceppa con un 1" : ""}`,
+      single: [{ l: wp.stat, v: wp.statV }, { l: wp.skillLabel, v: wp.lvl }, ...wp.bonus, ...arm(wp.stat)],
+      auto: [{ l: "REF", v: D.stats.REF.v }, { l: "Autofire", v: af ? af.lvl : 0 }, ...(af ? af.bonus : []), ...wp.bonus.filter(b => b.role), ...arm("REF")], afLvl: af ? af.lvl : 0,
+      extra: () => extra, edit: isGm() || !Store.gmReady,
+      // Recuperare da un Disastro: sparando, il fallimento critico non toglie il secondo dado (il tiro resta un 1)
+      fix: r => { if (ca && ca.recover && wp.firearm && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il tiro conta come 1)"; } },
+      post: r => postRoll({ ...r, who: t ? tokName(t) : e.name, enemyId: e.id, gmOnly: !t || tokHidden(t) }),
+      save: (f, v) => enemyPatch(e.id, E => { if (E.weapons && E.weapons[i]) E.weapons[i][f] = v; return E; }),
+      refresh: () => { refreshEnemyView(e.id); if (onTable()) renderSel(); },
+    });
+  }
+  const wSrc = (kind, id, i, tok) => kind === "en" ? enSrc(id, num(i), tok) : (() => { const e = state.entries.find(x => x.id === id); return e ? pcSrc(e, num(i)) : null; })();
+  // modifica rapida di un nemico (munizioni, tabelle): salvo subito, la scheda è del GM
+  async function enemyPatch(id, fn) {
+    const e = state.entries.find(x => x.id === id); if (!e) return;
+    const rec = { ...e, enemy: fn(JSON.parse(JSON.stringify(enemyOf(e)))) };
+    upsert(state.entries, rec); refreshEnemyView(id); if (onTable()) renderSel();
+    try { const saved = await Store.save("entries", rec); upsert(state.entries, saved); liveSend("entries", saved); } catch (err) { fail(err); }
+  }
+  function refreshEnemyView(id) {
+    const box = $(`#modal .en[data-enemy="${CSS.escape(id)}"]`), e = state.entries.find(x => x.id === id); if (!box || !e) return;
+    const y = $("#modal").scrollTop; box.outerHTML = enemyHtml(e); $("#modal").scrollTop = y;
+  }
+  function cbParts(X, mode, aimLoc) {
     const auto = mode === "auto" || mode === "supp";
-    const parts = auto ? [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: X.af ? X.af.lvl : 0 }] : [{ l: X.k.stat, v: statEff(e, X.k.stat) }, { l: X.k.label, v: X.k.lvl }];
+    const parts = [...(auto ? X.auto : X.single)];
     if (aimLoc) parts.push({ l: `Colpo mirato (${(CPR.AIMED.find(a => a.id === aimLoc) || {}).label})`, v: -8 });
     if (num(X.ammo.atk)) parts.push({ l: X.ammo.name, v: num(X.ammo.atk) });
-    parts.push(...modsFor(X.s.mods, ["attack", X.melee ? "melee" : "ranged", ...(aimLoc ? ["aimed"] : []), ...(auto ? ["autofire"] : [])]).map(m => ({ l: m.l, v: m.v })));
-    return [...parts, ...sheetExtra(e)];
+    parts.push(...modsFor(X.mods, ["attack", X.melee ? "melee" : "ranged", ...(aimLoc ? ["aimed"] : []), ...(auto ? ["autofire"] : [])]).map(m => ({ l: m.l, v: m.v })));
+    return [...parts, ...X.extra()];
   }
-  function cbRoll(e, i, mode = "single") {
-    const X = cbInfo(e, i); if (!X) return;
-    const key = cbKey(e, i), M = cbMem[key] = cbMem[key] || {};
+  function cbRoll(X, mode = "single") {
+    if (!X) return;
+    const M = cbMem[X.key] = cbMem[X.key] || {};
     const auto = mode === "auto" || mode === "supp", aimLoc = !auto && M.aim ? (M.loc || "head") : "";
-    const r = CPR.check(cbParts(e, X, mode, aimLoc));
+    const r = CPR.check(cbParts(X, mode, aimLoc));
+    if (X.fix) X.fix(r);
     const T = auto ? X.AT : X.RT;
     const bands = T ? T.dv.map((dv, j) => ({ label: CPR.RANGE_BANDS[j], dv, hit: dv != null && r.total > dv, mult: mode === "auto" && dv != null && r.total > dv ? Math.min(r.total - dv, X.autoMax) : 0 })) : [];
-    M.last = { mode, total: r.total, crit: r.crit, bands, aim: aimLoc, dmg: X.dmg };
+    M.last = { mode, total: r.total, crit: r.crit, bands, aim: aimLoc };
     const reach = bands.filter(b => b.hit).map(b => b.label + (b.mult ? ` ×${b.mult}` : "")).join(", ");
     const aimed = aimLoc ? CPR.AIMED.find(a => a.id === aimLoc) : null;
-    const note = [
-      X.melee ? "vs DEX + Evasion + 1d10 del difensore" : T ? `${T.label}: ${reach ? `colpisce a ${reach}` : "fuori portata a ogni distanza"}` : "",
+    const hit = X.melee ? null : T ? { ok: !!reach, table: T.label, bands: bands.filter(b => b.hit).map(b => b.label + (b.mult ? ` ×${b.mult}` : "")), text: `${T.label}: ${reach ? `colpisce a ${reach}` : "fuori portata a ogni distanza"}` } : null;
+    const note = [r.note || "",
+      X.melee ? "vs DEX + Evasion + 1d10 del difensore" : "",
       mode === "auto" ? `autofire (10 colpi): danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}` : mode === "supp" ? "fuoco di soppressione (10 colpi): chi è entro 25 m tira WILL + Concentration contro questo totale" : "",
       aimed ? `mirato: ${aimed.label} · ${aimed.eff}` : "",
       X.ammo.id ? `${X.ammo.name}${X.ammo.eff ? `: ${X.ammo.eff}` : ""}` : "",
     ].filter(Boolean).join(" · ");
-    postRoll({ kind: "check", who: e.name, entryId: e.id, label: `${X.w.name} · ${{ single: aimed ? `aimed shot (${aimed.label})` : "attack", auto: "autofire", supp: "suppressive fire" }[mode]}`, ...r, note });
-    refreshSheetView(e.id);
+    X.post({ kind: "check", label: `${X.w.name} · ${{ single: aimed ? `aimed shot (${aimed.label})` : "attack", auto: "autofire", supp: "suppressive fire" }[mode]}`, ...r, note, ...(hit ? { hit } : {}) });
+    X.refresh();
   }
-  function cbDamage(e, i, mult) {
-    const X = cbInfo(e, i); if (!X) return;
-    const L = (cbMem[cbKey(e, i)] || {}).last, auto = L && L.mode === "auto" && mult;
+  function cbDamage(X, mult) {
+    if (!X) return;
+    const L = (cbMem[X.key] || {}).last, auto = L && L.mode === "auto" && mult;
     const r = CPR.rollExpr(auto ? X.afDmg : X.dmg, { damage: true });
-    if (!r) return toast(`Danno non valido: "${X.dmg}"`, "err");
+    if (!r) return toast(`Danno non valido: "${auto ? X.afDmg : X.dmg}"`, "err");
     if (auto && mult > 1) { const raw = r.total - (r.crit === "injury" ? 5 : 0), add = raw * (mult - 1); r.mods.push({ l: `× ${mult} autofire`, v: add }); r.total += add; }
-    [...(num(X.ammo.dmgMod) ? [{ l: X.ammo.name, v: num(X.ammo.dmgMod) }] : []), ...modsFor(X.s.mods, ["damage"])].forEach(m => { r.mods.push({ l: m.l, v: m.v }); r.total += m.v; });
+    [...(num(X.ammo.dmgMod) ? [{ l: X.ammo.name, v: num(X.ammo.dmgMod) }] : []), ...modsFor(X.mods, ["damage"])].forEach(m => { r.mods.push({ l: m.l, v: m.v }); r.total += m.v; });
     const aimed = L && L.aim && !auto ? CPR.AIMED.find(a => a.id === L.aim) : null;
     const note = [aimed ? `${aimed.label}: ${aimed.eff}` : "", X.ammo.eff ? `${X.ammo.name}: ${X.ammo.eff}` : "", r.crit === "injury" ? "Due 6: tira la Critical Injury dalla scheda del bersaglio" : ""].filter(Boolean).join(" · ");
-    postRoll({ kind: "damage", who: e.name, entryId: e.id, label: `${X.w.name} · damage${auto ? ` (autofire ×${mult})` : aimed ? ` (aimed: ${aimed.label})` : ""}`, ...r, note });
+    X.post({ kind: "damage", label: `${X.w.name} · damage${auto ? ` (autofire ×${mult})` : aimed ? ` (aimed: ${aimed.label})` : ""}`, ...r, note });
   }
   // la tabella delle VD fa parte della descrizione dell'arma; dopo un tiro segna ✓ / ✗ per ogni distanza
-  function cbTable(X, L, edit, e, i) {
+  function cbTable(X, L) {
     if (X.melee) return `<p class="hint cb-melee">Mischia: il difensore tira DEX + Evasion + 1d10.</p>`;
     const rowsOf = (T, isAuto) => {
       if (!T) return "";
       const last = L && (isAuto ? L.mode === "auto" || L.mode === "supp" : L.mode === "single") ? L : null;
       return `<tr class="${last ? "rolled" : ""}"><th>${isAuto ? "Autofire" : "Colpo singolo"}</th>${CPR.RANGE_BANDS.map((_, j) => {
-        const dv = T.dv[j]; if (j >= T.dv.length) return `<td class="na">—</td>`;
-        const b = last && last.bands[j];
+        if (j >= T.dv.length) return `<td class="na">—</td>`;
+        const dv = T.dv[j], b = last && last.bands[j];
         return `<td class="${dv == null ? "na" : b ? (b.hit ? "hit" : "miss") : ""}">${dv == null ? "N/A" : dv}${b && dv != null ? `<i>${b.hit ? (b.mult ? `✓×${b.mult}` : "✓") : "✗"}</i>` : ""}</td>`;
       }).join("")}</tr>`;
     };
-    const sel = (attr, list, cur, title) => edit ? `<select class="cb-tsel" ${attr} title="${title}" aria-label="${title}">${list.map(t => `<option value="${t.id}" ${t.id === cur ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</select>` : "";
+    const sel = (attr, list, cur, title) => X.edit ? `<select class="cb-tsel" ${attr} ${X.attrs} title="${title}" aria-label="${title}">${list.map(t => `<option value="${t.id}" ${t.id === cur ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</select>` : esc((list.find(t => t.id === cur) || {}).label || "");
     return `<div class="cb-dvwrap"><table class="cb-dv">
       <thead><tr><th>VD</th>${CPR.RANGE_BANDS.map(b => `<th>${b.replace(" m", "")}</th>`).join("")}</tr></thead>
       <tbody>${rowsOf(X.RT, false)}${rowsOf(X.AT, true)}</tbody></table>
-      <div class="cb-tables">${X.RT ? `Tabella ${sel(`data-cb-table data-id="${esc(e.id)}" data-i="${i}"`, CPR.RANGE_TABLES, X.RT.id, "Tabella delle distanze")}${edit ? "" : esc(X.RT.label)}` : `<span class="hint">Nessuna tabella delle distanze</span>`}
-        ${X.AT ? ` · autofire ${sel(`data-cb-atable data-id="${esc(e.id)}" data-i="${i}"`, CPR.AUTO_TABLES, X.AT.id, "Tabella dell'autofire")}${edit ? "" : esc(X.AT.label)}` : ""}</div></div>`;
+      <div class="cb-tables">${X.RT ? `Tabella ${sel("data-cb-table", CPR.RANGE_TABLES, X.RT.id, "Tabella delle distanze")}` : `<span class="hint">Nessuna tabella delle distanze</span>`}
+        ${X.AT ? ` · autofire ${sel("data-cb-atable", CPR.AUTO_TABLES, X.AT.id, "Tabella dell'autofire")}` : ""}</div></div>`;
   }
-  function cbCard(e, i, edit) {
-    const X = cbInfo(e, i); if (!X) return "";
-    const id = esc(e.id), M = cbMem[cbKey(e, i)] || {}, L = M.last;
+  function cbCard(X) {
+    if (!X) return "";
+    const M = cbMem[X.key] || {}, L = M.last, A = X.attrs;
     const btn = (attrs, inner, cls, title = "") => `<button type="button" class="${cls}" ${attrs} ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
-    const base = statEff(e, X.k.stat) + X.k.lvl;
     const ammoOpts = ammoList(X.cat);
     let dmg = "";
-    if (L && L.mode !== "supp") {
-      if (L.mode === "auto") dmg = [...new Set(L.bands.filter(b => b.mult).map(b => b.mult))].sort((a, b) => a - b).map(m => btn(`data-action="cb-dmg" data-id="${id}" data-i="${i}" data-mult="${m}"`, `Danno ${esc(X.afDmg)} × ${m}`, "btn small yellow")).join("");
-    }
-    if (!dmg) dmg = btn(`data-action="cb-dmg" data-id="${id}" data-i="${i}"`, `Damage ${esc(X.dmg)}`, "btn small yellow", L && L.aim ? (CPR.AIMED.find(a => a.id === L.aim) || {}).eff : "");
+    if (L && L.mode === "auto") dmg = [...new Set(L.bands.filter(b => b.mult).map(b => b.mult))].sort((a, b) => a - b).map(m => btn(`data-action="cb-dmg" ${A} data-mult="${m}"`, `Danno ${esc(X.afDmg)} × ${m}`, "btn small yellow")).join("");
+    if (!dmg) dmg = btn(`data-action="cb-dmg" ${A}`, `Damage ${esc(X.dmg)}`, "btn small yellow", L && L.aim ? (CPR.AIMED.find(a => a.id === L.aim) || {}).eff : "");
+    const sub = X.sub || `${X.T.label ? esc(X.T.label) + " · " : ""}${esc(X.skillLabel)} · base ${X.base}${X.w.rof ? ` · ROF ${esc(X.w.rof)}` : ""}${X.w.mag ? ` · Mag ${esc(X.w.mag)}` : ""}`;
     return `<div class="wpn cb-wpn">
       <div class="cb-wh"><span class="wpn-n"><span class="nd-name">${esc(X.w.name)}</span>
-        <small>${X.T.label ? esc(X.T.label) + " · " : ""}${esc(X.k.label)} · base ${base}${X.w.rof ? ` · ROF ${esc(X.w.rof)}` : ""}${X.w.mag ? ` · Mag ${esc(X.w.mag)}` : ""}${X.autoMax ? ` · Autofire ${esc(X.afDmg)} ×${X.autoMax}` : ""} · danno ${esc(X.dmg)}</small>${X.w.note ? `<em>${esc(X.w.note)}</em>` : ""}</span>
+        <small>${sub}${X.autoMax ? ` · Autofire ${esc(X.afDmg)} ×${X.autoMax}` : ""} · danno ${esc(X.dmg)}</small>${X.w.note ? `<em>${esc(X.w.note)}</em>` : ""}</span>
         ${L ? `<span class="cb-last ${L.crit ? "c-" + L.crit : ""}" title="Ultimo tiro">${L.total}</span>` : ""}</div>
       <div class="cb-ctl">
-        ${btn(`data-action="cb-roll" data-id="${id}" data-i="${i}" data-mode="single"`, `⌖ Attack <b>${base}</b>`, "btn small", "Tira per colpire: il risultato si segna sulla tabella delle VD")}
-        <label class="check cb-aim" title="Colpo mirato: −8 al tiro"><input type="checkbox" data-cb-aim="${id}:${i}" ${M.aim ? "checked" : ""}> Mirato −8</label>
-        <select class="cb-loc" data-cb-loc="${id}:${i}" aria-label="Dove miri" ${M.aim ? "" : "disabled"}>${CPR.AIMED.map(a => `<option value="${a.id}" ${a.id === (M.loc || "head") ? "selected" : ""}>${a.label}</option>`).join("")}</select>
-        ${X.autoMax ? btn(`data-action="cb-roll" data-id="${id}" data-i="${i}" data-mode="auto"`, `Autofire <b>${X.afBase}</b> ×${X.autoMax}`, "btn small ghost", `REF + Autofire ${X.af ? X.af.lvl : 0} + 1d10, 10 colpi: danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}`) + btn(`data-action="cb-roll" data-id="${id}" data-i="${i}" data-mode="supp"`, "Soppressione", "btn small ghost", "Fuoco di soppressione, 10 colpi") : ""}
-        ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo="${id}:${i}" ${edit ? "" : "disabled"}>${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>` : ""}
+        ${btn(`data-action="cb-roll" ${A} data-mode="single"`, `⌖ Attack <b>${X.base}</b>`, "btn small", "Tira per colpire: il risultato si segna sulla tabella delle VD")}
+        <label class="check cb-aim" title="Colpo mirato: −8 al tiro"><input type="checkbox" data-cb-aim ${A} ${M.aim ? "checked" : ""}> Mirato −8</label>
+        <select class="cb-loc" data-cb-loc ${A} aria-label="Dove miri" ${M.aim ? "" : "disabled"}>${CPR.AIMED.map(a => `<option value="${a.id}" ${a.id === (M.loc || "head") ? "selected" : ""}>${a.label}</option>`).join("")}</select>
+        ${X.autoMax ? btn(`data-action="cb-roll" ${A} data-mode="auto"`, `Autofire <b>${X.afBase}</b> ×${X.autoMax}`, "btn small ghost", `REF + Autofire ${X.afLvl} + 1d10, 10 colpi: danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}`) + btn(`data-action="cb-roll" ${A} data-mode="supp"`, "Soppressione", "btn small ghost", "Fuoco di soppressione, 10 colpi") : ""}
+        ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo ${A} ${X.edit ? "" : "disabled"}>${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>` : ""}
         <span class="cb-dmg">${dmg}</span>
       </div>
       ${X.ammo.eff ? `<p class="hint">${esc(X.ammo.name)}: ${esc(X.ammo.eff)}</p>` : ""}
       ${M.aim ? `<p class="hint">${esc((CPR.AIMED.find(a => a.id === (M.loc || "head")) || {}).eff || "")}</p>` : ""}
-      ${cbTable(X, L, edit, e, i)}
+      ${cbTable(X, L)}
     </div>`;
   }
+  // tiri rapidi (Party, token): attacco e danno
+  const cbQuick = (X, cls = "chip") => !X ? "" : `<button type="button" class="${cls}" data-action="cb-roll" ${X.attrs} data-mode="single">⌖ ${esc(X.w.name)} <b>${X.base}</b></button>`
+    + (X.autoMax ? `<button type="button" class="${cls}" data-action="cb-roll" ${X.attrs} data-mode="auto" title="Autofire">AF <b>${X.afBase}</b></button>` : "")
+    + `<button type="button" class="${cls} y" data-action="cb-dmg" ${X.attrs}>${esc(X.dmg)}</button>`;
+
   function combatHtml(e) {
     const s = sheetOf(e), edit = Store.canEdit(), id = esc(e.id);
     if (!hasSheet(e)) return `<div class="cb" data-combat="${id}"><div class="empty"><div class="big">// SCHEDA VUOTA</div>Compila prima la scheda.
@@ -1210,7 +1273,7 @@
         <div class="sh-status"><span class="sh-k">Stati</span>${statusChips(s.status, edit ? sheetStatusAttrs(e) : null)}</div>
         ${mods.length ? `<div class="sh-mods"><span class="sh-k">Modificatori speciali</span>${mods.map(m => `<span class="st-chip" title="${esc(m.note || "")}">${esc(m.name || "Modificatore")} <b>${num(m.value) > 0 ? "+" : ""}${num(m.value)}</b> <small>${esc((CPR.MOD_TARGETS.find(t => t[0] === m.target) || [, ""])[1])}</small></span>`).join("")}</div>` : ""}
         <div class="sh-sec-head"><h4>Weapons</h4></div>
-        ${weapons.length ? `<div class="sh-weapons">${weapons.map((_, i) => cbCard(e, i, edit)).join("")}</div>` : `<p class="hint">Nessuna arma: aggiungile da «Modifica scheda».</p>`}
+        ${weapons.length ? `<div class="sh-weapons">${weapons.map((_, i) => cbCard(pcSrc(e, i))).join("")}</div>` : `<p class="hint">Nessuna arma: aggiungile da «Modifica scheda».</p>`}
         ${critBlock(e, edit)}
       </div>`;
   }
@@ -1367,161 +1430,6 @@
   // modificatori speciali della scheda attivi per un certo tipo di tiro
   const modsFor = (mods, targets) => (mods || []).filter(m => m && m.on !== false && targets.includes(m.target) && num(m.value)).map(m => ({ l: m.name || "Modificatore", v: num(m.value), target: m.target }));
 
-  // ---------- TIRO PER COLPIRE ----------
-  // ctx = { key, title, who, cat, dmg, autoMax, single[], auto[] (addendi senza ferite/MOD), mods[], extra() → addendi della situazione,
-  //         ammo, onAmmo(id), post(r) → Promise, fix(r)?, crit: { target } }
-  const atkMem = {};
-  let atk = null;
-  // ctx.range / ctx.autoRange = tabella delle distanze scelta per l'arma (vuoto = quella della categoria) · ctx.onRange(patch) la ricorda
-  function openAttack(ctx) {
-    const mem = atkMem[ctx.key] || {};
-    const melee = CPR.isMelee(ctx.cat);
-    atk = { ctx, mode: mem.mode && (mem.mode !== "auto" && mem.mode !== "supp" || ctx.autoMax) ? mem.mode : "single", aim: mem.aim || "head",
-      band: null, dvMan: "", ammo: ctx.ammo || "", off: new Set(mem.off || []), last: null, melee,
-      table: ctx.range || CPR.rangeDefault(ctx.cat), atable: ctx.autoRange || CPR.autoDefault(ctx.cat) || "smg" };
-    let d = $("#atk-dialog");
-    if (!d) {
-      d = document.createElement("dialog"); d.id = "atk-dialog"; d.className = "modal narrow atk-dialog"; document.body.appendChild(d);
-      d.addEventListener("click", attackClick); d.addEventListener("change", attackChange); d.addEventListener("input", attackInput);
-      d.addEventListener("close", () => { atk = null; });
-      d.addEventListener("keydown", ev => { if (ev.key === "Enter" && !ev.target.closest("button, select")) { ev.preventDefault(); attackRoll(); } });
-    }
-    d.innerHTML = attackHtml();
-    if (!d.open) d.showModal();
-    $("[data-atk-roll]", d).focus();
-  }
-  function attackState() {
-    const A = atk, c = A.ctx, auto = A.mode === "auto" || A.mode === "supp";
-    const T = A.melee ? null : auto ? CPR.autoById(A.atable) : CPR.rangeById(A.table);
-    const bands = T ? T.dv.map((dv, i) => ({ i, label: CPR.RANGE_BANDS[i], dv })) : [];
-    const band = bands.find(b => b.i === A.band && b.dv != null) || null;
-    const dv = A.dvMan !== "" && !isNaN(+A.dvMan) ? +A.dvMan : band ? band.dv : null;
-    const ammo = ammoOf(c.cat, A.ammo);
-    const targets = ["attack", A.melee ? "melee" : "ranged", ...(A.mode === "aimed" ? ["aimed"] : []), ...(auto ? ["autofire"] : [])];
-    const mods = modsFor(c.mods, targets).map(m => ({ ...m, k: m.l + "|" + m.target }));
-    const parts = [...(auto ? c.auto : c.single)];
-    if (A.mode === "aimed") parts.push({ l: `Colpo mirato (${(CPR.AIMED.find(x => x.id === A.aim) || {}).label})`, v: -8 });
-    if (num(ammo.atk)) parts.push({ l: ammo.name, v: num(ammo.atk) });
-    mods.filter(m => !A.off.has(m.k)).forEach(m => parts.push({ l: m.l, v: m.v }));
-    return { auto, T, bands, band, dv, ammo, mods, parts, extra: c.extra() };
-  }
-  const multOf = (margin, max) => Math.min(margin, max);
-  function attackHtml() {
-    const A = atk, c = A.ctx, S = attackState();
-    const base = [...S.parts, ...S.extra].reduce((t, p) => t + p.v, 0);
-    const modes = [["single", "Colpo singolo"], ["aimed", "Colpo mirato −8"], ...(c.autoMax ? [["auto", `Autofire ×${c.autoMax}`], ["supp", "Fuoco di soppressione"]] : [])];
-    const chip = (on, attrs, inner, title = "") => `<button type="button" class="chip ${on ? "active" : ""}" ${attrs} ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
-    const L = A.last;
-    // tabella delle distanze: sempre visibile; dopo il tiro dice per ogni fascia se colpisci (e il moltiplicatore dell'autofire)
-    const rows = S.bands.map(b => {
-      const out = L && L.mode === A.mode && b.dv != null ? (L.total > b.dv ? "hit" : "miss") : "";
-      const m = out === "hit" && S.auto ? multOf(L.total - b.dv, c.autoMax) : 0;
-      return `<button type="button" class="atk-band ${b.dv == null ? "na" : ""} ${out} ${A.band === b.i && A.dvMan === "" ? "sel" : ""}" ${b.dv == null ? "disabled" : `data-atk-band="${b.i}"`} title="${b.dv == null ? "Fuori portata" : "Clicca per segnare la distanza del bersaglio"}">
-        <span>${b.label}</span><b>${b.dv == null ? "N/A" : b.dv}</b><em>${out === "hit" ? (S.auto ? (A.mode === "supp" ? "✓" : `✓ ×${m}`) : "✓") : out === "miss" ? "✗" : ""}</em></button>`;
-    }).join("");
-    const tables = S.auto ? CPR.AUTO_TABLES : CPR.RANGE_TABLES;
-    const curT = S.auto ? A.atable : A.table;
-    let dmg = "";
-    if (L && L.mode === A.mode && L.mode !== "supp") {
-      if (L.mode === "auto") {
-        const ms = L.dv != null ? (L.total > L.dv ? [multOf(L.total - L.dv, c.autoMax)] : [])
-          : [...new Set(S.bands.filter(b => b.dv != null && L.total > b.dv).map(b => multOf(L.total - b.dv, c.autoMax)))].sort((x, y) => x - y);
-        dmg = ms.map(m => `<button type="button" class="btn small yellow" data-atk-dmg="${m}">Danno 2d6 × ${m}</button>`).join("");
-      } else if (L.hit !== false) dmg = `<button type="button" class="btn small yellow" data-atk-dmg>Danno ${esc(L.dmg)}</button>`;
-    }
-    return `
-      <div class="modal-head"><h2>// ⌖ ${esc(c.title)}</h2><button type="button" class="x" data-atk-close aria-label="Chiudi">×</button></div>
-      <div class="modal-body atk">
-        <div class="atk-sec"><span class="lbl">Modalità</span><div class="chips">${modes.map(([m, l]) => chip(A.mode === m, `data-atk-mode="${m}"`, l)).join("")}</div>
-          ${A.mode === "aimed" ? `<div class="chips atk-sub">${CPR.AIMED.map(x => chip(A.aim === x.id, `data-atk-aim="${x.id}"`, x.label, x.eff)).join("")}</div><p class="hint">${esc((CPR.AIMED.find(x => x.id === A.aim) || {}).eff || "")}</p>` : ""}
-          ${A.mode === "auto" ? `<p class="hint">Autofire (REF + Autofire): spara 10 colpi. Se superi la VD, il danno è 2d6 × la differenza, al massimo ×${c.autoMax}.</p>` : ""}
-          ${A.mode === "supp" ? `<p class="hint">Spara 10 colpi. Chi è entro 25 m in linea di vista tira WILL + Concentration contro il tuo totale: se perde, usa il movimento per mettersi al riparo.</p>` : ""}
-        </div>
-        ${A.melee ? `<p class="hint">Mischia: il difensore tira DEX + Evasion + 1d10 (o la sua arma da mischia). Scrivi qui sotto il suo totale per sapere se colpisci.</p>` : `
-        <div class="atk-sec">
-          <div class="atk-th"><span class="lbl">VD per distanza ${S.auto ? "(autofire)" : ""}</span>
-            <select data-atk-table aria-label="Tabella delle distanze">${tables.map(t => `<option value="${t.id}" ${t.id === curT ? "selected" : ""}>${esc(t.label)}</option>`).join("")}${!S.auto ? `<option value="" ${!curT ? "selected" : ""}>Nessuna (VD a mano)</option>` : ""}</select></div>
-          ${S.bands.length ? `<div class="atk-bands">${rows}</div>` : `<p class="hint">Nessuna tabella: scrivi la VD a mano.</p>`}
-          <p class="hint">Tira e vedi subito a che distanza colpisci; clicca una fascia se sai dov'è il bersaglio. Con REF 8 o più il bersaglio può schivare: DEX + Evasion + 1d10 al posto della VD.</p></div>`}
-        <div class="atk-row">
-          <label class="field"><span class="lbl">${A.melee ? "Totale del difensore" : "VD a mano"}</span><input type="number" min="0" max="60" data-atk-dv value="${esc(A.dvMan)}" placeholder="${S.band ? S.band.dv : "—"}"></label>
-          <label class="field"><span class="lbl">Munizioni</span><select data-atk-ammo>${ammoList(c.cat).map(a => `<option value="${esc(a.id)}" ${a.id === (S.ammo.id || "") ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>
-        </div>
-        ${S.ammo.eff ? `<p class="hint">${esc(S.ammo.name)}: ${esc(S.ammo.eff)}</p>` : ""}
-        ${S.mods.length ? `<div class="atk-sec"><span class="lbl">Modificatori speciali</span>${S.mods.map(m => `<label class="check"><input type="checkbox" data-atk-mod="${esc(m.k)}" ${A.off.has(m.k) ? "" : "checked"}> ${esc(m.l)} <b>${m.v > 0 ? "+" : ""}${m.v}</b></label>`).join("")}</div>` : ""}
-        <div class="atk-sum">${[...S.parts, ...S.extra].map(p => `<span>${p.v < 0 ? "−" : "+"}${Math.abs(p.v)} <small>${esc(p.l)}</small></span>`).join("")} <b>= ${base} + 1d10</b>${S.dv != null ? ` <span class="atk-vs">vs ${A.melee ? "" : "VD "}${S.dv}</span>` : ""}</div>
-        ${L && L.mode === A.mode ? `<div class="atk-res ${L.hit === true ? "hit" : L.hit === false ? "miss" : ""}">
-          <span class="atk-tot">${L.total}</span>
-          <span>${L.hit === true ? `COLPITO${L.margin ? ` · supera di ${L.margin}` : ""}` : L.hit === false ? "MANCATO" : L.reach ? `colpisce: ${esc(L.reach)}` : S.bands.length ? "fuori portata ovunque" : "Tiro fatto"}${L.crit === "success" ? " · critico" : L.crit === "fail" ? " · fallimento critico" : ""}</span>
-          ${dmg ? `<span class="atk-dmg">${dmg}</span>` : ""}
-        </div>` : ""}
-      </div>
-      <div class="modal-foot"><button type="button" class="btn ghost small left" data-atk-close>Chiudi</button><button type="button" class="btn" data-atk-roll>⌖ Tira per colpire</button></div>`;
-  }
-  const atkRedraw = () => { const d = $("#atk-dialog"); if (d && atk) { const f = document.activeElement && document.activeElement.matches("[data-atk-dv]"); d.innerHTML = attackHtml(); if (f) { const i = $("[data-atk-dv]", d); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } } };
-  const atkSave = () => { const A = atk; atkMem[A.ctx.key] = { mode: A.mode, aim: A.aim, off: [...A.off] }; };
-  function attackClick(ev) {
-    const t = ev.target.closest("button"); if (!t || !atk) return;
-    if (t.matches("[data-atk-close]")) { $("#atk-dialog").close(); return; }
-    if (t.dataset.atkMode) { atk.mode = t.dataset.atkMode; atk.band = null; }
-    else if (t.dataset.atkAim) atk.aim = t.dataset.atkAim;
-    else if (t.dataset.atkBand != null) { const i = +t.dataset.atkBand; atk.band = atk.band === i && atk.dvMan === "" ? null : i; atk.dvMan = ""; }
-    else if (t.matches("[data-atk-roll]")) return attackRoll();
-    else if (t.matches("[data-atk-dmg]")) return attackDamage(num(t.dataset.atkDmg));
-    else return;
-    atkSave(); atkRedraw();
-  }
-  function attackChange(ev) {
-    if (!atk) return;
-    const t = ev.target;
-    if (t.matches("[data-atk-ammo]")) { atk.ammo = t.value; if (atk.ctx.onAmmo) atk.ctx.onAmmo(t.value); }
-    if (t.matches("[data-atk-mod]")) { if (t.checked) atk.off.delete(t.dataset.atkMod); else atk.off.add(t.dataset.atkMod); }
-    if (t.matches("[data-atk-table]")) {
-      const auto = atk.mode === "auto" || atk.mode === "supp";
-      if (auto) atk.atable = t.value; else atk.table = t.value;
-      atk.band = null; atk.last = null;
-      if (atk.ctx.onRange) atk.ctx.onRange(auto ? { autoRange: t.value } : { range: t.value });
-    }
-    atkSave(); atkRedraw();
-  }
-  function attackInput(ev) { if (atk && ev.target.matches("[data-atk-dv]")) { atk.dvMan = ev.target.value; atkRedraw(); } }
-  async function attackRoll() {
-    const A = atk; if (!A) return;
-    const c = A.ctx, S = attackState();
-    const r = CPR.check([...S.parts, ...S.extra]);
-    if (c.fix) c.fix(r, S.auto);
-    const hit = S.dv == null ? null : r.total > S.dv;
-    const margin = hit ? r.total - S.dv : 0;
-    const mult = S.auto && hit ? multOf(margin, c.autoMax) : 0;
-    // senza distanza scelta: per ogni fascia, colpito o no
-    const reach = S.dv == null ? S.bands.filter(b => b.dv != null && r.total > b.dv).map(b => `${b.label}${S.auto && A.mode === "auto" ? ` ×${multOf(r.total - b.dv, c.autoMax)}` : ""}`).join(", ") : "";
-    const modeTxt = { single: "", aimed: ` · mirato: ${(CPR.AIMED.find(x => x.id === A.aim) || {}).label}`, auto: " · autofire (10 colpi)", supp: " · fuoco di soppressione (10 colpi)" }[A.mode];
-    const tname = S.T ? S.T.label : "";
-    const vs = S.dv != null ? `vs ${A.melee ? "" : "VD "}${S.dv}${S.band && A.dvMan === "" ? ` (${S.band.label})` : ""} → ${hit ? `COLPITO${margin ? `, supera di ${margin}` : ""}` : "MANCATO"}`
-      : S.bands.length ? `${tname}: ${reach ? `colpisce a ${reach}` : "fuori portata a ogni distanza"}` : "";
-    const extra = A.mode === "auto" && hit ? ` · danno 2d6 × ${mult}` : A.mode === "supp" ? " · chi è entro 25 m tira WILL + Concentration contro questo totale" : A.mode === "aimed" ? ` · ${(CPR.AIMED.find(x => x.id === A.aim) || {}).eff}` : "";
-    const ammoTxt = S.ammo.id ? ` · ${S.ammo.name}${S.ammo.eff ? `: ${S.ammo.eff}` : ""}` : "";
-    const note = [vs, (modeTxt + extra + ammoTxt).replace(/^ · /, "")].filter(Boolean).join(" · ");
-    A.last = { total: r.total, crit: r.crit, hit, margin, mult, dv: S.dv, reach, mode: A.mode, aim: A.aim, dmg: (S.ammo.dmg && CPR.parse(S.ammo.dmg)) ? S.ammo.dmg : c.dmg };
-    atkRedraw();
-    await c.post({ kind: "check", label: `${c.title} · attack${modeTxt}`, ...r, note: (r.note ? r.note + " · " : "") + note });
-  }
-  function attackDamage(multArg) {
-    const A = atk, L = A && A.last; if (!L) return;
-    const c = A.ctx, S = attackState(), mult = L.mode === "auto" ? (multArg || L.mult) : 0;
-    const r = CPR.rollExpr(L.mode === "auto" ? (c.autoDmg || "2d6") : L.dmg, { damage: true });
-    if (!r) return toast(`Danno non valido: "${L.dmg}"`, "err");
-    if (L.mode === "auto" && mult > 1) {
-      const raw = r.total - (r.crit === "injury" ? 5 : 0), add = raw * (mult - 1);
-      r.mods.push({ l: `× ${mult} autofire`, v: add }); r.total += add;
-    }
-    const flat = [...(num(S.ammo.dmgMod) ? [{ l: S.ammo.name, v: num(S.ammo.dmgMod) }] : []), ...modsFor(c.mods, ["damage"])];
-    flat.forEach(m => { r.mods.push({ l: m.l, v: m.v }); r.total += m.v; });
-    const aim = L.mode === "aimed" ? CPR.AIMED.find(x => x.id === L.aim) : null;
-    const note = [aim ? `${aim.label}: ${aim.eff}` : "", S.ammo.eff ? `${S.ammo.name}: ${S.ammo.eff}` : "", r.crit === "injury" ? "Due 6: tira la Critical Injury dalla scheda del bersaglio" : ""].filter(Boolean).join(" · ");
-    c.post({ kind: "damage", label: `${c.title} · damage${L.mode === "auto" ? ` (autofire ×${mult})` : aim ? ` (mirato: ${aim.label})` : ""}`, ...r, note });
-  }
-
   // contesto del tiro per un'arma della scheda
   const sheetWeaponCat = w => w.cat || CPR.guessWeapon(w.name, w.skill);
   function sheetExtra(e) {
@@ -1562,7 +1470,7 @@
   const lastCrit = {};
   function critRoll(who, loc, post) {
     const r = CPR.rollCrit(loc), I = r.injury;
-    post({ kind: "check", label: `Critical Injury · ${loc === "head" ? "testa" : "corpo"}: ${I.name}`, dice: r.dice, mods: [], total: r.total,
+    post({ kind: "check", label: `Critical Injury · ${loc === "head" ? "testa" : "corpo"}: ${I.name}`, dice: r.dice, mods: [], total: r.total, inj: I.name,
       note: `${I.eff}${I.dsp ? " · +1 alla penalità del Death Save" : ""} · +5 danni diretti (già nel tiro di danno)` });
     return { ...I, loc };
   }
@@ -1908,7 +1816,7 @@
       catch (err) { fail(err); }
     }
     upsert(state.rolls, out); sortRolls(); renderLogs();
-    if (onTable() && !$("#modal").open && !$("#atk-dialog[open]")) popRoll(out); else openDrawer();
+    if (onTable() && !$("#modal").open) popRoll(out); else openDrawer();
     return out;
   }
 
@@ -1936,6 +1844,8 @@
       <div class="rl-label">${esc(r.label || r.expr || "Tiro")}</div>
       <div class="rl-body"><span class="rl-total">${num(r.total)}</span><span class="rl-break">${dice}${mods}</span></div>
       ${crit ? `<div class="rl-crit">${crit}</div>` : ""}
+      ${r.inj ? `<div class="rl-inj">✚ ${esc(r.inj)}</div>` : ""}
+      ${r.hit && r.hit.text ? `<div class="rl-hit ${r.hit.ok ? "ok" : "no"}">${r.hit.ok ? "✓" : "✗"} ${Array.isArray(r.hit.bands) ? `${esc(r.hit.table)}: ${r.hit.bands.length ? `colpisce a ${r.hit.bands.map(b => `<span class="rl-band">${esc(b)}</span>`).join(" ")}` : "fuori portata a ogni distanza"}` : esc(r.hit.text)}</div>` : ""}
       ${r.note ? `<div class="rl-note">${esc(r.note)}</div>` : ""}
       ${r.local ? `<div class="rl-note">solo su questo dispositivo · accedi per condividere i tiri</div>` : ""}
     </div>`;
@@ -3189,7 +3099,7 @@
         <div class="pc-rolls">
           ${roll("init", "Initiative", "chip y")}${roll("death", "Death Save", "chip r")}
           ${top.map(k => roll(k.key, `${esc(k.label)} <b>${k.base}</b>`)).join("")}
-          ${(sheetOf(e).weapons || []).slice(0, 2).map((wp, i) => roll(`wpn:${i}:atk`, `⌖ ${esc(wp.name)}`) + (wp.dmg ? roll(`wpn:${i}:dmg`, `${esc(wp.dmg)}`, "chip y") : "")).join("")}
+          ${(sheetOf(e).weapons || []).slice(0, 2).map((_, i) => cbQuick(pcSrc(e, i))).join("")}
           ${isNetrunner(e) ? netQuick(activeDeck(e), ifaceOf(e), (w, l, c) => roll("deck:" + w, l, c)) : ""}
         </div>
         <div class="pc-foot">
@@ -3244,7 +3154,6 @@
 
   // tiri: ogni addendo compare nel Dice log. Dal token valgono le sue ferite (salvo Antidolorifico di Fascia 4);
   // i tiri dal modello o da un token nascosto sono segreti.
-  const enemyRange = {};
   function rollEnemy(e, what, t) {
     const D = enemyD(e), pen = D.pen, ca = D.ability && D.ability.ca;
     const hp = t && tokHp(t), w = hp && !D.painImmune ? CPR.wound(hp.hp, hp.max) : null;
@@ -3266,29 +3175,15 @@
       return postRoll({ kind: "check", label: s.label, ...meta, ...CPR.check([{ l: s.stat, v: s.statV }, { l: s.label, v: s.lvl }, ...s.bonus, ...arm(s.stat), ...wound]) });
     }
     if (type === "ability" && D.ability) return postRoll({ kind: "check", label: D.ability.nameIt || D.ability.name, ...meta, ...CPR.check([{ l: "Grado", v: D.ability.rank }, ...wound]) });
-    if (type === "wpn") {
-      const wp = D.weapons[+a]; if (!wp) return;
-      if (b === "dmg") {
-        const r = CPR.rollExpr(wp.dmg, { damage: true }); if (!r) return toast(`Danno non valido: "${wp.dmg}"`, "err");
-        const note = ca && ca.weakness ? `Individuare Debolezze: +${ca.weakness} se è il primo colpo a segno del round` : "";
-        return postRoll({ kind: "damage", label: `${wp.name} · damage`, ...meta, ...r, note });
-      }
-      const T = CPR.weaponType(wp.cat) || {}, af = D.skills.find(s => s.id === "autofire");
-      const precise = wp.bonus.filter(b => b.role);
-      return openAttack({
-        key: `${e.id}:${t ? t.id : "m"}:${a}`, title: wp.name, cat: wp.cat, dmg: wp.dmg, autoMax: T.auto || 0,
-        single: [{ l: wp.stat, v: wp.statV }, { l: wp.skillLabel, v: wp.lvl }, ...wp.bonus, ...arm(wp.stat)],
-        auto: [{ l: "REF", v: D.stats.REF.v }, { l: "Autofire", v: af ? af.lvl : 0 }, ...(af ? af.bonus : []), ...precise, ...arm("REF")],
-        mods: [], extra: () => wound, ammo: "", range: (enemyRange[`${e.id}:${a}`] || {}).range || "", autoRange: (enemyRange[`${e.id}:${a}`] || {}).autoRange || "",
-        onRange: patch => { enemyRange[`${e.id}:${a}`] = { ...(enemyRange[`${e.id}:${a}`] || {}), ...patch }; },
-        // Recuperare da un Disastro: sparando, il fallimento critico non toglie il secondo dado (il tiro resta un 1)
-        fix: r => { if (ca && ca.recover && wp.firearm && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il tiro conta come 1)"; } },
-        post: r => postRoll({ ...r, ...meta }),
-      });
-    }
+    if (type === "wpn") { const X = enSrc(e.id, +a, t ? t.id : null); return b === "dmg" ? cbDamage(X) : cbRoll(X, "single"); }
     if (type === "crit") { critRoll(meta.who, a, r => postRoll({ ...r, ...meta })); return; }
     if (type === "init") { const d = CPR.die(10), ref = D.stats.REF.armor; return postRoll({ kind: "init", label: "Initiative", ...meta, dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }, ...D.initBonus], total: d + ref + D.initBonus.reduce((x, y) => x + y.v, 0) }); }
-    if (type === "death") { const d = CPR.die(10); return postRoll({ kind: "death", label: "Death Save", ...meta, dice: [{ v: d, s: 10, t: d === 10 ? "fumble" : "" }], mods: [], total: d, note: d === 10 ? "Natural 10: always a failure" : `vs BODY ${D.body}`, crit: d === 10 ? "fail" : "" }); }
+    if (type === "death") {
+      // dal token la penalità si conta sul token; dal modello resta a 0
+      const pen = t ? num(t.dsp) : 0, r = deathRoll(CPR.die(10), pen, D.body);
+      if (t && Store.canEdit()) saveToken({ ...t, dsp: pen + 1 });
+      return postRoll({ kind: "death", label: "Death Save", ...meta, ...r, note: r.note + (t ? "" : " · tirato dal modello: la penalità si conta solo dal token") });
+    }
   }
   const enemyBtn = (e, what, label, cls = "chip", t = null, title = "") =>
     `<button type="button" class="${cls}" data-action="enemy-roll" data-id="${esc(e.id)}" data-roll="${what}" ${t ? `data-tok="${esc(t.id)}"` : ""} ${title ? `title="${title}"` : ""}>${label}</button>`;
@@ -3299,7 +3194,7 @@
     const top = D.skills.map((s, i) => ({ s, i })).filter(x => !wl.includes(x.s.label)).sort((a, b) => finalOf(b.s) - finalOf(a.s)).slice(0, 4);
     return `<div class="pc-rolls tt-quick">
       ${enemyBtn(e, "init", `Initiative <b>${initTotal(D)}</b>`, "chip y", t)}
-      ${D.weapons.map((w, i) => enemyBtn(e, `wpn:${i}:atk`, `⌖ ${esc(w.name)} <b>${finalOf(w)}</b>`, "chip", t, formula(w, D.pen).replace(/<[^>]+>/g, "")) + enemyBtn(e, `wpn:${i}:dmg`, esc(w.dmg), "chip y", t)).join("")}
+      ${D.weapons.map((_, i) => cbQuick(enSrc(e.id, i, t ? t.id : null))).join("")}
       ${top.map(x => enemyBtn(e, `skill:${x.i}`, `${esc(x.s.label)} <b>${finalOf(x.s)}</b>`, "chip", t)).join("")}
       ${D.ability && D.ability.deck ? netQuick(D.ability.deck, D.ability.rank, (w, l, c) => enemyBtn(e, "deck:" + w, l, c, t)) : ""}
       ${ca && ca.deflect ? `<span class="hint">Deflettere Danni: −${ca.deflect} al primo danno del round</span>` : ""}
@@ -3323,7 +3218,7 @@
     const E = enemyOf(e), D = CPR.deriveEnemy(E), pen = D.pen;
     const arm = loc => { const a = D.armor[loc] || {}; return `<span><small class="sh-k">${loc === "head" ? "HEAD SP" : "BODY SP"}</small> <b>${+a.sp || "—"}</b>${a.name && +a.sp ? ` <em>${esc(a.name)}${a.forced ? " (regola del 20)" : ""}</em>` : ""}</span>`; };
     return `
-      <div class="en">
+      <div class="en" data-enemy="${esc(e.id)}">
         <div class="en-head">
           <span class="en-type">${esc(D.role.id === "none" ? D.T.label : D.role.label)}</span>
           <span class="en-lvl" title="${esc(D.T.label)} · ${esc(D.T.ratio)}">${tierBadge(E)}</span>
@@ -3355,10 +3250,8 @@
           ${D.picks.map(o => `<span class="${o.apex ? "apex" : ""}">⚡ ${esc(o.label)} <small>${o.cost} pt${o.apex ? " · apice" : ""}</small></span>`).join("") || `<span class="hint">Nessun potenziamento acquistato.</span>`}
         </div>` : ""}
         ${D.twenty.length ? `<div class="en-pen">Regola del 20: ${D.twenty.map(s => esc(s.label)).join(", ")} a 20 naturale → ${D.comp === "hp" ? "HP ridotti" : "SP portata a 11"}</div>` : ""}
-        ${D.weapons.length ? `<div class="sh-sec-head"><h4>Weapons</h4><span class="hint">base_naturale = STAT + skill · base_effettiva = + HQ + Smartgun (entro il tetto di fascia) + ruolo</span></div><div class="sh-weapons">${D.weapons.map((w, i) => `
-          <div class="wpn"><span class="wpn-n">${esc(w.name)} ${w.hq ? `<span class="q hq">HQ</span>` : w.poor ? `<span class="q poor">Poor</span>` : ""}
-            <small>${formula(w, pen)} · ${esc(w.dmg)} · ROF ${esc(w.rof)}${w.mag ? ` · Mag ${esc(w.mag)}` : ""}${w.poor ? " · si inceppa con un 1" : ""}</small></span>
-            ${enemyBtn(e, `wpn:${i}:atk`, `Attack ${finalOf(w)}`, "btn small")}${enemyBtn(e, `wpn:${i}:dmg`, `Damage ${esc(w.dmg)}`, "btn small yellow")}</div>`).join("")}</div>` : ""}
+        ${D.weapons.length ? `<div class="sh-sec-head"><h4>Weapons</h4><span class="hint">base_naturale = STAT + skill · base_effettiva = + HQ + Smartgun (entro il tetto di fascia) + ruolo · le VD sono quelle della tabella dell'arma</span></div>
+          <div class="sh-weapons">${D.weapons.map((_, i) => cbCard(enSrc(e.id, i, null))).join("")}</div>` : ""}
         <div class="sh-sec-head"><h4>Skill Bases</h4><span class="hint">clicca una riga per tirare · le abilità non elencate valgono la sola STAT</span></div>
         <div class="en-table">
           <div class="en-tr en-th"><span>Skill</span><span>STAT</span><span>Lvl</span><span>Naturale</span><span>Bonus</span><span>Effettiva</span></div>
@@ -3404,7 +3297,10 @@
       <select data-f="quality" title="Qualità">${[["poor", "Poor"], ["standard", "Standard"], ["hq", "High Quality +1"]].map(([v, l]) => `<option value="${v}" ${(w.quality || "standard") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
       <input data-f="dmg" placeholder="Danno" value="${esc(w.dmg)}">
       <input data-f="rof" placeholder="ROF" value="${esc(w.rof ?? "")}">
+      <input data-f="afDmg" placeholder="Autofire 2d6" title="Danno dell'autofire (vuoto = 2d6; vale anche 3d6kh2)" value="${esc(w.afDmg || "")}">
+      <input data-f="auto" type="number" min="0" max="10" placeholder="× max" title="Moltiplicatore massimo dell'autofire (vuoto = quello della categoria)" value="${esc(w.auto ?? "")}">
       <input data-f="skill" type="hidden" value="${esc(w.skill || "")}"><input data-f="mag" type="hidden" value="${esc(w.mag ?? "")}">
+      <input data-f="ammo" type="hidden" value="${esc(w.ammo || "")}"><input data-f="range" type="hidden" value="${esc(w.range || "")}"><input data-f="autoRange" type="hidden" value="${esc(w.autoRange || "")}">
       <button type="button" class="gp-btn" data-wpn-reroll title="Ripesca quest'arma" aria-label="Ripesca quest'arma">⚄</button>
       <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
     const sRow = (s = {}) => `<div class="sh-row en-sk">
@@ -3476,7 +3372,7 @@
         roleRank: CPR.roleOf(role).ability ? num(v("roleRank")) : 0,
         ca: role === "solo" ? (ca || CPR.autoCA(num(v("roleRank")))) : null, med: role === "medtech" ? (med || CPR.autoMed(num(v("roleRank")))) : null,
         armor, noPen: form.elements["noPen"].checked,
-        weapons: readRows(form, "#en-wpns .sh-row").filter(w => w.name).map(w => ({ ...w, skill: w.skill || ((CPR.weaponType(w.cat) || {}).skill) || "handgun", rof: w.rof === "" ? 1 : (num(w.rof) || w.rof) })),
+        weapons: readRows(form, "#en-wpns .sh-row").filter(w => w.name).map(w => ({ ...w, skill: w.skill || ((CPR.weaponType(w.cat) || {}).skill) || "handgun", rof: w.rof === "" ? 1 : (num(w.rof) || w.rof), auto: w.auto === "" ? "" : num(w.auto) })),
         skills: readRows(form, "#en-skills .sh-row").map(s => ({ id: s.id, label: (CPR.skill(s.id) || {}).label || s.id, stat: s.stat, lvl: num(s.lvl) })),
         extreme: form.elements["extreme"].checked && num(v("tier")) >= 3 && v("level") === "elite",
         extraPoints: Math.max(0, num(v("extraPoints"))), frameBody, comp, picks,
@@ -3587,7 +3483,7 @@
         const w = CPR.weaponType(t.value), row = t.closest(".sh-row");
         if (w) {
           const set = (f, v) => { $(`[data-f=${f}]`, row).value = v; };
-          set("dmg", w.dmg === "BODY" ? CPR.brawlDmg(num(form.elements["st-BODY"].value)) : w.dmg); set("rof", w.rof); set("skill", w.skill); set("mag", w.mag || "");
+          set("dmg", w.dmg === "BODY" ? CPR.brawlDmg(num(form.elements["st-BODY"].value)) : w.dmg); set("rof", w.rof); set("skill", w.skill); set("mag", w.mag || ""); set("range", ""); set("autoRange", "");
           const nm = $("[data-f=name]", row).value.trim();
           if (!nm || CPR.WEAPON_TYPES.some(x => x.label === nm)) set("name", w.label);
         }
@@ -5338,8 +5234,8 @@
       case "edit-sheet": editSheet(id); break;
       case "edit-decks": editDecks(id); break;
       case "sheet-roll": { const e = state.entries.find(x => x.id === id); if (e) sheetRoll(e, el.dataset.roll); break; }
-      case "cb-roll": { const e = state.entries.find(x => x.id === id); if (e) cbRoll(e, num(el.dataset.i), el.dataset.mode || "single"); break; }
-      case "cb-dmg": { const e = state.entries.find(x => x.id === id); if (e) cbDamage(e, num(el.dataset.i), num(el.dataset.mult)); break; }
+      case "cb-roll": cbRoll(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), el.dataset.mode || "single"); break;
+      case "cb-dmg": cbDamage(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.mult)); break;
       case "sheet-status": { const e = state.entries.find(x => x.id === el.dataset.stSheet); if (e && Store.canEdit()) statusOp(el, sheetStatusApply(e)); break; }
       case "tok-status": { const t = state.tokens.find(x => x.id === el.dataset.stTok); if (t && Store.canEdit()) statusOp(el, tokStatusApply(t)); break; }
       case "sheet-crit": { const e = state.entries.find(x => x.id === id); if (!e) break; lastCrit[id] = critRoll(e.name, el.dataset.loc, r => postRoll({ ...r, who: e.name, entryId: e.id })); refreshSheetView(id); break; }
@@ -5391,16 +5287,18 @@
   });
   document.addEventListener("change", ev => {
     const t = ev.target;
-    // tab Combattimento: mirato (solo su questo dispositivo), munizioni e tabelle (nella scheda)
-    if (t.matches("[data-cb-aim], [data-cb-loc]")) {
-      const [eid, i] = (t.dataset.cbAim || t.dataset.cbLoc).split(":"), M = cbMem[eid + ":" + i] = cbMem[eid + ":" + i] || {};
-      if (t.matches("[data-cb-aim]")) M.aim = t.checked; else M.loc = t.value;
-      refreshSheetView(eid); return;
-    }
-    if (t.matches("[data-cb-ammo], [data-cb-table], [data-cb-atable]")) {
-      const [eid, i] = t.dataset.cbAmmo ? t.dataset.cbAmmo.split(":") : [t.dataset.id, t.dataset.i];
-      const f = t.dataset.cbAmmo ? "ammo" : t.matches("[data-cb-table]") ? "range" : "autoRange";
-      if (Store.canEdit()) { const M = cbMem[eid + ":" + i]; if (M && f !== "ammo") delete M.last; sheetPatch(eid, x => { if (x.weapons && x.weapons[+i]) x.weapons[+i][f] = t.value; return x; }); }
+    // armi: mirato (solo su questo dispositivo), munizioni e tabelle (nell'arma)
+    if (t.matches("[data-cb-aim], [data-cb-loc], [data-cb-ammo], [data-cb-table], [data-cb-atable]")) {
+      const X = wSrc(t.dataset.src, t.dataset.id, t.dataset.i, t.dataset.tok); if (!X) return;
+      if (t.matches("[data-cb-aim], [data-cb-loc]")) {
+        const M = cbMem[X.key] = cbMem[X.key] || {};
+        if (t.matches("[data-cb-aim]")) M.aim = t.checked; else M.loc = t.value;
+        X.refresh(); return;
+      }
+      if (!X.edit) return;
+      const f = t.matches("[data-cb-ammo]") ? "ammo" : t.matches("[data-cb-table]") ? "range" : "autoRange";
+      if (f !== "ammo" && cbMem[X.key]) delete cbMem[X.key].last;
+      X.save(f, t.value);
       return;
     }
     if (t.matches("select[data-st-op=add]")) {

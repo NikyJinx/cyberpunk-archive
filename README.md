@@ -47,7 +47,7 @@ La tab **Combattimento** del dossier raccoglie HP, armatura, iniziativa, Death S
 - la scelta delle **munizioni** (catalogo nelle Regole della campagna) e il pulsante del **danno**: in autofire (REF + skill Autofire) il danno è 2d6 × quanto superi la VD, al massimo ×3 per gli SMG e ×4 per i fucili d'assalto. Per le armi modificate danno dell'autofire e moltiplicatore massimo si cambiano nella scheda dell'arma;
 - la **tabella delle VD per distanza** come parte della descrizione, con le tabelle estese (21 tipi di arma per il colpo singolo, 4 per l'autofire). La tabella viene dalla categoria dell'arma e si cambia dal menu sotto (l'arma la ricorda). Dopo il tiro ogni distanza si segna ✓ o ✗, con il moltiplicatore dell'autofire, e il Dice log elenca le distanze a cui colpisci.
 
-I nemici del GM usano un pannello con le stesse regole, aperto da «Attack».
+I **nemici** del GM hanno le stesse schede delle armi (anche dal pannello del token), con la formula della base e, nel modulo, danno dell'autofire e moltiplicatore per arma. Nel Dice log l'esito per distanza («Pistol: colpisce a 0–6 m, 7–12 m») è evidenziato in verde, o in rosso se è fuori portata.
 
 Ci sono anche gli **stati** (in fiamme, accecato… con il loro malus, se il GM lo imposta), i **modificatori speciali** (cyberware, talenti: «Mirino ottico +1 ai colpi mirati») che si sommano da soli ai tiri del tipo scelto, e le **Critical Injury** tirabili (2d6, corpo o testa) da aggiungere alla scheda con il +1 al Death Save.
 

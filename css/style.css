@@ -1250,11 +1250,11 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .rd.six { border-color: var(--magenta); color: var(--magenta); }
 .rm { font-family: var(--font-mono); font-size: 13px; color: var(--text); }
 .rm small { font-size: 11px; color: var(--muted); }
-.rl-crit { margin-top: 4px; font-family: var(--font-head); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; }
+.rl-crit { margin-top: 4px; font-family: var(--font-head); font-size: 12px; letter-spacing: .16em; text-transform: uppercase; }
 .c-success .rl-crit { color: var(--green); }
 .c-fail .rl-crit { color: var(--red); }
 .c-injury .rl-crit { color: var(--magenta); }
-.rl-note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.rl-note { font-size: 13.5px; line-height: 1.35; color: #b9b9cf; margin-top: 4px; }
 .rl-empty { font-family: var(--font-mono); font-size: 13px; color: var(--muted); padding: 10px; }
 .roll-form { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
 .roll-quick { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -1878,3 +1878,17 @@ button.en-tr:hover, button.en-tr:focus-visible { background: rgba(243,230,0,.08)
 .cb-melee { margin: 0; }
 
 .rd.drop { opacity: .35; text-decoration: line-through; }
+/* esito per distanza in evidenza nel Dice log */
+.rl-hit { margin-top: 6px; padding: 4px 8px; font-family: var(--font-head); font-size: 12px; letter-spacing: .04em; line-height: 1.9; border-left: 3px solid; }
+.rl-hit.ok { color: var(--green); border-color: var(--green); background: rgba(61,255,154,.1); }
+.rl-hit.no { color: var(--red); border-color: var(--red); background: rgba(255,42,61,.1); }
+/* modulo del nemico: due campi in più per l'autofire */
+.sh-row.en-wpn { grid-template-columns: 1.1fr 1.1fr 120px 70px 50px 90px 60px 28px 28px; }
+@media (max-width: 860px) { .sh-row.en-wpn { grid-template-columns: 1fr 1fr 28px 28px; } }
+.rl-band { display: inline-block; padding: 0 5px; margin: 0 1px; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; letter-spacing: 0; color: #07070b; background: var(--yellow); white-space: nowrap; }
+/* Critical Injury: un po' più leggibili */
+.crit-block .prewrap { font-size: 15.5px; line-height: 1.45; color: var(--text); }
+.crit-block .hint { font-size: 14px; color: #b9b9cf; }
+.crit-block .chip { font-size: 14px; }
+.crit-last { font-size: 15px; }
+.rl-inj { margin-top: 6px; padding: 4px 8px; font-family: var(--font-head); font-size: 13px; letter-spacing: .05em; color: #ff8892; background: rgba(255,42,61,.12); border-left: 3px solid var(--red); }
