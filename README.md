@@ -41,6 +41,19 @@ Ogni PG e NPC ha una **Scheda** con le regole di *Cyberpunk RED* (nomi in ingles
 
 Basta un clic su una STAT, un'abilità o un'arma per **tirare i dadi**: base + 1d10 con il successo critico sul 10 e il fallimento critico sull'1, malus delle ferite applicato da solo, campo **MOD** per i modificatori di situazione. I danni delle armi segnalano la **Critical Injury** quando escono due 6.
 
+#### ◈ Ruoli
+La tab **Ruoli** del dossier tiene uno o più Ruoli, ognuno con il suo grado (−/+). Si parte con un Ruolo a grado 4; un secondo si prende a grado 1 solo con il precedente almeno a 4 (il sito avvisa se non è così). Ogni Ruolo segue le regole del manuale:
+- **Rocker** (Impatto Carismatico): tiri contro VD 8 / 10 / 12 per singolo, piccolo e grande gruppo, con i favori del grado;
+- **Solitario** (Sensi da Combattimento): punti da distribuire con i costi del manuale. Attacco Preciso, Reazione, Individuare Minacce, Recuperare da un Disastro e Individuare Debolezze (spunta «1° colpo del round» sull'arma) sono già nei tiri; Deflettere Danni compare sotto gli HP;
+- **Netrunner** (Interfaccia): il grado è l'Interface del Cyberdeck, con le Azioni NET;
+- **Tecnico** (Creatore): due Specializzazioni per grado. Esperienza sul Campo si somma alle prove tecniche; Riparazione Temporanea, Upgrade, Fabbricare e Inventare hanno la tabella delle VD e dei tempi per prezzo;
+- **Meditech** (Medicina): Chirurgia, Farmaceutica (ricette e Sintesi VD 13) e Criosistemi, con Surgery e Medical Tech tirabili;
+- **Media** (Credibilità): pettegolezzo passivo, pubblicazione contro l'Attendibilità del grado (con le prove) e tabelle di fonti e pubblico;
+- **Corporativo** (Gioco di Squadra): benefit per grado e Squadra con mansione, Lealtà, ordini (1d6 < Lealtà) e Lealtà iniziale;
+- **Tutore dell'Ordine** (Rinforzi): chiamata 1d10 ≤ grado, round d'attesa e squadra in arrivo, con la tabella dei rinforzi;
+- **Fixer** (Operatore): Contrattare (COOL + Trading + grado) e la tabella di contatti, portata e Oliare;
+- **Nomade** (Garage): bonus a guida e veicoli, Scuderia di Famiglia con veicoli sbloccati e upgrade per grado.
+
 #### ⚔ Combattimento
 La tab **Combattimento** del dossier raccoglie HP, armatura, iniziativa, Death Save, movimento, Evasion, stati, modificatori speciali, armi e Critical Injury. Ogni arma ha, direttamente nella sua scheda:
 - **⌖ Attack**, la spunta **Mirato −8** con la parte del corpo (testa, oggetto in mano, gamba) e, per SMG e fucili d'assalto, **Autofire** e **Soppressione**;
@@ -65,7 +78,7 @@ La mappa per i combattimenti, condiviso **in tempo reale** tra tutti quelli che 
 - **Token** trascinabili per PG, NPC e nemici generici, con la barra degli HP presa dalla scheda. Nel pannello del token HP e armatura (SP di testa e corpo) hanno le barre e i pulsanti per danni, ablazione e riparazione; i token generici e i nemici hanno HP e SP propri, modificabili anche da «Modifica». Durante lo spostamento una **freccia** va dalla casella di partenza a quella d'arrivo, con la distanza in metri, e la vedono anche gli altri giocatori. Le frecce della tastiera muovono il token selezionato di una casella.
 - **Iniziativa**: un pulsante tira REF + 1d10 per tutti, poi «Turno ▶» passa al prossimo e conta i round.
 - **Pop-up dei tiri**: sulla mappa ogni tiro (tuo o degli altri) compare per qualche secondo in alto a destra e resta nel Dice log. Ogni token ha i suoi **stati**, segnati da un contatore sul token.
-- **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto: `2d6+3` per un tiro libero, `3d6kh2` per tirare 3d6 e tenere i 2 più alti (`kl` per i più bassi; vale anche nei danni delle armi), `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
+- **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto (🧹 Pulisci nasconde i tiri vecchi su questo dispositivo; il GM con 🗑 Elimina tutti li cancella per tutti): `2d6+3` per un tiro libero, `3d6kh2` per tirare 3d6 e tenere i 2 più alti (`kl` per i più bassi; vale anche nei danni delle armi), `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
 
 ### ⌬ NET — `// NET_ARCHITECTURE`
 Le Architetture di Rete che il GM sta mostrando: compaiono piano per piano mentre il Netrunner scende, con Password, File, Nodi e Black ICE (REZ compresi), aggiornate in tempo reale. I piani non ancora raggiunti e le note del GM non arrivano ai giocatori.
