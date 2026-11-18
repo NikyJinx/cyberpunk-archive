@@ -49,6 +49,21 @@ Il tavolo di gioco per i combattimenti, condiviso **in tempo reale** tra tutti q
 - **Iniziativa**: un pulsante tira REF + 1d10 per tutti, poi «Turno ▶» passa al prossimo e conta i round.
 - **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto: `2d6+3` per un tiro libero, `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
 
+### 👥 Party — `// CREW_MANIFEST`
+Le schede di tutti i PG affiancate: HP con i pulsanti per danni e cure, armatura con l'ablazione, Luck, umanità, iniziativa, Death Save, le abilità più alte e le armi da tirare con un clic, e «Tira come» per far partire il Dice log a nome di quel PG. Ognuno può usare qualsiasi scheda.
+
+### 🔒 Area GM — `// GM_ONLY_CHANNEL`
+Una sezione che vedono **solo i GM**: le righe segrete non arrivano proprio ai giocatori, perché le filtra il database.
+- **NPC, dossier e appunti segreti**: si crea un «NPC segreto» o un «Appunto segreto», oppure si spunta «Solo GM» quando si modifica un record.
+- **Note del GM** su qualsiasi PG o NPC (vere intenzioni, segreti), in un riquadro del dossier.
+- **Mappe nascoste**: le mappe nuove del GM nascono nascoste e si rivelano con «Mostra a tutti». Chi le apre vede solo «il master sta preparando la mappa».
+- **Token nascosti**: nemici in agguato che compaiono ai giocatori quando il GM preme «👁 Rivela». Mentre il GM li sposta, la posizione non viaggia sul canale pubblico.
+- **Tiri segreti**: interruttore «🔒 Segreto» nel Dice log. I tiri degli NPC segreti e dei token nascosti sono segreti da soli.
+- **Account GM**: dalla pagina GM si aggiungono o tolgono altri master.
+- Con il ruolo GM attivo, mappe, token, turni e «Mostra a tutti» li gestiscono solo i GM. I giocatori muovono i token visibili, cambiano gli HP e tirano.
+
+**Per attivarlo** (una volta sola): su Supabase apri *SQL Editor*, incolla tutto `supabase/schema.sql`, togli i due trattini dall'ultima riga mettendo l'email del primo GM e premi *Run*. Gli altri GM si aggiungono poi dal sito.
+
 ### 📖 Diario e Quest — `// BRAINDANCE_LOG`
 La cronaca della campagna, scritta come un racconto.
 - Il diario è diviso in **capitoli** e ogni capitolo in **scene**, con riassunto, luoghi e personaggi coinvolti (collegati al database).
@@ -91,7 +106,7 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 
 - **Frontend**: single page application con routing a hash (`#/database`, `#/calendario/2045-03-14`…). Tutta l'interfaccia è generata in `js/app.js`.
 - **Dati**: un'unica tabella `records` con documenti JSON divisi per collezione. Immagini e audio caricati dal sito finiscono nello storage di Supabase. Le immagini vengono ridimensionate nel browser prima del caricamento.
-- **Permessi**: le regole di *Row Level Security* (`supabase/schema.sql`) consentono la **lettura a tutti** e la **scrittura solo agli utenti autenticati**. La registrazione pubblica è disattivata: gli account vengono creati manualmente.
+- **Permessi**: le regole di *Row Level Security* (`supabase/schema.sql`) consentono la **lettura a tutti** e la **scrittura solo agli utenti autenticati**. Le righe con `gm_only = true` le leggono e scrivono solo gli account elencati nella tabella `gm_users` (funzione `is_gm()`). La registrazione pubblica è disattivata: gli account vengono creati manualmente.
 - **Modalità locale**: senza configurazione Supabase il sito funziona interamente nel browser (IndexedDB). È utile per sviluppo e prove.
 - **Backup**: esportazione e importazione completa dei dati in JSON dalle impostazioni del sito.
 
@@ -110,6 +125,7 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 | `maps` | mappe del tavolo: immagine, griglia, iniziativa e turno |
 | `tokens` | token sulle mappe, collegati alle schede del database |
 | `rolls` | tiri di dado e messaggi del dice log |
+| `gmnotes` | note del GM sui personaggi (sempre segrete) |
 
 Le schede dei personaggi stanno dentro `entries` (campo `sheet`). Il tavolo usa i canali *broadcast* di Supabase Realtime per gli aggiornamenti istantanei: non serve configurare niente nel database. Se il canale non è disponibile, il tavolo si aggiorna da solo ogni pochi secondi. Anche con il canale attivo, ogni 30 secondi (e quando si torna sulla pagina) il tavolo si riallinea con il database, così un messaggio perso non lascia nessuno indietro. La mappa mostrata a tutti è salvata in `meta` (campo `tableMap`).
 

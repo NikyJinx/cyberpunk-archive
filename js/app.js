@@ -103,7 +103,7 @@
   // ---------- stato ----------
   const state = {
     entries: [], songs: [], notes: [], events: [], weather: [], diary: [], quests: [], site: null,
-    maps: [], tokens: [], rolls: [],
+    maps: [], tokens: [], rolls: [], gmnotes: [],
     filter: { q: "", kind: "all", faction: "", status: "", sort: "name" },
     noteQ: "", diaryQ: "", cal: null,
   };
@@ -170,6 +170,17 @@
   const upsert = (arr, rec) => { const i = arr.findIndex(x => x.id === rec.id); if (i >= 0) arr[i] = rec; else arr.push(rec); };
   const peopleLinks = list => list.map(n => { const e = findEntry(n); return e ? `<a href="#/database/${esc(e.id)}">${esc(n)}</a>` : esc(n); }).join(", ");
 
+  // ---------- GM ----------
+  // Le cose "solo GM" (gmOnly) le legge solo chi è nella tabella gm_users: il database non le manda agli altri.
+  const isGm = () => Store.isGm;
+  const gmBadge = r => r && r.gmOnly ? `<span class="badge gm" title="Visibile solo ai GM">🔒 SOLO GM</span>` : "";
+  const gmCheck = (on, label = "Solo GM: i giocatori non lo vedono") => isGm()
+    ? `<label class="check field full gm-check"><input type="checkbox" name="gmOnly" ${on ? "checked" : ""}> 🔒 ${esc(label)}</label>` : "";
+  // in tempo reale le righe segrete non viaggiano sul canale (che è pubblico): mando solo un avviso con l'id,
+  // e i GM la rileggono dal database
+  function liveSend(col, rec) { Store.send(rec.gmOnly ? { t: "gm", col, id: rec.id } : { t: "rec", col, rec }); }
+  const gmNoteOf = id => state.gmnotes.find(n => n.entryId === id);
+
   // ---------- dati ----------
   async function loadAll() {
     const [entries, songs, meta, notes, events, weather, diary, quests] = await Promise.all(
@@ -181,6 +192,7 @@
       const [maps, tokens, rolls] = await Promise.all([Store.list("maps"), Store.list("tokens"), Store.list("rolls", { limit: 100 })]);
       Object.assign(state, { maps, tokens, rolls }); sortRolls();
     } catch (e) { console.warn("tavolo", e); }
+    try { state.gmnotes = isGm() ? await Store.list("gmnotes") : []; } catch (e) { state.gmnotes = []; console.warn("gm", e); }
   }
   async function saveSite(patch) {
     state.site = await Store.save("meta", { ...(state.site || {}), id: "site", ...patch });
@@ -194,8 +206,9 @@
     document.title = s.title;
     const pill = $("#mode-pill");
     if (Store.mode === "local") { pill.textContent = "● LOCALE"; pill.className = "mode-pill"; pill.title = "Dati salvati solo in questo browser"; }
-    else if (Store.canEdit()) { pill.textContent = "● EDIT · " + Store.user; pill.className = "mode-pill edit"; pill.title = "Connesso: puoi modificare"; }
+    else if (Store.canEdit()) { pill.textContent = (isGm() ? "● GM · " : "● EDIT · ") + Store.user; pill.className = "mode-pill edit" + (isGm() ? " gm" : ""); pill.title = isGm() ? "Connesso come GM: vedi anche le cose segrete" : "Connesso: puoi modificare"; }
     else { pill.textContent = "● CLOUD · sola lettura"; pill.className = "mode-pill cloud"; pill.title = "Accedi da ⚙ per modificare"; }
+    const navGm = $("#nav-gm"); if (navGm) navGm.hidden = !isGm();
     $("#footer-status").textContent = `${state.entries.length} record · ${state.diary.length} scene · ${state.events.length} eventi · ${state.notes.length} appunti · ${state.songs.length} tracce`;
   }
 
@@ -228,6 +241,11 @@
       viewKey = location.hash;
     }
     else if (page === "tavolo") app.innerHTML = viewTable();
+    else if (page === "party") app.innerHTML = viewParty();
+    else if (page === "gm") {
+      if (!isGm()) { location.replace("#/home"); return; }
+      app.innerHTML = viewGm();
+    }
     else app.innerHTML = viewHome();
     app.classList.toggle("wide", page === "tavolo");
     hydrate(app);
@@ -348,7 +366,7 @@
   function cardEntry(e) {
     const k = kindOf(e.kind), st = statusOf(e.status), imgs = imagesOf(e);
     return `
-      <button class="card ${e.status === "morto" ? "is-dead" : ""}" data-action="open-entry" data-id="${esc(e.id)}">
+      <button class="card ${e.status === "morto" ? "is-dead" : ""} ${e.gmOnly ? "is-gm" : ""}" data-action="open-entry" data-id="${esc(e.id)}">
         <div class="card-img">
           ${imgs.length ? imgTag(imgs[0], e.name) : `<div class="noimg"><span>NO SIGNAL</span></div>`}
           <span class="kind-tag" style="--k:${k.color}">${esc(k.label)}</span>
@@ -358,6 +376,7 @@
           <h3>${esc(e.name || "Senza nome")}</h3>
           ${e.handle ? `<div class="handle">“${esc(e.handle)}”</div>` : ""}
           <div class="meta">
+            ${gmBadge(e)}
             ${e.faction ? `<span class="badge faction">${esc(e.faction)}</span>` : ""}
             ${e.role ? `<span class="badge">${esc(e.role)}</span>` : ""}
             ${st && isPerson(e) ? `<span class="status s-${st.id}">${esc(st.label)}</span>` : ""}
@@ -891,14 +910,14 @@
     const e = state.entries.find(x => x.id === id); if (!e) return;
     const next = { ...e, sheet: fn(JSON.parse(JSON.stringify(sheetOf(e)))) };
     upsert(state.entries, next);
-    refreshSheetView(id); if (onTable()) { renderTokens(); renderSide(); }
+    refreshSheetView(id); refreshParty(); if (onTable()) { renderTokens(); renderSide(); }
     clearTimeout(sheetTimers.get(id));
     sheetTimers.set(id, setTimeout(async () => {
       sheetTimers.delete(id);
       try {
         const saved = await Store.save("entries", state.entries.find(x => x.id === id));
         if (!sheetTimers.has(id)) upsert(state.entries, saved);   // se nel frattempo è cambiato altro, tengo la versione più nuova
-        Store.send({ t: "rec", col: "entries", rec: saved });
+        liveSend("entries", saved);
       } catch (err) { fail(err); }
     }, 500));
   }
@@ -1093,8 +1112,8 @@
         hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes") };
       try {
         const saved = await Store.save("entries", { ...e, sheet });
-        upsert(state.entries, saved); Store.send({ t: "rec", col: "entries", rec: saved });
-        toast("Scheda salvata", "ok"); openEntry(saved.id, "sheet");
+        upsert(state.entries, saved); liveSend("entries", saved);
+        toast("Scheda salvata", "ok"); openEntry(saved.id, "sheet"); refreshParty();
         if (onTable()) { renderTokens(); renderSide(); }
       } catch (err) { fail(err); }
     });
@@ -1105,11 +1124,15 @@
   const sortRolls = () => { state.rolls.sort((a, b) => (a.at || a.createdAt || "").localeCompare(b.at || b.createdAt || "")); if (state.rolls.length > ROLL_KEEP) state.rolls.splice(0, state.rolls.length - ROLL_KEEP); };
   const fmtTime = iso => { try { return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 
+  // tiro segreto del GM: interruttore 🔒 nel Dice log, oppure tiro di un NPC segreto o di un token nascosto
+  let secretRoll = ls.get("nc-secret", false);
   async function postRoll(r) {
-    const rec = { ...r, by: Store.user || "", at: new Date().toISOString() };
+    const ent = r.entryId && state.entries.find(e => e.id === r.entryId);
+    const secret = isGm() && Store.gmReady && !!(r.gmOnly || secretRoll || (ent && ent.gmOnly));
+    const rec = { ...r, gmOnly: secret, by: Store.user || "", at: new Date().toISOString() };
     let out = { ...rec, id: "loc-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), local: true };
     if (Store.canEdit()) {
-      try { out = await Store.save("rolls", rec); Store.send({ t: "rec", col: "rolls", rec: out }); }
+      try { out = await Store.save("rolls", rec); liveSend("rolls", out); }
       catch (err) { fail(err); }
     }
     upsert(state.rolls, out); sortRolls(); renderLogs();
@@ -1120,12 +1143,12 @@
   function rollCard(r) {
     const who = esc(r.who || (r.by ? r.by.split("@")[0] : "") || "Anonimo");
     const time = `<span class="rl-time">${fmtTime(r.at || r.createdAt)}</span>`;
-    if (r.kind === "msg") return `<div class="rl msg ${r.local ? "local" : ""}"><div class="rl-head"><b class="rl-who">${who}</b>${time}</div><div class="rl-text">${esc(r.text)}</div></div>`;
+    if (r.kind === "msg") return `<div class="rl msg ${r.local ? "local" : ""} ${r.gmOnly ? "secret" : ""}"><div class="rl-head"><b class="rl-who">${who}</b>${r.gmOnly ? `<span class="rl-secret">🔒 SEGRETO</span>` : ""}${time}</div><div class="rl-text">${esc(r.text)}</div></div>`;
     const dice = (r.dice || []).map(d => `<span class="rd ${d.s === 10 ? "d10" : d.s === 6 ? "d6" : ""} ${esc(d.t || "")}" title="d${d.s}">${d.t === "minus" ? "−" : ""}${d.v}</span>`).join("");
     const mods = (r.mods || []).map(m => `<span class="rm">${m.v < 0 ? "−" : "+"}${Math.abs(m.v)}${m.l ? ` <small>${esc(m.l)}</small>` : ""}</span>`).join("");
     const crit = { success: "Critical Success", fail: "Critical Failure", injury: "Critical Injury" }[r.crit];
-    return `<div class="rl ${r.crit ? "c-" + esc(r.crit) : ""} ${r.local ? "local" : ""}">
-      <div class="rl-head"><b class="rl-who">${who}</b>${time}</div>
+    return `<div class="rl ${r.crit ? "c-" + esc(r.crit) : ""} ${r.local ? "local" : ""} ${r.gmOnly ? "secret" : ""}">
+      <div class="rl-head"><b class="rl-who">${who}</b>${r.gmOnly ? `<span class="rl-secret" title="Lo vedono solo i GM">🔒 SEGRETO</span>` : ""}${time}</div>
       <div class="rl-label">${esc(r.label || r.expr || "Tiro")}</div>
       <div class="rl-body"><span class="rl-total">${num(r.total)}</span><span class="rl-break">${dice}${mods}</span></div>
       ${crit ? `<div class="rl-crit">${crit}</div>` : ""}
@@ -1143,8 +1166,9 @@
   function logWidget() {
     return `
       <div class="roll-log" aria-live="polite">${logItems()}</div>
-      <form class="roll-form" data-roll-form autocomplete="off">
-        <div class="roll-quick">${["1d10", "1d6", "2d6", "3d6", "4d6", "5d6", "6d6"].map(x => `<button type="button" class="chip" data-quick="${x}">${x}</button>`).join("")}<button type="button" class="chip" data-quick="check" title="Prova: 1d10 con critico sul 10 e fallimento sull'1">CHECK</button></div>
+      <form class="roll-form ${secretRoll && isGm() ? "is-secret" : ""}" data-roll-form autocomplete="off">
+        <div class="roll-quick">${["1d10", "1d6", "2d6", "3d6", "4d6", "5d6", "6d6"].map(x => `<button type="button" class="chip" data-quick="${x}">${x}</button>`).join("")}<button type="button" class="chip" data-quick="check" title="Prova: 1d10 con critico sul 10 e fallimento sull'1">CHECK</button>
+          ${isGm() && Store.gmReady ? `<label class="roll-secret" title="I tuoi tiri e messaggi li vedono solo i GM"><input type="checkbox" data-secret ${secretRoll ? "checked" : ""}> 🔒 Segreto</label>` : ""}</div>
         <div class="roll-in">
           <select data-roll-as title="Tira come" aria-label="Tira come">${asOptions()}</select>
           <input data-roll-text placeholder="2d6+3 · /c 14 · messaggio" aria-label="Tiro o messaggio">
@@ -1267,9 +1291,12 @@
             <h1>${esc(e.name || "Senza nome")}</h1>
             ${e.handle ? `<div class="handle">“${esc(e.handle)}”</div>` : ""}
             <dl class="facts">${facts.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>
-            ${(e.tags || []).length ? `<div class="meta">${e.tags.map(t => `<span class="badge tag">#${esc(t)}</span>`).join("")}</div>` : ""}
+            ${(e.tags || []).length || e.gmOnly ? `<div class="meta">${gmBadge(e)}${(e.tags || []).map(t => `<span class="badge tag">#${esc(t)}</span>`).join("")}</div>` : ""}
             ${e.description ? `<div class="block"><h4>Descrizione</h4><div class="prewrap">${esc(e.description)}</div></div>` : ""}
             ${e.notes ? `<div class="block"><h4>Note</h4><div class="prewrap">${esc(e.notes)}</div></div>` : ""}
+            ${isGm() ? (() => { const g = gmNoteOf(e.id); return `<div class="block gm-block"><h4>🔒 Note del GM <small>· le vedono solo i GM</small></h4>
+              ${g && g.text ? `<div class="prewrap">${esc(g.text)}</div>` : `<p class="hint">Vere intenzioni, segreti, statistiche nascoste…</p>`}
+              <button type="button" class="btn ghost small" data-action="edit-gmnote" data-id="${esc(e.id)}">${g && g.text ? "Modifica" : "Scrivi"} note GM</button></div>`; })() : ""}
             ${members.length ? `<div class="block"><h4>Membri noti (${members.length})</h4><div class="members">
               ${members.map(m => `<button class="member" data-action="open-entry" data-id="${esc(m.id)}">${imagesOf(m).length ? imgTag(imagesOf(m)[0]) : `<span class="ph"></span>`}${esc(m.name)}</button>`).join("")}
             </div></div>` : ""}
@@ -1379,8 +1406,8 @@
     <datalist id="dl-att">${ATTITUDES.map(x => `<option value="${esc(x)}">`).join("")}</datalist>
     <datalist id="dl-loc">${[...new Set([...state.entries.map(x => x.kind === "luogo" ? x.name : x.location), ...state.events.map(x => x.location)].filter(Boolean))].map(x => `<option value="${esc(x)}">`).join("")}</datalist>`;
 
-  function editEntry(id) {
-    const e = state.entries.find(x => x.id === id) || { kind: state.filter.kind !== "all" ? state.filter.kind : "npc", status: "vivo", custom: [] };
+  function editEntry(id, preset = {}) {
+    const e = state.entries.find(x => x.id === id) || { kind: state.filter.kind !== "all" ? state.filter.kind : "npc", status: "vivo", custom: [], ...preset };
     const oldImages = imagesOf(e);
     openModal(`
       <form class="form" id="entry-form">
@@ -1406,6 +1433,7 @@
                 <div><button type="button" class="btn ghost small cyan" data-action="cf-add">+ Aggiungi campo</button></div>
                 <span class="hint">Aggiungi quello che vuoi: Cyberware, Armi, Debiti, Prima apparizione, Contatti…</span>
               </div>
+              ${gmCheck(e.gmOnly, "Record segreto: solo i GM lo vedono (scheda, cyberware ed equipaggiamento compresi)")}
             </div>
           </div>
           ${datalists()}
@@ -1433,15 +1461,42 @@
           description: fd.get("description").trim(), notes: fd.get("notes").trim(),
           custom: $$(".cf-row", form).map(r => ({ k: $("[data-cf-k]", r).value.trim(), v: $("[data-cf-v]", r).value.trim() })).filter(c => c.k || c.v),
           images, image: images[0] || "",
+          gmOnly: isGm() ? !!fd.get("gmOnly") : !!e.gmOnly,
         };
         const saved = await Store.save("entries", rec);
         upsert(state.entries, saved);
+        if (saved.gmOnly) liveSend("entries", saved);
         Store.deleteFiles(oldImages.filter(r => !images.includes(r))).catch(() => {});
-        toast("Record salvato", "ok");
+        toast(saved.gmOnly ? "Record segreto salvato" : "Record salvato", "ok");
         closeModal();
         route();
         if (location.hash.startsWith("#/database")) openEntry(saved.id);
       } catch (err) { fail(err); btn.disabled = false; btn.textContent = "Salva record"; }
+    });
+  }
+
+  // note segrete del GM su un personaggio pubblico: record a parte (gmnotes), così il database non le dà ai giocatori
+  function editGmNote(entryId) {
+    const e = state.entries.find(x => x.id === entryId); if (!e || !isGm()) return;
+    const g = gmNoteOf(entryId) || { id: "gmn-" + entryId, entryId };
+    openModal(`
+      <form class="form" id="gmn-form">
+        <div class="modal-head"><h2>// 🔒 NOTE DEL GM · ${esc(e.name)}</h2><button type="button" class="x" data-action="open-entry" data-id="${esc(e.id)}" aria-label="Chiudi">×</button></div>
+        <div class="modal-body">
+          <div class="field full"><label for="gmn-text">Solo i GM vedono queste note</label><textarea id="gmn-text" name="text" rows="12" placeholder="Vere intenzioni, segreti, legami nascosti, statistiche…">${esc(g.text)}</textarea></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost small left" data-action="open-entry" data-id="${esc(e.id)}">Annulla</button>
+          <button type="submit" class="btn">Salva note GM</button>
+        </div>
+      </form>`, true);
+    $("#gmn-form").addEventListener("submit", async ev => {
+      ev.preventDefault();
+      try {
+        const saved = await Store.save("gmnotes", { ...g, text: ev.target.text.value, entryName: e.name, gmOnly: true });
+        upsert(state.gmnotes, saved); toast("Note GM salvate", "ok");
+        if (location.hash.startsWith("#/gm")) { closeModal(); route(); } else openEntry(e.id);
+      } catch (err) { fail(err); }
     });
   }
 
@@ -1745,8 +1800,8 @@
   function cardNote(n) {
     const ex = (n.body || "").slice(0, 220);
     return `
-      <button class="note-card ${n.pinned ? "pinned" : ""}" data-action="open-note" data-id="${esc(n.id)}">
-        <span class="note-bar"><span>&gt; ${esc(slug(n.title))}.shard</span>${n.pinned ? `<span class="pin">▲ FISSATO</span>` : ""}</span>
+      <button class="note-card ${n.pinned ? "pinned" : ""} ${n.gmOnly ? "is-gm" : ""}" data-action="open-note" data-id="${esc(n.id)}">
+        <span class="note-bar"><span>&gt; ${esc(slug(n.title))}.shard</span>${n.gmOnly ? `<span class="pin gm">🔒 SOLO GM</span>` : ""}${n.pinned ? `<span class="pin">▲ FISSATO</span>` : ""}</span>
         <span class="note-inner">
           <h3>${esc(n.title || "Senza titolo")}</h3>
           ${ex ? `<span class="note-ex">${esc(ex)}${(n.body || "").length > 220 ? "…" : ""}</span>` : ""}
@@ -1766,7 +1821,7 @@
       <div class="modal-body note-view">
         <div class="kicker">${n.category ? esc(n.category.toUpperCase()) + " · " : ""}AGGIORNATO ${esc(fmtStamp(n.updatedAt).toUpperCase())}</div>
         <h1>${esc(n.title || "Senza titolo")}</h1>
-        ${(n.tags || []).length ? `<div class="meta">${n.tags.map(t => `<span class="badge tag">#${esc(t)}</span>`).join("")}</div>` : ""}
+        ${(n.tags || []).length || n.gmOnly ? `<div class="meta">${gmBadge(n)}${(n.tags || []).map(t => `<span class="badge tag">#${esc(t)}</span>`).join("")}</div>` : ""}
         <div class="prewrap note-body">${esc(n.body)}</div>
       </div>
       ${Store.canEdit() ? `<div class="modal-foot">
@@ -1776,8 +1831,8 @@
     if (location.hash !== "#/appunti/" + n.id && location.hash.startsWith("#/appunti")) history.replaceState(null, "", "#/appunti/" + n.id);
   }
 
-  function editNote(id) {
-    const n = state.notes.find(x => x.id === id) || {};
+  function editNote(id, preset = {}) {
+    const n = state.notes.find(x => x.id === id) || { ...preset };
     openModal(`
       <form class="form" id="note-form">
         <div class="modal-head"><h2>${n.id ? "// MODIFICA APPUNTO" : "// NUOVO APPUNTO"}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
@@ -1788,6 +1843,7 @@
             <div class="field"><label for="n-tags">Tag</label><input id="n-tags" name="tags" value="${esc((n.tags || []).join(", "))}"></div>
             <div class="field full"><label for="n-body">Testo</label><textarea id="n-body" name="body" rows="16">${esc(n.body)}</textarea></div>
             <label class="check field full"><input type="checkbox" name="pinned" ${n.pinned ? "checked" : ""}> Fissa in cima</label>
+            ${gmCheck(n.gmOnly, "Appunto segreto: solo i GM lo vedono")}
           </div>
           <datalist id="dl-ncat">${[...new Set([...NOTE_CATEGORIES, ...state.notes.map(x => x.category).filter(Boolean)])].map(c => `<option value="${esc(c)}">`).join("")}</datalist>
         </div>
@@ -1804,9 +1860,11 @@
         const saved = await Store.save("notes", {
           ...n, title: fd.get("title").trim(), category: fd.get("category").trim(),
           tags: splitList(fd.get("tags")), body: fd.get("body"), pinned: !!fd.get("pinned"),
+          gmOnly: isGm() ? !!fd.get("gmOnly") : !!n.gmOnly,
         });
         upsert(state.notes, saved);
-        toast("Appunto salvato", "ok"); closeModal(); route();
+        if (saved.gmOnly) liveSend("notes", saved);   // chi l'aveva già aperto da giocatore la perde subito
+        toast(saved.gmOnly ? "Appunto segreto salvato" : "Appunto salvato", "ok"); closeModal(); route();
         if (location.hash.startsWith("#/appunti")) openNote(saved.id);
       } catch (err) { fail(err); btn.disabled = false; }
     });
@@ -2307,6 +2365,141 @@
     });
   }
 
+  // ---------- PARTY: le schede dei PG a colpo d'occhio ----------
+  // Tutti i giocatori possono usare tutte le schede (nel gruppo ci si fida).
+  const partyPgs = () => state.entries.filter(e => e.kind === "pg").sort((a, b) => (a.name || "").localeCompare(b.name || "", "it"));
+  function partyCard(e) {
+    const id = esc(e.id), edit = Store.canEdit(), imgs = imagesOf(e);
+    const head = `
+      <header class="pc-head">
+        <div class="pc-img">${imgs.length ? imgTag(imgs[0], e.name) : `<span>${esc(initials(e.name))}</span>`}</div>
+        <div class="pc-title"><h3>${esc(e.name)}</h3>
+          <div class="pc-sub">${e.handle ? `“${esc(e.handle)}” · ` : ""}${esc(e.role || "—")}${sheetOf(e).owner ? ` · <span title="Giocatore">${esc(sheetOf(e).owner.split("@")[0])}</span>` : ""}</div></div>
+        ${gmBadge(e)}
+      </header>`;
+    if (!hasSheet(e)) return `<article class="pc-card empty-sheet">${head}<p class="hint">Scheda ancora vuota.</p>
+      ${edit ? `<button type="button" class="btn small" data-action="edit-sheet" data-id="${id}">Compila la scheda</button>` : ""}</article>`;
+    const max = hpMaxOf(e), hp = hpOf(e), w = woundOf(e), cs = cyberStats(e);
+    const pct = clamp(max ? hp / max * 100 : 0, 0, 100);
+    const roll = (what, label, cls = "chip") => `<button type="button" class="${cls}" data-action="sheet-roll" data-id="${id}" data-roll="${what}">${label}</button>`;
+    // le abilità più alte, da tirare al volo
+    const top = skillsOf(e).filter(k => k.lvl > 0).map(k => ({ ...k, base: statEff(e, k.stat) + k.lvl })).sort((a, b) => b.base - a.base).slice(0, 6);
+    const arm = loc => { const a = armorOf(e, loc); return `<span class="pc-sp"><small>${loc === "head" ? "HEAD" : "BODY"}</small> <b>${a.cur}</b>/${a.sp}
+      ${edit ? `<button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="-1" title="Ablazione −1">−</button>` : ""}</span>`; };
+    return `
+      <article class="pc-card w-${w.id}">
+        ${head}
+        <div class="pc-hp">
+          <div class="pc-hp-top"><span class="sh-k">HP</span> <b>${hp}</b><small>/ ${max}</small><span class="pc-w">${esc(w.label)}${w.pen ? ` · ${w.pen}` : ""}</span></div>
+          <span class="sh-hpbar"><i style="width:${pct}%"></i><b style="left:${clamp(CPR.seriousAt(max) / max * 100, 0, 100)}%"></b></span>
+          ${edit ? adjBtns(e.id, "hp", [-5, -1, 1, 5]) : ""}
+        </div>
+        <div class="pc-row">${arm("head")}${arm("body")}</div>
+        <div class="pc-row">
+          <span><small class="sh-k">LUCK</small> <b>${luckOf(e)}</b>/${statBase(e, "LUCK")}
+            ${edit ? `<button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="-1" title="Spendi 1">−</button>` : ""}</span>
+          <span><small class="sh-k">HUM</small> <b>${cs.current != null ? cs.current : statBase(e, "EMP") * 10}</b></span>
+          <span><small class="sh-k">REF</small> <b>${statEff(e, "REF")}</b></span>
+          <span><small class="sh-k">MOVE</small> <b>${statBase(e, "MOVE") * 2}m</b></span>
+        </div>
+        <div class="pc-rolls">
+          ${roll("init", "Initiative", "chip y")}${roll("death", "Death Save", "chip r")}
+          ${top.map(k => roll(k.key, `${esc(k.label)} <b>${k.base}</b>`)).join("")}
+          ${(sheetOf(e).weapons || []).slice(0, 2).map((wp, i) => roll(`wpn:${i}:atk`, `⌖ ${esc(wp.name)}`) + (wp.dmg ? roll(`wpn:${i}:dmg`, `${esc(wp.dmg)}`, "chip y") : "")).join("")}
+        </div>
+        <div class="pc-foot">
+          <button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="sheet">Scheda completa</button>
+          <button type="button" class="btn ghost small" data-action="party-as" data-id="${id}" title="Il Dice log tira a nome di questo PG">Tira come ${esc(e.name)}</button>
+        </div>
+      </article>`;
+  }
+  function viewParty() {
+    const pgs = partyPgs();
+    return `
+      <div class="page-head">
+        <div><div class="kicker">// CREW_MANIFEST</div><h1>Party</h1><p>Le schede dei PG: HP, armatura, fortuna e tiri veloci. Ognuno può usare qualsiasi scheda.</p></div>
+        <button type="button" class="btn ghost small cyan" data-action="dice-open">⬢ Dice log</button>
+      </div>
+      <div id="party-grid" class="party-grid">${pgs.length ? pgs.map(partyCard).join("")
+        : `<div class="empty"><div class="big">// NESSUN PG</div>Crea i personaggi del party nel Database con tipo «PG».</div>`}</div>`;
+  }
+  function refreshParty() {
+    const box = $("#party-grid"); if (!box || !/^#\/party/.test(location.hash)) return;
+    box.innerHTML = partyPgs().map(partyCard).join(""); hydrate(box);
+  }
+
+  // ---------- AREA GM ----------
+  function viewGm() {
+    const secretEntries = state.entries.filter(e => e.gmOnly).sort((a, b) => (a.name || "").localeCompare(b.name || "", "it"));
+    const secretNotes = state.notes.filter(n => n.gmOnly).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    const notesOn = state.gmnotes.filter(g => g.text && state.entries.some(e => e.id === g.entryId));
+    const hiddenTok = state.tokens.filter(t => t.hidden);
+    const secretRolls = state.rolls.filter(r => r.gmOnly).slice(-8).reverse();
+    return `
+      <div class="page-head">
+        <div><div class="kicker">// GM_ONLY_CHANNEL</div><h1>Area GM</h1><p>Questa pagina e tutto ciò che è segnato 🔒 lo vedono solo i GM: il database non lo manda ai giocatori.</p></div>
+        <div class="row-btns">
+          <button type="button" class="btn" data-action="gm-new-entry">+ NPC segreto</button>
+          <button type="button" class="btn yellow ghost" data-action="gm-new-note">+ Appunto segreto</button>
+        </div>
+      </div>
+      ${!Store.gmReady ? `<div class="gm-warn">⚠ Il database non ha ancora il ruolo GM: esegui <b>supabase/schema.sql</b> nell'editor SQL di Supabase.</div>` : ""}
+
+      <div class="section-title"><h2>🔒 Dossier segreti <span class="hint">${secretEntries.length}</span></h2></div>
+      ${secretEntries.length ? `<div class="grid">${secretEntries.map(cardEntry).join("")}</div>`
+        : `<p class="hint">Nessuno. Crea un «NPC segreto», oppure spunta «Solo GM» nella modifica di un record del database.</p>`}
+
+      <div class="gm-cols">
+        <section>
+          <div class="section-title"><h2>🔒 Appunti segreti <span class="hint">${secretNotes.length}</span></h2></div>
+          ${secretNotes.length ? `<div class="notes-grid">${secretNotes.map(cardNote).join("")}</div>` : `<p class="hint">Trame, colpi di scena, preparazione delle sessioni…</p>`}
+        </section>
+        <section>
+          <div class="section-title"><h2>🔒 Note del GM sui personaggi <span class="hint">${notesOn.length}</span></h2></div>
+          ${notesOn.length ? `<div class="gm-list">${notesOn.map(g => { const e = state.entries.find(x => x.id === g.entryId);
+            return `<button type="button" class="gm-item" data-action="edit-gmnote" data-id="${esc(e.id)}"><b>${esc(e.name)}</b><span>${esc(String(g.text).slice(0, 160))}${g.text.length > 160 ? "…" : ""}</span></button>`; }).join("")}</div>`
+            : `<p class="hint">Nel dossier di ogni PG o NPC trovi il riquadro «Note del GM».</p>`}
+        </section>
+      </div>
+
+      <div class="gm-cols">
+        <section>
+          <div class="section-title"><h2>Tavolo</h2><a class="see-all" href="#/tavolo">apri il tavolo →</a></div>
+          ${state.maps.length ? `<div class="gm-list">${mapsSorted().map(m => {
+            const nTok = mapTokens(m).length, nHid = mapTokens(m).filter(t => t.hidden).length;
+            return `<button type="button" class="gm-item" data-action="gm-open-map" data-id="${esc(m.id)}">
+              <b>${m.id === sharedMapId() ? "● " : ""}${m.hidden ? "🔒 " : ""}${esc(m.name || "Mappa")}</b>
+              <span>${m.id === sharedMapId() ? "visibile a tutti" : m.hidden ? "nascosta ai giocatori" : "visibile"} · ${nTok} token${nHid ? ` (${nHid} nascosti)` : ""}</span></button>`; }).join("")}</div>`
+            : `<p class="hint">Nessuna mappa. Le mappe nuove nascono nascoste: le riveli con «Mostra a tutti».</p>`}
+          ${hiddenTok.length ? `<p class="hint">Token nascosti in tutto: ${hiddenTok.length}. Selezionali sul tavolo e premi «👁 Rivela».</p>` : ""}
+        </section>
+        <section>
+          <div class="section-title"><h2>🔒 Ultimi tiri segreti</h2></div>
+          ${secretRolls.length ? `<div class="gm-rolls">${secretRolls.map(rollCard).join("")}</div>`
+            : `<p class="hint">Spunta «🔒 Segreto» nel Dice log per tirare di nascosto. I tiri degli NPC segreti e dei token nascosti sono segreti da soli.</p>`}
+        </section>
+      </div>
+
+      <div class="section-title"><h2>Account GM</h2></div>
+      <div class="gm-accounts">
+        <div id="gm-list" class="gm-list"><p class="hint">Carico l'elenco…</p></div>
+        ${Store.mode === "cloud" ? `<div class="gm-add">
+          <input id="gm-email" type="email" placeholder="email dell'account da rendere GM" autocomplete="off">
+          <button type="button" class="btn small" data-action="gm-add">+ Aggiungi GM</button>
+        </div>
+        <p class="hint">L'account deve già esistere su Supabase (Authentication → Users). Chi è GM vede tutto ciò che è segnato 🔒.</p>` : ""}
+      </div>`;
+  }
+  async function loadGmList() {
+    const box = $("#gm-list"); if (!box) return;
+    if (Store.mode !== "cloud") { box.innerHTML = `<p class="hint">In modalità locale sei sempre GM.</p>`; return; }
+    try {
+      const list = await Store.listGms();
+      box.innerHTML = list.map(g => `<div class="gm-item static"><b>${esc(g.email)}</b>${norm(g.email) === norm(Store.user) ? `<span>tu</span>` : ""}
+        <button type="button" class="btn ghost small danger" data-action="gm-remove" data-email="${esc(g.email)}">Togli</button></div>`).join("") || `<p class="hint">Nessun GM.</p>`;
+    } catch (e) { box.innerHTML = `<p class="hint">Impossibile leggere l'elenco: ${esc(e.message || e)}</p>`; }
+  }
+
   // ---------- TAVOLO DI GIOCO: mappa, token, iniziativa ----------
   // maps   = { name, image, cols, rows, grid, init[{tokenId, v}], turn, round }
   // tokens = { mapId, entryId?, name, color, image, x, y (caselle), size, hp, hpMax }
@@ -2320,14 +2513,19 @@
   const mapsSorted = () => [...state.maps].sort((a, b) => (a.name || "").localeCompare(b.name || "", "it"));
   // mappa condivisa = quella che il GM ha mostrato a tutti (site.tableMap): quando cambia, tutti ci vengono portati
   const sharedMapId = () => (state.site && state.site.tableMap) || "";
+  // se la mappa condivisa è nascosta (il GM la sta preparando), il giocatore non vede un'altra mappa a caso
   const curMap = () => state.maps.find(m => m.id === tt.view) || state.maps.find(m => m.id === sharedMapId())
-    || [...state.maps].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0] || null;
+    || (sharedMapId() && !isGm() ? null : [...state.maps].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0]) || null;
   const tokSize = t => clamp(num(t.size) || 1, 1, 6);
   const mapSize = m => ({ W: clamp(num(m.cols) || 24, 4, 120), H: clamp(num(m.rows) || 16, 4, 120) });
   const mapTokens = m => m ? state.tokens.filter(t => t.mapId === m.id) : [];
   const tokEntry = t => t.entryId ? state.entries.find(e => e.id === t.entryId) : null;
-  const tokName = t => { const e = tokEntry(t); return t.name || (e && e.name) || "Token"; };
-  const tokImage = t => { const e = tokEntry(t); return t.image || (e && imagesOf(e)[0]) || ""; };
+  // snapName/snapImage: copia presa quando il token è stato messo, per chi non vede la scheda (es. NPC segreto)
+  const tokName = t => { const e = tokEntry(t); return t.name || (e && e.name) || t.snapName || "Token"; };
+  const tokImage = t => { const e = tokEntry(t); return t.image || (e && imagesOf(e)[0]) || t.snapImage || ""; };
+  // nascosto ai giocatori: il token stesso o la sua mappa
+  const mapHidden = id => { const m = state.maps.find(x => x.id === id); return !!(m && m.hidden); };
+  const tokHidden = t => !!(t.hidden || mapHidden(t.mapId));
   function tokHp(t) {
     const e = tokEntry(t);
     if (e && hasSheet(e)) return { hp: hpOf(e), max: hpMaxOf(e) };
@@ -2337,10 +2535,15 @@
   const canMove = () => Store.canEdit();
   const initList = m => (m.init || []).map(it => { const t = state.tokens.find(x => x.id === it.tokenId); return t ? { ...it, name: tokName(t) } : null; })
     .filter(Boolean).sort((a, b) => b.v - a.v || a.name.localeCompare(b.name, "it"));
-  const turnToken = m => { const l = initList(m); return l.length ? l[(num(m.turn) % l.length + l.length) % l.length].tokenId : null; };
+  // il turno è salvato come id del token (turnId): così chi non vede i token nascosti non sbaglia il conto
+  const turnToken = m => {
+    const l = initList(m); if (!l.length) return null;
+    if (m.turnId) return l.some(it => it.tokenId === m.turnId) ? m.turnId : null;
+    return l[(num(m.turn) % l.length + l.length) % l.length].tokenId;
+  };
 
   function viewTable() {
-    const m = curMap(), edit = Store.canEdit();
+    const m = curMap(), edit = gmTools();
     return `
       <div class="page-head tt-head">
         <div><div class="kicker">// TACTICAL_GRID</div><h1>Tavolo</h1><p>Mappa, token e tiri di dado condivisi in tempo reale · 1 casella = 2 m.</p></div>
@@ -2365,18 +2568,19 @@
           <section class="tt-panel tt-log"><h4>Dice log</h4>${logWidget()}</section>
         </aside>
       </div>` : `
-      <div class="empty"><div class="big">// NESSUNA MAPPA</div>${edit ? `Crea la prima mappa per iniziare: carica un'immagine e scegli quante caselle ha.<br><button class="btn" data-action="tt-new-map">+ Nuova mappa</button>` : "Il master non ha ancora creato una mappa. Accedi da ⚙ per crearne una."}</div>
+      <div class="empty"><div class="big">// NESSUNA MAPPA</div>${edit ? `Crea la prima mappa per iniziare: carica un'immagine e scegli quante caselle ha.<br><button class="btn" data-action="tt-new-map">+ Nuova mappa</button>` : sharedMapId() ? "Il master sta preparando la mappa: compare qui da sola appena la mostra." : "Il master non ha ancora mostrato una mappa. Appena lo fa, compare qui da sola."}</div>
       <section class="tt-panel tt-log solo"><h4>Dice log</h4>${logWidget()}</section>`}`;
   }
 
   function toolsHtml() {
-    const m = curMap(), edit = Store.canEdit(), shared = sharedMapId();
-    const live = m && m.id === shared;
+    const m = curMap(), edit = gmTools(), shared = sharedMapId();
+    const live = m && m.id === shared && !m.hidden;
     return `
-      ${state.maps.length ? `<select id="tt-map" aria-label="Mappa">${mapsSorted().map(x => `<option value="${esc(x.id)}" ${m && x.id === m.id ? "selected" : ""}>${x.id === shared ? "● " : ""}${esc(x.name || "Mappa")}</option>`).join("")}</select>` : ""}
+      ${state.maps.length ? `<select id="tt-map" aria-label="Mappa">${mapsSorted().map(x => `<option value="${esc(x.id)}" ${m && x.id === m.id ? "selected" : ""}>${x.id === shared ? "● " : ""}${x.hidden ? "🔒 " : ""}${esc(x.name || "Mappa")}</option>`).join("")}</select>` : ""}
+      ${m && m.hidden ? `<span class="tt-hidden-pill" title="I giocatori non vedono questa mappa">🔒 NASCOSTA AI GIOCATORI</span>` : ""}
       ${m ? (live ? `<span class="tt-live" title="Tutti quelli che aprono il tavolo vedono questa mappa">● VISIBILE A TUTTI</span>`
         : edit ? `<button type="button" class="btn small yellow" data-action="tt-share-map" title="Porta tutti i giocatori su questa mappa">◉ Mostra a tutti</button>`
-        : shared ? `<button type="button" class="btn ghost small yellow" data-action="tt-follow">Torna alla mappa del master</button>` : "") : ""}
+        : shared && state.maps.some(x => x.id === shared) ? `<button type="button" class="btn ghost small yellow" data-action="tt-follow">Torna alla mappa del master</button>` : "") : ""}
       ${edit ? `<button type="button" class="btn ghost small cyan" data-action="tt-new-map">+ Mappa</button>
         ${m ? `<button type="button" class="btn ghost small" data-action="tt-edit-map">Modifica mappa</button><button type="button" class="btn small" data-action="tt-add-token">+ Token</button>` : ""}` : ""}`;
   }
@@ -2467,7 +2671,7 @@
   function tokenParts(t, m) {
     const hp = tokHp(t), img = tokImage(t), dead = hp && hp.hp <= 0;
     return {
-      cls: ["tt-token", tt.sel === t.id && "sel", dead && "dead", turnToken(m) === t.id && "turn", canMove(t) && "mov"].filter(Boolean).join(" "),
+      cls: ["tt-token", tt.sel === t.id && "sel", dead && "dead", turnToken(m) === t.id && "turn", canMove(t) && "mov", t.hidden && "hid"].filter(Boolean).join(" "),
       inner: `<div class="tt-face">${img ? `<img data-ref="${esc(img)}" alt="" draggable="false">` : `<span>${esc(initials(tokName(t)))}</span>`}</div>
         ${hp ? `<div class="tt-hp"><i style="width:${clamp(hp.hp / hp.max * 100, 0, 100)}%"></i></div>` : ""}
         <div class="tt-name">${esc(tokName(t))}</div>`,
@@ -2501,26 +2705,31 @@
       box.innerHTML = `<h4>Token</h4><p class="hint">Clicca un token per selezionarlo. Trascinalo per muoverlo (o usa le frecce della tastiera). Rotella = zoom, trascina lo sfondo per spostare la vista.</p>`;
       return;
     }
-    const e = tokEntry(t), hp = tokHp(t), edit = Store.canEdit();
+    const e = tokEntry(t), hp = tokHp(t), edit = Store.canEdit(), gmt = gmTools();
     box.innerHTML = `
-      <h4 style="color:${safeColor(t.color)}">${esc(tokName(t))}</h4>
+      <h4 style="color:${safeColor(t.color)}">${t.hidden ? "🔒 " : ""}${esc(tokName(t))}</h4>
+      ${isGm() && tokHidden(t) ? `<p class="hint gm-hint">Nascosto ai giocatori${!t.hidden ? " (perché la mappa è nascosta)" : ""}.</p>` : ""}
       ${hp ? `<div class="tt-hpline"><span>HP <b>${hp.hp}</b> / ${hp.max}</span>${edit ? `<span class="sh-adj">${[-5, -1, 1, 5].map(d => `<button type="button" class="gp-btn" data-action="tt-hp" data-d="${d}">${d > 0 ? "+" : "−"}${Math.abs(d) === 1 ? "" : Math.abs(d)}</button>`).join("")}</span>` : ""}</div>
         ${e && hasSheet(e) ? `<div class="hint">${esc(woundOf(e).label)} · SP head ${armorOf(e, "head").cur} · body ${armorOf(e, "body").cur}</div>` : ""}` : ""}
       <div class="row-btns" style="margin-top:8px">
         ${e && isPerson(e) ? `<button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="sheet">Scheda</button>` : ""}
-        ${edit ? `<button type="button" class="btn ghost small" data-action="tt-init-one">Iniziativa</button>
+        ${edit ? `<button type="button" class="btn ghost small" data-action="tt-init-one">Iniziativa</button>` : ""}
+        ${gmt ? `${isGm() && Store.gmReady ? `<button type="button" class="btn ghost small yellow" data-action="tt-toggle-hidden">${t.hidden ? "👁 Rivela" : "🔒 Nascondi"}</button>` : ""}
           <button type="button" class="btn ghost small" data-action="tt-edit-token">Modifica</button>
           <button type="button" class="btn ghost small danger" data-action="tt-del-token">Rimuovi</button>` : ""}
       </div>`;
   }
+  // strumenti del master (mappe, token, turni): solo i GM; se il ruolo GM non è ancora attivo, chiunque abbia fatto l'accesso
+  const gmTools = () => Store.canEdit() && (isGm() || !Store.gmReady);
 
   function renderInit() {
     const box = $("#tt-init"), m = curMap(); if (!box || !m) return;
-    const list = initList(m), edit = Store.canEdit(), cur = turnToken(m);
+    const list = initList(m), edit = gmTools(), cur = turnToken(m);
+    const hid = id => { const t = state.tokens.find(x => x.id === id); return t && t.hidden ? "🔒 " : ""; };
     box.innerHTML = `
       <h4>Initiative ${list.length ? `<span class="hint">· round ${num(m.round) || 1}</span>` : ""}</h4>
       ${list.length ? `<ol class="tt-init">${list.map(it => `
-        <li class="${it.tokenId === cur ? "cur" : ""}"><button type="button" data-action="tt-select" data-tok="${esc(it.tokenId)}">${esc(it.name)}</button>
+        <li class="${it.tokenId === cur ? "cur" : ""}"><button type="button" data-action="tt-select" data-tok="${esc(it.tokenId)}">${hid(it.tokenId)}${esc(it.name)}</button>
           ${edit ? `<input type="number" step="1" data-init="${esc(it.tokenId)}" value="${num(it.v)}" aria-label="Iniziativa di ${esc(it.name)}">` : `<b>${num(it.v)}</b>`}</li>`).join("")}</ol>`
         : `<p class="hint">Nessuno in iniziativa. ${edit ? "«Tira per tutti» usa REF + 1d10 per chi ha la scheda, 1d10 per gli altri." : ""}</p>`}
       ${edit ? `<div class="row-btns">
@@ -2532,10 +2741,13 @@
   const newId = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "id-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   async function saveRec(col, rec) {
     if (!rec.id) rec = { ...rec, id: newId() };
+    // visibilità: una mappa nascosta e i suoi token restano solo ai GM (anche nel database)
+    if (col === "maps") rec = { ...rec, gmOnly: !!rec.hidden };
+    if (col === "tokens") rec = { ...rec, gmOnly: !!(rec.hidden || mapHidden(rec.mapId)) };
     upsert(state[col], rec);
     try {
       const saved = await Store.save(col, rec);
-      upsert(state[col], saved); Store.send({ t: "rec", col, rec: saved });
+      upsert(state[col], saved); liveSend(col, saved);
       return saved;
     } catch (err) { fail(err); return rec; }
   }
@@ -2579,12 +2791,12 @@
         ev.preventDefault();
         const p = cellAt(ev);
         tt.drag = { t, el, ox: p.x - num(t.x), oy: p.y - num(t.y), x: num(t.x), y: num(t.y), moved: false };
-        el.setPointerCapture(ev.pointerId); el.classList.add("drag");
+        try { el.setPointerCapture(ev.pointerId); } catch {} el.classList.add("drag");
         return;
       }
       if (ev.pointerType !== "mouse") return;   // su touch la vista si sposta con lo scroll nativo
       pan = { x: ev.clientX, y: ev.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop, moved: false };
-      wrap.setPointerCapture(ev.pointerId); wrap.classList.add("panning");
+      try { wrap.setPointerCapture(ev.pointerId); } catch {} wrap.classList.add("panning");
     });
     wrap.addEventListener("pointermove", ev => {
       const d = tt.drag;
@@ -2601,7 +2813,8 @@
         ruler.hidden = false; ruler.textContent = `${sq} ${sq === 1 ? "casella" : "caselle"} · ${sq * 2} m`;
         ruler.style.left = ev.clientX - wr.left + 16 + "px"; ruler.style.top = ev.clientY - wr.top + 12 + "px";
         const now = Date.now();
-        if (now - lastSend > 60) { Store.send({ t: "move", id: d.t.id, sx: num(d.t.x), sy: num(d.t.y), x: d.x, y: d.y }); lastSend = now; }
+        // i token nascosti non mandano la posizione sul canale pubblico
+        if (now - lastSend > 60 && !tokHidden(d.t)) { Store.send({ t: "move", id: d.t.id, sx: num(d.t.x), sy: num(d.t.y), x: d.x, y: d.y }); lastSend = now; }
       } else if (pan) {
         const dx = ev.clientX - pan.x, dy = ev.clientY - pan.y;
         if (Math.abs(dx) + Math.abs(dy) > 3) pan.moved = true;
@@ -2615,7 +2828,7 @@
         const nx = Math.round(d.x), ny = Math.round(d.y);
         const cur = state.tokens.find(x => x.id === d.t.id);          // nel frattempo qualcuno potrebbe averlo rimosso
         if (cur && !cancel && d.moved && (nx !== num(d.t.x) || ny !== num(d.t.y))) saveToken({ ...cur, x: nx, y: ny });
-        else { if (d.moved) Store.send({ t: "move-end", id: d.t.id }); renderTokens(); }
+        else { if (d.moved && !tokHidden(d.t)) Store.send({ t: "move-end", id: d.t.id }); renderTokens(); }
       }
       if (pan) { if (!pan.moved && !cancel) selectToken(null); pan = null; wrap.classList.remove("panning"); }
     };
@@ -2633,15 +2846,17 @@
   async function initFor(m, t) {
     const e = tokEntry(t);
     const d = CPR.die(10);
-    const r = e && hasSheet(e) ? await rollInitiative(e, { who: tokName(t) })
-      : await postRoll({ kind: "init", who: tokName(t), label: "Initiative", dice: [{ v: d, s: 10 }], mods: [], total: d });
+    const secret = tokHidden(t) ? { gmOnly: true } : {};   // il tiro di un nemico nascosto non lo rivela
+    const r = e && hasSheet(e) ? await rollInitiative(e, { who: tokName(t), ...secret })
+      : await postRoll({ kind: "init", who: tokName(t), label: "Initiative", dice: [{ v: d, s: 10 }], mods: [], total: d, ...secret });
     const init = (m.init || []).filter(it => it.tokenId !== t.id);
     init.push({ tokenId: t.id, v: num(r.total) });
     return init;
   }
 
   function editMap(id) {
-    const m = state.maps.find(x => x.id === id) || { name: "", cols: 24, rows: 16, grid: true };
+    // le mappe nuove del GM nascono nascoste: si preparano in pace e si rivelano con "Mostra a tutti"
+    const m = state.maps.find(x => x.id === id) || { name: "", cols: 24, rows: 16, grid: true, hidden: isGm() && Store.gmReady };
     openModal(`
       <form class="form" id="map-form">
         <div class="modal-head"><h2>${m.id ? "// MODIFICA MAPPA" : "// NUOVA MAPPA"}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
@@ -2653,6 +2868,7 @@
             <div class="field full"><label class="check"><input type="checkbox" name="grid" ${m.grid === false ? "" : "checked"}> Mostra la griglia</label>
               <span class="hint">L'immagine viene stirata su colonne × righe: se la mappa ha già una griglia disegnata, conta le sue caselle e usa gli stessi numeri. 1 casella = 2 m.</span></div>
             <div class="field full"><span class="lbl">Immagine di sfondo</span>${imagePicker("image", m.image, true)}</div>
+            ${isGm() && Store.gmReady ? `<label class="check field full gm-check"><input type="checkbox" name="hidden" ${m.hidden ? "checked" : ""}> 🔒 Nascosta ai giocatori (con tutti i suoi token) finché non premi «Mostra a tutti»</label>` : ""}
           </div>
         </div>
         <div class="modal-foot">
@@ -2669,12 +2885,20 @@
       try {
         const old = m.image || "";
         const image = await commitPicker(form, "image", "maps");
-        const saved = await saveRec("maps", { ...m, name: form.elements["name"].value.trim(), cols: clamp(num(form.cols.value) || 24, 4, 120), rows: clamp(num(form.rows.value) || 16, 4, 120), grid: form.grid.checked, image });
+        const hidden = form.elements["hidden"] ? form.elements["hidden"].checked : !!m.hidden;
+        const saved = await saveRec("maps", { ...m, name: form.elements["name"].value.trim(), cols: clamp(num(form.cols.value) || 24, 4, 120), rows: clamp(num(form.rows.value) || 16, 4, 120), grid: form.grid.checked, image, hidden });
+        if (m.id && !!m.hidden !== hidden) await resaveMapTokens(saved);
         if (old && old !== image) Store.deleteFiles([old]).catch(() => {});
         tt.view = saved.id; closeModal(); route(); toast("Mappa salvata", "ok");
         if (!sharedMapId()) shareMap(saved);   // la prima mappa la vedono subito tutti
       } catch (err) { fail(err); btn.disabled = false; }
     });
+  }
+
+  // la mappa è diventata visibile o nascosta: i suoi token cambiano visibilità insieme a lei
+  async function resaveMapTokens(m) {
+    for (const t of mapTokens(m)) await saveRec("tokens", t);
+    renderTokens(); renderSide();
   }
 
   function addTokens() {
@@ -2695,6 +2919,7 @@
             <div class="field"><label for="tk-n">Quanti</label><input id="tk-n" name="count" type="number" min="1" max="20" value="1"></div>
             <div class="field"><label for="tk-hp">HP max (facoltativo)</label><input id="tk-hp" name="hpMax" type="number" min="0"></div>
             <div class="field"><label for="tk-c">Colore</label><input id="tk-c" name="color" type="color" value="#ff2a3d"></div>
+            ${isGm() && Store.gmReady ? `<label class="check field full gm-check"><input type="checkbox" name="hidden"> 🔒 Aggiungi nascosti ai giocatori (li riveli poi con un clic)</label>` : ""}
           </div>
         </div>
         <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button type="submit" class="btn">Aggiungi</button></div>
@@ -2703,13 +2928,14 @@
     form.addEventListener("submit", async ev => {
       ev.preventDefault();
       const taken = new Set(mapTokens(m).map(t => num(t.x) + "," + num(t.y)));
-      const out = [];
+      const out = [], hidden = !!(form.elements["hidden"] && form.elements["hidden"].checked);
       for (const id of $$("input[name=ent]:checked", form).map(i => i.value)) {
         const e = state.entries.find(x => x.id === id);
-        out.push({ mapId: m.id, entryId: id, color: e.kind === "pg" ? "#3dff9a" : "#00f0ff", size: 1, ...freeCell(m, taken) });
+        // nome e immagine copiati: chi non vede la scheda (NPC segreto) vede comunque il token
+        out.push({ mapId: m.id, entryId: id, snapName: e.name, snapImage: imagesOf(e)[0] || "", color: e.kind === "pg" ? "#3dff9a" : "#00f0ff", size: 1, hidden, ...freeCell(m, taken) });
       }
       const name = form.elements["name"].value.trim(), n = clamp(num(form.count.value) || 1, 1, 20);
-      if (name) for (let i = 0; i < n; i++) out.push({ mapId: m.id, name: n > 1 ? `${name} ${i + 1}` : name, color: safeColor(form.color.value), size: 1, hpMax: form.hpMax.value === "" ? null : num(form.hpMax.value), ...freeCell(m, taken) });
+      if (name) for (let i = 0; i < n; i++) out.push({ mapId: m.id, name: n > 1 ? `${name} ${i + 1}` : name, color: safeColor(form.color.value), size: 1, hidden, hpMax: form.hpMax.value === "" ? null : num(form.hpMax.value), ...freeCell(m, taken) });
       if (!out.length) return toast("Scegli almeno un personaggio o scrivi un nome", "err");
       closeModal();
       for (const t of out) await saveRec("tokens", t);
@@ -2793,19 +3019,26 @@
         if (!m) return;
         let cur = { ...m };
         for (const x of mapTokens(m)) cur = { ...cur, init: await initFor(cur, x) };
-        return saveMap({ ...cur, turn: 0, round: 1 });
+        const first = initList(cur)[0];
+        return saveMap({ ...cur, turn: 0, turnId: first ? first.tokenId : null, round: 1 });
       }
       case "tt-next": {
         if (!m) return;
-        const n = initList(m).length; if (!n) return;
-        let turn = num(m.turn) + 1, round = num(m.round) || 1;
-        if (turn >= n) { turn = 0; round++; }
-        const saved = await saveMap({ ...m, turn, round });
+        const l = initList(m); if (!l.length) return;
+        let i = l.findIndex(it => it.tokenId === turnToken(m)) + 1, round = num(m.round) || 1;
+        if (i >= l.length) { i = 0; round++; }
+        const saved = await saveMap({ ...m, turn: i, turnId: l[i].tokenId, round });
         const tok = state.tokens.find(x => x.id === turnToken(saved));
-        if (tok) toast(`Turno di ${tokName(tok)}${turn === 0 ? ` · round ${round}` : ""}`);
+        if (tok) toast(`Turno di ${tokName(tok)}${i === 0 ? ` · round ${round}` : ""}`);
         return;
       }
-      case "tt-init-clear": return m && saveMap({ ...m, init: [], turn: 0, round: 1 });
+      case "tt-init-clear": return m && saveMap({ ...m, init: [], turn: 0, turnId: null, round: 1 });
+      case "tt-toggle-hidden": {
+        if (!t || !isGm()) return;
+        await saveToken({ ...t, hidden: !t.hidden });
+        toast(t.hidden ? `${tokName(t)} ora è visibile ai giocatori` : `${tokName(t)} ora è nascosto ai giocatori`);
+        return;
+      }
       case "tt-share-map": return m && shareMap(m);
       case "tt-follow": tt.view = null; tt.sel = null; return route();
     }
@@ -2815,6 +3048,8 @@
   async function shareMap(m) {
     if (!Store.canEdit()) return;
     try {
+      // una mappa nascosta prima diventa visibile, con i suoi token
+      if (m.hidden) { m = await saveRec("maps", { ...m, hidden: false }); await resaveMapTokens(m); }
       await saveSite({ tableMap: m.id });
       Store.send({ t: "rec", col: "meta", rec: { id: "site", tableMap: m.id } });
       tt.view = null; renderTools(); toast(`«${m.name || "Mappa"}» ora è visibile a tutti`, "ok");
@@ -2846,32 +3081,65 @@
     }
     const col = msg.col;
     if (col === "meta") { if (msg.rec && msg.rec.id === "site") applySharedMap(msg.rec.tableMap); return; }
-    if (!["rolls", "tokens", "maps", "entries"].includes(col)) return;
+    // riga diventata segreta: i giocatori la tolgono, i GM la rileggono dal database (sul canale non viaggia)
+    if (msg.t === "gm") {
+      if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes"].includes(col) || !msg.id) return;
+      const id = String(msg.id);
+      if (isGm()) { Store.get(col, id).then(rec => rec && applyLive(col, rec, true)).catch(e => console.warn(e)); return; }
+      return removeLive(col, id);
+    }
+    if (msg.t === "rec" && msg.rec && msg.rec.id) return applyLive(col, msg.rec, false);
+    if (msg.t === "del" && ["rolls", "tokens", "maps"].includes(col) && msg.id) return removeLive(col, String(msg.id));
+  }
+
+  // trusted = letto dal database (non dal canale pubblico)
+  function applyLive(col, rec, trusted) {
+    if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes"].includes(col)) return;
+    if (!trusted && (rec.gmOnly || ["notes", "gmnotes"].includes(col))) return;
     let oldTurn = null;
-    if (msg.t === "rec" && msg.rec && msg.rec.id) {
-      if (col === "entries") {
-        // dalle schede accetto solo la parte "sheet" di record già esistenti
-        const e = state.entries.find(x => x.id === msg.rec.id); if (!e) return;
-        upsert(state.entries, { ...e, sheet: msg.rec.sheet, updatedAt: msg.rec.updatedAt });
-        if (!$("#modal form")) refreshSheetView(e.id);
-      } else {
-        if (col === "maps") { const old = state.maps.find(x => x.id === msg.rec.id); oldTurn = old ? turnToken(old) + "|" + num(old.round) : null; }
-        if (col === "tokens") delete tt.remote[msg.rec.id];
-        upsert(state[col], msg.rec);
-        if (col === "tokens" && msg.rec.entryId && !state.entries.some(e => e.id === msg.rec.entryId)) refetchEntries();
-      }
-    } else if (msg.t === "del" && col !== "entries") {
-      state[col] = state[col].filter(x => x.id !== msg.id);
-      if (col === "tokens") { delete tt.remote[msg.id]; if (tt.sel === msg.id) tt.sel = null; }
-    } else return;
+    if (col === "entries" && !trusted) {
+      // dal canale accetto solo la parte "sheet" di schede già esistenti
+      const e = state.entries.find(x => x.id === rec.id); if (!e) return;
+      upsert(state.entries, { ...e, sheet: rec.sheet, updatedAt: rec.updatedAt });
+      if (!$("#modal form")) refreshSheetView(e.id);
+      refreshParty();
+      if (onTable()) { renderTokens(); renderSide(); }
+      return;
+    } else {
+      if (col === "maps") { const old = state.maps.find(x => x.id === rec.id); oldTurn = old ? turnToken(old) + "|" + num(old.round) : null; }
+      if (col === "tokens") delete tt.remote[rec.id];
+      upsert(state[col], rec);
+      if (col === "tokens" && rec.entryId && !state.entries.some(e => e.id === rec.entryId)) refetchEntries();
+    }
+    afterLive(col, rec, oldTurn);
+  }
+  function removeLive(col, id) {
+    if (!state[col]) return;
+    state[col] = state[col].filter(x => x.id !== id);
+    if (col === "tokens") { delete tt.remote[id]; if (tt.sel === id) tt.sel = null; }
+    if (col === "maps") { state.tokens = state.tokens.filter(t => t.mapId !== id); if (tt.view === id) tt.view = null; }
+    if (col === "entries" || col === "notes") {
+      // un record diventato segreto mentre un giocatore lo guardava: chiudo la finestra
+      if ($("#modal").open && location.hash.includes(id)) closeModal();
+      if (["database", "appunti", "party", "home"].includes(location.hash.replace(/^#\/?/, "").split("/")[0] || "home")) route();
+      return;
+    }
+    afterLive(col, null, null);
+  }
+  function afterLive(col, rec, oldTurn) {
     if (col === "rolls") { sortRolls(); renderLogs(); return; }
+    if (col === "notes" || col === "gmnotes" || col === "entries") {
+      if (/^#\/(gm|appunti|database|party)/.test(location.hash) && !$("#modal").open) route();
+      if (col === "entries" && onTable()) { renderTokens(); renderSide(); }
+      return;
+    }
     if (!onTable()) return;
     if (col === "maps") {
       // la mappa compare o sparisce del tutto: ridisegno la pagina; altrimenti aggiorno elenco e tavolo
       if (!!$("#tt-board") !== !!curMap()) return route();
       renderTools(); renderBoard();
       const m = curMap();
-      if (m && msg.rec && msg.rec.id === m.id && oldTurn !== null && oldTurn !== turnToken(m) + "|" + num(m.round)) {
+      if (m && rec && rec.id === m.id && oldTurn !== null && oldTurn !== turnToken(m) + "|" + num(m.round)) {
         const tok = state.tokens.find(x => x.id === turnToken(m));
         if (tok) toast(`Turno di ${tokName(tok)} · round ${num(m.round) || 1}`);
       }
@@ -2918,7 +3186,11 @@
         <div class="settings-sec">
           <h3>Modalità</h3>
           ${cloud ? (Store.canEdit()
-            ? `<p>Connesso come <b style="color:var(--green)">${esc(Store.user)}</b>. Le modifiche sono visibili a tutti.</p><button class="btn ghost small" data-action="logout">Esci</button>`
+            ? `<p>Connesso come <b style="color:var(--green)">${esc(Store.user)}</b>. Le modifiche sono visibili a tutti.</p>
+               <p>Ruolo: ${!Store.gmReady ? `<b>giocatore</b> · <span class="hint">il ruolo GM non è ancora attivo: va eseguito lo script <b>supabase/schema.sql</b> su Supabase (vedi README).</span>`
+                 : isGm() ? `<b style="color:var(--yellow)">GM</b> · vedi anche le cose segrete. <a href="#/gm" data-action="close">Apri l'area GM →</a>`
+                 : `<b>giocatore</b> · <span class="hint">un GM può darti il ruolo GM dalla sua area.</span>`}</p>
+               <button class="btn ghost small" data-action="logout">Esci</button>`
             : `<p>Database condiviso (cloud). Accedi per modificare.</p>
                <form id="login-form" class="fields">
                  <div class="field"><label for="l-mail">Email</label><input id="l-mail" type="email" name="email" required autocomplete="username"></div>
@@ -3042,6 +3314,7 @@
     if (page === "appunti") {
       $("#note-q").addEventListener("input", ev => { state.noteQ = ev.target.value; $("#notes-results").innerHTML = notesHtml(); });
     }
+    if (page === "gm") loadGmList();
     if (page === "tavolo") {
       bindTable(); renderLogs();
     }
@@ -3103,7 +3376,34 @@
       case "edit-gear": editGear(id); break;
       case "new-entry": editEntry(null); break;
       case "edit-entry": editEntry(id); break;
-      case "delete-entry": confirmDelete("entries", state.entries, id, r => r.name, r => { state.entries = state.entries.filter(x => x.id !== r.id); }); break;
+      case "delete-entry": confirmDelete("entries", state.entries, id, r => r.name, r => {
+        state.entries = state.entries.filter(x => x.id !== r.id);
+        const g = gmNoteOf(r.id);   // le note del GM se ne vanno con il personaggio
+        if (g) { Store.remove("gmnotes", g).catch(() => {}); state.gmnotes = state.gmnotes.filter(x => x.id !== g.id); }
+      }); break;
+      case "edit-gmnote": editGmNote(id); break;
+      case "gm-new-entry": editEntry(null, { kind: "npc", gmOnly: true }); break;
+      case "gm-new-note": editNote(null, { gmOnly: true, category: "GM" }); break;
+      case "gm-add": {
+        const inp = $("#gm-email"), email = inp && inp.value.trim();
+        if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("Scrivi un'email valida", "err"); break; }
+        try { await Store.addGm(email); inp.value = ""; toast(`${email} ora è GM`, "ok"); loadGmList(); } catch (err) { fail(err); }
+        break;
+      }
+      case "gm-remove": {
+        const email = el.dataset.email;
+        const me = norm(email) === norm(Store.user);
+        if (!(await askConfirm(me ? `Togliere te stesso dai GM? Non vedrai più le cose segrete finché un altro GM non ti riaggiunge.` : `Togliere ${email} dai GM?`, "Togli"))) break;
+        try { await Store.removeGm(email); toast("Fatto"); if (me) location.reload(); else loadGmList(); } catch (err) { fail(err); }
+        break;
+      }
+      case "gm-open-map": tt.view = id; tt.sel = null; location.hash = "#/tavolo"; break;
+      case "party-as": {
+        const e = state.entries.find(x => x.id === id); if (!e) break;
+        ls.set("nc-as", id); $$("[data-roll-as]").forEach(s => { s.value = id; });
+        toast(`Il Dice log ora tira come ${e.name}`, "ok"); openDrawer();
+        break;
+      }
       case "new-song": editSong(null); break;
       case "edit-song": editSong(id); break;
       case "delete-song": confirmDelete("songs", state.songs, id, r => r.title, r => { state.songs = state.songs.filter(x => x.id !== r.id); }); break;
@@ -3201,6 +3501,7 @@
     const t = ev.target;
     if (t.matches("[data-roll-as]")) { ls.set("nc-as", t.value || null); $$("[data-roll-as]").forEach(s => { s.value = t.value; }); }
     // cambio mappa: solo per me; il GM poi può premere "Mostra a tutti"
+    if (t.matches("[data-secret]")) { secretRoll = t.checked; ls.set("nc-secret", secretRoll); $$("[data-secret]").forEach(c => { c.checked = secretRoll; }); $$(".roll-form").forEach(f => f.classList.toggle("is-secret", secretRoll)); return; }
     if (t.id === "tt-map") { tt.view = t.value; tt.sel = null; tt.remote = {}; route(); return; }
     if (t.matches("[data-sk-all]")) { ls.set("nc-sk-all", t.checked); const sh = t.closest(".sh"); if (sh) refreshSheetView(sh.dataset.sheet); }
     if (t.matches("[data-init]")) {
@@ -3254,7 +3555,13 @@
       $("#app").innerHTML = `<div class="empty"><div class="big">// CONNESSIONE FALLITA</div>${esc(e.message || e)}<br><br>Controlla js/config.js e il README.</div>`;
       console.error(e); return;
     }
-    Store.onAuth(() => { closeModal(); route(); });
+    // accesso o uscita: ricarico i dati, perché un GM vede anche le righe segrete
+    Store.onAuth(async () => {
+      closeModal(); closeDrawer();
+      try { await loadAll(); } catch (e) { console.warn(e); }
+      tt.view = null; tt.sel = null; route();
+      if (isGm()) toast("Accesso come GM: vedi anche le cose segrete", "ok");
+    });
     ensureDrawer();
     try { Store.live(onLive, onLiveStatus); } catch (e) { console.warn("realtime", e); }
     window.addEventListener("hashchange", () => {

@@ -55,19 +55,53 @@ window.Store = (() => {
       sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
       const { data } = await sb.auth.getSession();
       session = data.session;
-      sb.auth.onAuthStateChange((_evt, s) => {
+      await checkSchema();
+      await refreshRole();
+      sb.auth.onAuthStateChange(async (_evt, s) => {
         const changed = (!!s) !== (!!session);
         session = s;
-        if (changed) authListeners.forEach(f => f());
+        if (changed) { await refreshRole(); authListeners.forEach(f => f()); }
       });
     } else {
       idb = await openIdb();
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+      await refreshRole();
     }
+  }
+
+  // ---------- ruolo GM ----------
+  // gmSchema: il database ha la colonna gm_only e la tabella gm_users (script supabase/schema.sql eseguito)
+  // In modalità locale si è sempre GM; per provare la vista giocatore: localStorage "nc-local-player" = "1"
+  let gmSchema = false, gm = false;
+  async function checkSchema() {
+    const { error } = await sb.from("records").select("gm_only").limit(1);
+    gmSchema = !error;
+  }
+  async function refreshRole() {
+    if (!cloud) { gm = localStorage.getItem("nc-local-player") !== "1"; return; }
+    gm = false;
+    if (!gmSchema || !session) return;
+    const { data, error } = await sb.rpc("is_gm");
+    gm = !error && data === true;
+  }
+  async function listGms() {
+    if (!cloud) return [];
+    const { data, error } = await sb.from("gm_users").select("email,added_at").order("added_at");
+    if (error) throw error;
+    return data;
+  }
+  async function addGm(email) {
+    const { error } = await sb.from("gm_users").upsert({ email: String(email).trim().toLowerCase() });
+    if (error) throw error;
+  }
+  async function removeGm(email) {
+    const { error } = await sb.from("gm_users").delete().eq("email", email);
+    if (error) throw error;
   }
 
   // ---------- records ----------
   // limit: solo gli N record aggiornati più di recente (es. il log dei dadi)
+  // Le righe segrete (gmOnly) arrivano solo ai master: nel cloud le filtra il database.
   async function list(col, { limit } = {}) {
     if (cloud) {
       let q = sb.from("records").select("id,data,updated_at").eq("collection", col);
@@ -77,9 +111,21 @@ window.Store = (() => {
       return data.map(r => ({ ...r.data, id: r.id }));
     }
     const all = await tx("records", "readonly", s => s.getAll());
-    let out = all.filter(r => r._col === col).map(({ _key, _col, ...r }) => r);
+    let out = all.filter(r => r._col === col && (gm || !r.gmOnly)).map(({ _key, _col, ...r }) => r);
     if (limit) out = out.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(0, limit);
     return out;
+  }
+  // un solo record (null se non esiste o se non posso vederlo)
+  async function get(col, id) {
+    if (cloud) {
+      const { data, error } = await sb.from("records").select("id,data").eq("collection", col).eq("id", id).maybeSingle();
+      if (error) throw error;
+      return data ? { ...data.data, id: data.id } : null;
+    }
+    const r = await tx("records", "readonly", s => s.get(col + ":" + id));
+    if (!r || (r.gmOnly && !gm)) return null;
+    const { _key, _col, ...rec } = r;
+    return rec;
   }
 
   // ---------- tempo reale (tavolo di gioco) ----------
@@ -113,7 +159,10 @@ window.Store = (() => {
     const data = { ...rec, id: rec.id || uid(), createdAt: rec.createdAt || now, updatedAt: now };
     if (cloud) {
       const { id, ...payload } = data;
-      const { error } = await sb.from("records").upsert({ id, collection: col, data: payload, updated_at: now });
+      const row = { id, collection: col, data: payload, updated_at: now };
+      if (gmSchema) row.gm_only = !!data.gmOnly;
+      else if (data.gmOnly) throw new Error("Per le cose segrete del GM va prima eseguito lo script supabase/schema.sql su Supabase");
+      const { error } = await sb.from("records").upsert(row);
       if (error) throw error;
     } else {
       await tx("records", "readwrite", s => s.put({ ...data, _key: col + ":" + data.id, _col: col }));
@@ -243,8 +292,10 @@ window.Store = (() => {
 
   return {
     init, list, save, remove, uploadFile, deleteFiles, resolve, exportAll, importAll,
-    signIn, signOut, live, send,
+    signIn, signOut, live, send, get, listGms, addGm, removeGm,
     get liveOk() { return liveOk; },
+    get isGm() { return gm; },
+    get gmReady() { return !cloud || gmSchema; },
     onAuth: fn => authListeners.add(fn),
     get mode() { return cloud ? "cloud" : "local"; },
     get user() { return session && session.user ? session.user.email : null; },
