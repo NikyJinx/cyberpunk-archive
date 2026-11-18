@@ -262,7 +262,14 @@ window.CPR = (() => {
       weapons: { 1: [["shotgun", "vhpistol", "bow"], ["mmelee"]], 2: [["shotgun", "ar"], ["vhpistol", "mmelee"]], 3: [["ar", "shotgun"], ["vhpistol", "hmelee"]], 4: [["ar", "shotgun"], ["vhpistol", "hmelee"], ["gl"]] },
       cyber: ["Collegamento Neurale (Connettori d'Interfaccia)", "Sistema Cyberudito (Udito Amplificato)", "Cyberocchio (TeleOttica)"], gear: ["Comunicatore Radio", "Traccianti", "Attrezzi"] },
   ];
+  // Netrunner: Interfaccia, Azioni NET per grado e Cyberdeck (programmi da js/net.js)
+  ROLES.push({ id: "netrunner", label: "Netrunner", ability: "Interface", abilityIt: "Interfaccia", prim: ["INT", "TECH"], sec: ["REF", "COOL"],
+    combat: ["handgun"], tech: ["electronics", "basictech", "cybertech"], other: ["perception", "library", "conceal", "stealth", "cryptography"],
+    weapons: { 1: [["mpistol", "hpistol"], ["lmelee"]], 2: [["hpistol", "smg"], ["lmelee"]], 3: [["hsmg", "smg", "hpistol"], ["lmelee"]], 4: [["hsmg", "smg"], ["vhpistol"]] },
+    cyber: ["Collegamento Neurale (Connettori d'Interfaccia)", "Chipware (Chip di Memoria)", "Cyberocchio (MicroOttica)", "Comunicatore Radio"], gear: ["Occhiali VR", "Tuta Bodyweight", "Agent"] });
   const roleOf = id => ROLES.find(r => r.id === id) || ROLES[0];
+  // Azioni NET per grado d'Interfaccia: 1–3 → 2 · 4–6 → 3 · 7–9 → 4 · 10 → 5
+  const netActions = rank => { const r = +rank || 0; return r >= 10 ? 5 : r >= 7 ? 4 : r >= 4 ? 3 : 2; };
   // grado della Capacità di Ruolo di partenza per Fascia e Livello (poi si alza con i Punti Elite)
   const ROLE_RANK = { 1: { base: 2, hardened: 3, elite: 4 }, 2: { base: 4, hardened: 4, elite: 5 }, 3: { base: 4, hardened: 6, elite: 6 }, 4: { base: 4, hardened: 6, elite: 6 } };
   const roleRank = (tier, lvl) => (ROLE_RANK[tierOf(tier).n] || ROLE_RANK[1])[LEVEL_IDS.includes(lvl) ? lvl : "base"];
@@ -396,6 +403,7 @@ window.CPR = (() => {
       if (R.id === "solo") { ability.ca = { ...autoCA(0), ...(E.ca || autoCA(rank)) }; ability.caUsed = caCost(ability.ca); }
       if (R.id === "tech") ability.maker = { field: rank, upgrade: rank };
       if (R.id === "medtech") { ability.med = { ...autoMed(rank), ...(E.med || {}) }; }
+      if (R.id === "netrunner") { ability.actions = netActions(rank); ability.deck = E.deck || { name: "Cyberdeck", slots: 7, items: [] }; }
       if (R.id === "nomad") ability.vehicles = (GARAGE_VEHICLES.filter(([a]) => a <= Math.max(1, rank)).map(v => v[2])).join(" · ");
     }
     const ca = ability && ability.ca;
@@ -535,6 +543,7 @@ window.CPR = (() => {
       armor: { head: { type: A.id, name: A.sp ? A.label : "", sp: A.sp }, body: { type: A.id, name: A.sp ? A.label : "", sp: A.sp } },
       noPen: false, weapons, skills: [...skills.values()], roleRank: rank,
       ca: R.id === "solo" ? autoCA(rank) : null, med: R.id === "medtech" ? autoMed(rank) : null,
+      deck: R.id === "netrunner" && window.NET ? NET.autoDeck(tier, level) : null,
       hpOverride: null, extreme: level === "elite" && tier >= 3 ? (extreme === null ? Math.random() < 0.12 : !!extreme) : false,
       extraPoints: Math.max(0, +extraPoints || 0), frameBody: 16 + die(3) - 1, comp: Math.random() < 0.5 ? "sp" : "hp", picks: [],
       cyber: shuffle(R.cyber).slice(0, Math.min(R.cyber.length, tier - 1 + LEVEL_IDS.indexOf(level))).join(", "),
@@ -551,7 +560,7 @@ window.CPR = (() => {
   // ---------- migrazione ----------
   // v1 = vecchio generatore (livelli 1–5, basi già sommate) · v2 = Fascia × Tipo × Livello · v3 = Fascia × Livello + Ruolo
   const TYPE_ROLE = { solo: "solo", assassin: "solo", sniper: "solo", tracker: "solo", pyro: "solo", boss: "solo", veteran: "solo", merc: "solo",
-    tech: "tech", medtech: "medtech", nomad: "nomad", outrider: "nomad", roadganger: "nomad" };
+    tech: "tech", medtech: "medtech", nomad: "nomad", netrunner: "netrunner", outrider: "nomad", roadganger: "nomad" };
   const OLD_TIER = { booster: 1, ganger: 1, scavenger: 1, roadganger: 1, bodyguard: 1, secop: 1, security: 1, netrunner: 2, reclaimer: 2, secagent: 2, ncpd: 2, nomad: 2, outrider: 2, tech: 2, medtech: 2,
     solo: 3, merc: 3, veteran: 3, assassin: 3, tracker: 3, pyro: 3, sniper: 3, cyberpsycho: 4, boss: 4 };
   function normalizeEnemy(E0) {
@@ -561,7 +570,7 @@ window.CPR = (() => {
     const role = TYPE_ROLE[E.type] || "none", R = roleOf(role);
     const rank = R.ability ? Math.max(roleRank(E.tier, E.level), (E.ability && E.ability.name === R.ability ? +E.ability.rank : 0) || 0) : 0;
     const picks = (E.picks || []).filter(k => !k.startsWith("stim:")).map(k => k.startsWith("role:") && +k.slice(5) < 7 ? null : k).filter(Boolean);
-    const out = { ...E, v: 3, role, roleRank: rank, ca: role === "solo" ? autoCA(rank) : null, med: role === "medtech" ? autoMed(rank) : null, extraPoints: 0, picks };
+    const out = { ...E, v: 3, role, roleRank: rank, ca: role === "solo" ? autoCA(rank) : null, med: role === "medtech" ? autoMed(rank) : null, deck: role === "netrunner" && window.NET ? NET.autoDeck(E.tier, E.level) : null, extraPoints: 0, picks };
     delete out.type; delete out.ability;
     const notes = [];
     if (E.ability && E.ability.name && E.ability.name !== R.ability) notes.push(`Capacità di Ruolo precedente: ${E.ability.name} ${E.ability.rank}`);
@@ -602,6 +611,6 @@ window.CPR = (() => {
 
   return { STATS, SKILL_GROUPS, SKILLS, skill, WEAPON_SKILLS, ROLE_ABILITIES, hpMax, seriousAt, wound, die, check, parse, rollExpr,
     WEAPON_TYPES, weaponType, brawlDmg, ARMOR_TYPES, armorType, PEN_STATS, armorPen, BODY_IMPLANTS, bodyImplant, FIREARMS,
-    TIERS, tierOf, levelOf, effMax, LEVEL_IDS, LEVEL_LABELS, ROLES, roleOf, roleRank, CA_USES, caCost, autoCA, autoMed, GARAGE_VEHICLES,
+    TIERS, tierOf, levelOf, effMax, LEVEL_IDS, LEVEL_LABELS, ROLES, roleOf, roleRank, netActions, CA_USES, caCost, autoCA, autoMed, GARAGE_VEHICLES,
     eliteCatalog, canPick, rollElite, rollWeapons, budgetOf, apexLimit, deriveEnemy, validateEnemy, generateEnemy, normalizeEnemy };
 })();

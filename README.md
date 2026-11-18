@@ -41,6 +41,13 @@ Ogni PG e NPC ha una **Scheda** con le regole di *Cyberpunk RED* (nomi in ingles
 
 Basta un clic su una STAT, un'abilità o un'arma per **tirare i dadi**: base + 1d10 con il successo critico sul 10 e il fallimento critico sull'1, malus delle ferite applicato da solo, campo **MOD** per i modificatori di situazione. I danni delle armi segnalano la **Critical Injury** quando escono due 6.
 
+#### ⌁ Cyberdeck (Netrunner)
+Se il ruolo è **Netrunner** (o la Role Ability è *Interface*) la scheda ha il riquadro **Cyberdeck**, con il catalogo del manuale base (pag. 201–208, nomi dell'edizione italiana):
+- **programmi** Boost, Difensivi, Anti-Programma e Anti-Operatore, **Black ICE** (2 slot) e **hardware** (Barriera KRASH, Blocco DNA, Cavi Isolati, Circuiti Rinforzati, Disco di Backup, Portata Migliorata), più programmi personalizzati; il contatore degli slot tiene conto della Tuta Bodyweight e del deck nel cyberbraccio;
+- ogni programma si tira come un'arma: **Attack** = Interface + ATK + 1d10 (i Black ICE del deck usano il loro ATK), poi il **danno** (REZ ai programmi o al cervello, con i valori diversi contro i Black ICE) o l'**effetto** con i suoi dadi;
+- le **Capacità d'Interfaccia** (Backdoor, Bypass, Cloak, Control, I-D, Mapper, Scanner, Virus, Zap), **Defense** e **Speed** sono pulsanti; i Boost Rezzati aggiungono il loro +2 da soli;
+- durante la Netrun si tengono **Rez/Derez**, i **REZ** rimasti, i programmi «una volta per Netrun» già usati e quelli Distrutti; «↺ Nuova Netrun» rimette tutto a posto. Le **Azioni NET** si leggono dal Rank (2, 3, 4 o 5).
+
 ### 🎲 Tavolo — `// TACTICAL_GRID`
 Il tavolo di gioco per i combattimenti, condiviso **in tempo reale** tra tutti quelli che hanno il sito aperto.
 - **Mappe** con immagine di sfondo e griglia (1 casella = 2 m), zoom con la rotella e spostamento della vista trascinando lo sfondo.
@@ -48,6 +55,9 @@ Il tavolo di gioco per i combattimenti, condiviso **in tempo reale** tra tutti q
 - **Token** trascinabili per PG, NPC e nemici generici, con la barra degli HP presa dalla scheda. Nel pannello del token HP e armatura (SP di testa e corpo) hanno le barre e i pulsanti per danni, ablazione e riparazione; i token generici e i nemici hanno HP e SP propri, modificabili anche da «Modifica». Durante lo spostamento una **freccia** va dalla casella di partenza a quella d'arrivo, con la distanza in metri, e la vedono anche gli altri giocatori. Le frecce della tastiera muovono il token selezionato di una casella.
 - **Iniziativa**: un pulsante tira REF + 1d10 per tutti, poi «Turno ▶» passa al prossimo e conta i round.
 - **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto: `2d6+3` per un tiro libero, `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
+
+### ⌬ NET — `// NET_ARCHITECTURE`
+Le Architetture di Rete che il GM sta mostrando: compaiono piano per piano mentre il Netrunner scende, con Password, File, Nodi e Black ICE (REZ compresi), aggiornate in tempo reale. I piani non ancora raggiunti e le note del GM non arrivano ai giocatori.
 
 ### 👥 Party — `// CREW_MANIFEST`
 Le schede di tutti i PG affiancate: HP con i pulsanti per danni e cure, armatura con l'ablazione, Luck, umanità, iniziativa, Death Save, le abilità più alte e le armi da tirare con un clic, e «Tira come» per far partire il Dice log a nome di quel PG. Ognuno può usare qualsiasi scheda.
@@ -64,13 +74,15 @@ Una sezione che vedono **solo i GM**: le righe segrete non arrivano proprio ai g
   - **Solo**: i punti di *Sensi da Combattimento* si distribuiscono tra gli usi del manuale (Attacco Preciso, Reazione, Individuare Minacce e Debolezze, Deflettere Danni, Recuperare da un Disastro) e valgono nei tiri;
   - **Tech**: *Creatore*, con l'Esperienza sul Campo sommata alle prove tecniche;
   - **Medtech**: *Medicina*, divisa tra Chirurgia (abilità Surgery) e Tecnologia Medica;
-  - **Nomade**: *Garage*, sommato a guida, pilotaggio e tecnologie dei veicoli, con la Scuderia di Famiglia del suo grado.
+  - **Nomade**: *Garage*, sommato a guida, pilotaggio e tecnologie dei veicoli, con la Scuderia di Famiglia del suo grado;
+  - **Netrunner**: *Interfaccia* con le sue Azioni NET e un **Cyberdeck** generato per Fascia e Livello (modificabile, «⚄ Deck casuale»), che si tira come quello dei PG.
 
   I **Punti extra** si aggiungono al budget, così i potenziamenti si possono spuntare a qualsiasi livello. La generazione casuale li pesca con peso 1/costo; nel modulo un contatore impedisce di sforare. Accanto alle armi c'è **⚄ Ripesca** (tutte o una sola).
 
   Ogni valore è scomposto: **base_naturale = STAT + livello della skill**, **base_effettiva = naturale + HQ + Smartgun** (entro il tetto della fascia) **+ bonus del ruolo**, con il malus dell'armatura indicato a parte; il Dice log mostra ogni addendo. Le STAT naturali non superano 8; il BODY sale solo con gli impianti (Bone Lace 10, Linear Frame Σ 12, β 14, superiore 16–18), e 9–10 si comprano solo in Fascia 3–4. I **tratti apice** (REF/DEX 10, Ruolo 10, skill di combattimento 10, BODY 16–18, Metalgear 18) sono al massimo 1 in Fascia 3 e 1 in Fascia 4, 2 se Estremo. Con la **regola del 20** (STAT 10 + skill 10) scatta la compensazione: SP massimo 11 oppure HP ridotti. Un validatore controlla tetti, punti e fasce mentre compili. Le schede delle versioni precedenti si convertono da sole all'apertura.
 
   Con «⇲ Sul tavolo» si mettono N copie sulla mappa, anche nascoste: ogni token ha HP e SP propri e tira dal suo pannello.
+- **⌬ Architetture NET**: «⚄ Genera» segue il manuale (pag. 209–211): 3d6 piani, un bivio per ogni d10 da 7 in su (i bivi partono dopo il 2° piano e il ramo principale resta il più profondo), tabella dell'**Ingresso** (1d6) per i primi due piani e dei **piani inferiori** (3d6) secondo la difficoltà Base / Standard / Non Comune / Avanzata (VD 6 / 8 / 10 / 12), ritirando programmi e Password già usciti, più un **Demone** se ci sono Nodi di Controllo. Oppure si costruisce a mano: piani (Password, File, Nodo di Controllo, Black ICE, altro) con VD, descrizione e note, rami, Demoni, ⚄ per ritirare un singolo piano. Nella vista di gioco ogni Black ICE ha i pulsanti **Agguato** (VEL), **Attacco** (ATT), danno o effetto e **Difesa** (DIF), con i REZ da scalare; i Demoni tirano Zap, Control, Difesa e Combattimento. Con «👁 Mostra ai giocatori» la pagina **NET** mostra a tutti i soli piani rivelati con 👁 (rivelarne uno rivela quelli sopra).
 - Con il ruolo GM attivo, mappe, token, turni e «Mostra a tutti» li gestiscono solo i GM. I giocatori muovono i token visibili, cambiano gli HP e tirano.
 
 **Per attivarlo** (una volta sola): su Supabase apri *SQL Editor*, incolla tutto `supabase/schema.sql`, togli i due trattini dall'ultima riga mettendo l'email del primo GM e premi *Run*. Gli altri GM si aggiungono poi dal sito.
@@ -137,6 +149,8 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 | `tokens` | token sulle mappe, collegati alle schede del database |
 | `rolls` | tiri di dado e messaggi del dice log |
 | `gmnotes` | note del GM sui personaggi (sempre segrete) |
+| `netarch` | architetture NET del GM (sempre segrete) |
+| `netview` | copia pubblica di un'architettura: solo i piani rivelati |
 
 Le schede dei personaggi stanno dentro `entries` (campo `sheet`). Il tavolo usa i canali *broadcast* di Supabase Realtime per gli aggiornamenti istantanei: non serve configurare niente nel database. Se il canale non è disponibile, il tavolo si aggiorna da solo ogni pochi secondi. Anche con il canale attivo, ogni 30 secondi (e quando si torna sulla pagina) il tavolo si riallinea con il database, così un messaggio perso non lascia nessuno indietro. La mappa mostrata a tutti è salvata in `meta` (campo `tableMap`).
 
@@ -155,7 +169,8 @@ index.html              pagina unica
 css/style.css           tema grafico
 js/config.js            collegamento a Supabase (chiave pubblica "anon")
 js/store.js             livello dati: Supabase o IndexedDB, canale in tempo reale
-js/dice.js              STAT e abilità di Cyberpunk RED, motore dei dadi
+js/dice.js              STAT e abilità di Cyberpunk RED, motore dei dadi, generatore dei nemici
+js/net.js               Netrunning: programmi, Black ICE, hardware, Demoni, generatore di architetture
 js/app.js               interfaccia, routing e logica delle sezioni
 supabase/schema.sql     tabella, regole di accesso e storage
 tools/suno-import.js    importa le playlist Suno come tracce

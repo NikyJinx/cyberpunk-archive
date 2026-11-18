@@ -104,7 +104,7 @@
   // ---------- stato ----------
   const state = {
     entries: [], songs: [], notes: [], events: [], weather: [], diary: [], quests: [], site: null,
-    maps: [], tokens: [], rolls: [], gmnotes: [],
+    maps: [], tokens: [], rolls: [], gmnotes: [], netarch: [], netview: [],
     filter: { q: "", kind: "all", faction: "", status: "", sort: "name" },
     noteQ: "", diaryQ: "", cal: null,
   };
@@ -194,6 +194,8 @@
       Object.assign(state, { maps, tokens, rolls }); sortRolls();
     } catch (e) { console.warn("tavolo", e); }
     try { state.gmnotes = isGm() ? await Store.list("gmnotes") : []; } catch (e) { state.gmnotes = []; console.warn("gm", e); }
+    // NET: le architetture sono del GM, le copie pubbliche (solo i piani rivelati) le vedono tutti
+    try { state.netview = await Store.list("netview"); state.netarch = isGm() ? await Store.list("netarch") : []; } catch (e) { state.netview = state.netview || []; state.netarch = []; console.warn("net", e); }
   }
   async function saveSite(patch) {
     state.site = await Store.save("meta", { ...(state.site || {}), id: "site", ...patch });
@@ -219,7 +221,7 @@
   const MENU_INFO = {
     home: ["⌂", "Pagina iniziale"], database: ["▤", "PG, NPC, fazioni, luoghi"], diario: ["✎", "Cronaca e quest"],
     calendario: ["▦", "Eventi e meteo"], appunti: ["✉", "Note della campagna"], tracce: ["♫", "Colonna sonora"],
-    party: ["◈", "Schede dei PG"], tavolo: ["⬡", "Mappa, token e dadi"], gm: ["🔒", "Solo per i GM"],
+    party: ["◈", "Schede dei PG"], tavolo: ["⬡", "Mappa, token e dadi"], net: ["⌬", "Architetture di Rete"], gm: ["🔒", "Solo per i GM"],
   };
   function renderSideMenu() {
     const box = $("#side-nav"); if (!box) return;
@@ -288,6 +290,7 @@
     }
     else if (page === "tavolo") app.innerHTML = viewTable();
     else if (page === "party") app.innerHTML = viewParty();
+    else if (page === "net") app.innerHTML = viewNet();
     else if (page === "gm") {
       if (!isGm()) { location.replace("#/home"); return; }
       app.innerHTML = viewGm();
@@ -298,6 +301,7 @@
     bindPage(page);
     if (page === "database" && arg) openEntry(arg);
     if (page === "appunti" && arg) openNote(arg);
+    if (page === "net") drawArchLinks(app);
     if (viewKey !== lastView) { window.scrollTo(0, 0); lastView = viewKey; }
     renderChrome();
   }
@@ -906,15 +910,16 @@
   let sheetMod = 0;   // modificatore situazionale (campo MOD della scheda), vale per i tiri successivi
 
   // prova con le regole di Cyberpunk RED: base + 1d10, malus ferite e MOD
-  function sheetCheck(e, label, parts) {
+  function sheetCheck(e, label, parts, extra = {}) {
     const mods = [...parts];
     const w = woundOf(e);
     if (w.pen) mods.push({ l: w.label, v: w.pen });
     if (sheetMod) mods.push({ l: "MOD", v: sheetMod });
-    postRoll({ kind: "check", who: e.name, entryId: e.id, label, ...CPR.check(mods) });
+    postRoll({ kind: "check", who: e.name, entryId: e.id, label, ...CPR.check(mods), ...extra });
   }
 
   function sheetRoll(e, what) {
+    if (what.startsWith("deck:")) return deckRoll(sheetDeckCtx(e), what.slice(5));
     const [type, a, b] = what.split(":");
     if (type === "stat") {
       const st = CPR.STATS.find(s => s.id === a);
@@ -1062,6 +1067,8 @@
             ${roll(`wpn:${i}:atk`, "Attack", "btn small")}
             ${wp.dmg ? roll(`wpn:${i}:dmg`, `Damage ${esc(wp.dmg)}`, "btn small yellow") : ""}
           </div>`; }).join("")}</div>` : ""}
+        ${isNetrunner(e) ? deckHtml(s.deck, { iface: ifaceOf(e), roll: w => `data-action="sheet-roll" data-id="${id}" data-roll="deck:${w}"`,
+          adj: edit ? (i, op) => `data-action="deck-adj" data-id="${id}" data-i="${i}" data-op="${op}"` : null, reset: edit ? `data-action="deck-adj" data-id="${id}" data-op="reset"` : "" }) : ""}
 
         <div class="sh-sec-head"><h4>Skills</h4><label class="check"><input type="checkbox" data-sk-all ${showAll ? "checked" : ""}> mostra anche le abilità a 0</label></div>
         <div class="sk-head"><span>Skill</span><span>STAT</span><span>LVL</span><span>BASE</span></div>
@@ -1132,6 +1139,7 @@
           <h3 class="sh-h">Weapons</h3>
           <div class="sh-rows" id="sh-wpn">${(s.weapons || []).map(wpnRow).join("")}</div>
           <button type="button" class="btn ghost small cyan" data-sh-add="wpn">+ Arma</button>
+          ${isNetrunner(e) ? `<h3 class="sh-h">Cyberdeck <small>Interface = Rank della Role Ability · programmi 1 slot, Black ICE 2, hardware come indicato</small></h3>${deckEditorHtml(s.deck)}` : ""}
 
           <div class="fields" style="margin-top:18px">
             <div class="field full"><label for="sh-crit">Critical Injuries</label><textarea id="sh-crit" name="crit" rows="2">${esc(s.crit || "")}</textarea></div>
@@ -1144,6 +1152,7 @@
         </div>
       </form>`);
     const form = $("#sheet-form");
+    if ($(".nd-edit", form)) bindDeckEditor(form);
     form.addEventListener("input", ev => {
       if (/^st-(BODY|WILL)$/.test(ev.target.name)) $("#sh-auto-hp").textContent = CPR.hpMax(num(form["st-BODY"].value), num(form["st-WILL"].value));
     });
@@ -1165,6 +1174,7 @@
     });
     form.addEventListener("submit", async ev => {
       ev.preventDefault();
+      const deck = readDeck(form, s.deck || null);
       const v = n => form[n].value.trim(), nv = n => v(n) === "" ? null : num(v(n));
       const stats = {}, skills = {};
       for (const st of CPR.STATS) { const x = nv("st-" + st.id); if (x != null) stats[st.id] = x; }
@@ -1179,7 +1189,7 @@
         if (old.sp !== sp) armor[loc].cur = sp;
       }
       const sheet = { ...s, owner: v("owner"), ability: v("ability"), rank: nv("rank"), stats, skills, custom, weapons, armor, armorNoPen: form.elements["armorNoPen"].checked,
-        hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes") };
+        hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes"), deck };
       try {
         const saved = await Store.save("entries", { ...e, sheet });
         upsert(state.entries, saved); liveSend("entries", saved);
@@ -1187,6 +1197,204 @@
         if (onTable()) { renderTokens(); renderSide(); }
       } catch (err) { fail(err); }
     });
+  }
+
+
+  // ---------- CYBERDECK (Netrunner) ----------
+  // sheet.deck = { name, slots, bodyweight, cyberarm, items[{ ref, …campi del personalizzato, cur (REZ attuale), on (Rezzato), used, dead }] }
+  // Lo stesso riquadro serve alle schede dei PG (con lo stato della Netrun) e ai nemici Netrunner (solo tiri).
+  const isNetrunner = e => /netrunner/i.test((e && e.role) || "") || /^(interface|interfaccia)$/i.test(String(sheetOf(e).ability || "").trim())
+    || !!(((sheetOf(e).deck || {}).items) || []).length;
+  const ifaceOf = e => num(sheetOf(e).rank);
+  const clsTag = I => I.hw ? "Hardware" : I.ice ? `Black ICE · ${(NET.CLASSES[I.cls] || {}).short || ""}` : (NET.CLASSES[I.cls] || {}).label || "";
+  const vsOf = I => I.cls === "antiprogram" ? "vs DEF + 1d10 di un programma o Black ICE" : "vs Interface + 1d10 del Netrunner";
+
+  // o = { iface, roll(what) → attributi del pulsante, adj(i, op) → attributi (null = sola lettura), reset → attributi }
+  function deckHtml(deck, o) {
+    deck = deck || { items: [] };
+    const S = NET.deckSlots(deck), B = NET.boosts(deck), items = deck.items || [];
+    const bsum = k => (B[k] || []).reduce((t, b) => t + b.v, 0);
+    const btn = (what, inner, cls = "chip", title = "") => `<button type="button" class="${cls}" ${o.roll(what)} ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
+    const ad = (i, op, inner, title, cls = "gp-btn") => `<button type="button" class="${cls}" ${o.adj(i, op)} title="${esc(title)}" aria-label="${esc(title)}">${inner}</button>`;
+    const abil = NET.ABILITIES.map(a => btn("ab:" + a.id, `${esc(a.name)} <b>${o.iface + bsum(a.id)}</b>`, a.attack ? "chip r" : "chip",
+      `${a.name}: Interface${bsum(a.id) ? " + boost" : ""} + 1d10 · ${a.eff}`) + (a.dmg ? btn(`ab:${a.id}:dmg`, esc(a.dmg[0].x), "chip y", `Danno dello ${a.name}`) : "")).join("");
+    const rows = items.map((it, i) => {
+      const I = NET.itemInfo(it), cur = NET.curRez(it, I), rezzable = NET.hasRez(I), off = !I.ice && NET.offensive(I.cls);
+      const stats = I.hw ? `${I.slots} slot` : I.ice ? `PER ${I.per} · SPD ${I.spd} · ATK ${I.atk} · DEF ${I.def} · REZ ${cur}/${I.rez} · ${I.slots} slot`
+        : `ATK ${I.atk} · DEF ${I.def} · REZ ${rezzable ? `${cur}/` : ""}${I.rez}`;
+      let acts = "";
+      if (!I.hw && !it.dead) {
+        if (I.ice || off) acts += btn(`it:${i}:atk`, `Attack <b>${I.ice ? I.atk : o.iface + I.atk}</b>`, "btn small", I.ice ? `ATK ${I.atk} + 1d10 · ${vsOf(I)}` : `Interface ${o.iface} + ATK ${I.atk} + 1d10 · ${vsOf(I)}`);
+        (I.dmg || []).forEach((d, j) => { acts += btn(`it:${i}:dmg:${j}`, `${esc(d.x)}${d.u === "REZ" ? " REZ" : ""} <small>${esc(d.l)}</small>`, "btn small yellow", `${I.name}: ${d.x} ${d.l}`); });
+        if ((I.fx || []).length) acts += btn(`it:${i}:fx`, `Effect <small>${esc(I.fx.map(f => f.x).join(" / "))}</small>`, "btn small yellow", I.eff);
+        else if (!(I.dmg || []).length && (off || I.ice)) acts += btn(`it:${i}:fx`, "Effect", "btn small yellow", I.eff);
+        if (rezzable && (I.ice || I.def > 0)) acts += btn(`it:${i}:def`, `DEF <b>${I.def}</b>`, "btn small ghost cyan", "Difesa: DEF + 1d10 contro un attacco");
+      }
+      let ctl = "";
+      if (o.adj && !I.hw) {
+        if (rezzable && !it.dead) ctl += ad(i, "on", it.on ? "◉ Rezzed" : "○ Rez", it.on ? "Disattiva (Azione NET)" : "Attiva (Azione NET)", `btn small ghost cyan nd-tog ${it.on ? "on" : ""}`);
+        if (rezzable && !it.dead) ctl += `<span class="sh-adj">${ad(i, "rez:-1", "−1", "−1 REZ")}${ad(i, "rez:1", "+1", "+1 REZ")}</span>${rezIn(sg => o.adj(i, "rez:in" + sg))}`;
+        if (I.once) ctl += ad(i, "used", it.used ? "✓ usato" : "1×", it.used ? "Già usato in questa Netrun: clicca per annullare" : "Una volta per Netrun: segna come usato", `btn small ghost ${it.used ? "yellow" : ""}`);
+        ctl += ad(i, "dead", it.dead ? "↺" : "✕", it.dead ? "Ripristina (non più Distrutto)" : "Segna come Distrutto", "gp-btn del");
+      }
+      const st = [rezzable && it.on && !it.dead ? "on" : "", it.dead ? "dead" : "", rezzable && cur <= 0 ? "derez" : ""].join(" ");
+      return `<div class="wpn nd-item ${I.hw ? "hw" : I.ice ? "ice" : esc(I.cls)} ${st}">
+        <span class="wpn-n"><span class="nd-name">${esc(I.label)} <span class="nd-cls">${esc(clsTag(I))}</span>${it.used ? ` <span class="nd-cls used">usato</span>` : ""}${it.dead ? ` <span class="nd-cls dead">distrutto</span>` : rezzable && cur <= 0 ? ` <span class="nd-cls dead">derezzato</span>` : ""}</span>
+          <small>${stats}</small>${rezzable ? `<span class="sp-bar nd-bar" title="REZ ${cur} / ${I.rez}"><i style="width:${I.rez ? cur / I.rez * 100 : 0}%"></i></span>` : ""}${I.eff ? `<em>${esc(I.eff)}</em>` : ""}</span>
+        ${acts || ctl ? `<span class="nd-acts">${acts}${ctl}</span>` : ""}
+      </div>`;
+    }).join("");
+    const boostTxt = Object.entries(B).map(([k, l]) => `${k === "speed" ? "Speed" : (NET.ABILITIES.find(a => a.id === k) || {}).name} +${l.reduce((t, b) => t + b.v, 0)}`).join(" · ");
+    return `<div class="nd">
+      <div class="sh-sec-head"><h4>Cyberdeck</h4>
+        <span class="hint">${esc(deck.name || "Cyberdeck")} · Slot <b class="${S.over ? "pen" : ""}">${S.used}</b> / ${S.total} · Interface <b>${o.iface}</b> · <b>${CPR.netActions(o.iface)}</b> NET Actions${boostTxt ? ` · Rezzed: ${esc(boostTxt)}` : ""}</span>
+        ${o.reset ? `<button type="button" class="btn ghost small" ${o.reset} title="Nuova Netrun: REZ piena, tutto disattivato, «una volta per Netrun» di nuovo disponibili">↺ Nuova Netrun</button>` : ""}</div>
+      <div class="pc-rolls nd-abil">${btn("def", `Defense <b>${o.iface}</b>`, "chip y", "Interface + 1d10 contro un attacco NET")}${btn("speed", `Speed <b>${o.iface + bsum("speed")}</b>`, "chip y", "Agguato: Interface + bonus + 1d10 vs VEL + 1d10 del Black ICE")}${abil}</div>
+      ${items.length ? `<div class="sh-weapons nd-list">${rows}</div>` : `<p class="hint">Deck vuoto: aggiungi programmi, Black ICE e hardware da «Modifica scheda».</p>`}
+    </div>`;
+  }
+
+  // campo REZ a mano: attrs(segno) = attributi del pulsante; l'op finisce con ":in-" o ":in+" e il valore lo legge rezOp
+  const rezIn = attrs => `<span class="rez-in"><input type="number" min="1" max="999" inputmode="numeric" placeholder="REZ" aria-label="REZ da togliere o ridare">` +
+    `<button type="button" class="gp-btn rez-minus" ${attrs("-")} title="Togli i REZ scritti (Invio)" aria-label="Togli i REZ scritti">−</button>` +
+    `<button type="button" class="gp-btn" ${attrs("+")} title="Ridai i REZ scritti" aria-label="Ridai i REZ scritti">+</button></span>`;
+  const rezOp = (el, op) => {
+    const m = String(op || "").match(/^(.*):in([+-])$/); if (!m) return op;
+    const inp = el.closest(".rez-in") && $("input", el.closest(".rez-in")), v = Math.abs(Math.trunc(num(inp && inp.value)));
+    if (!v) { if (inp) inp.focus(); toast("Scrivi quanti REZ togliere o ridare", "err"); return null; }
+    return `${m[1]}:${m[2] === "-" ? -v : v}`;
+  };
+  // Invio nel campo = togli
+  document.addEventListener("keydown", ev => {
+    if (ev.key !== "Enter" || !ev.target.closest || !ev.target.closest(".rez-in input")) return;
+    ev.preventDefault(); const b = $(".rez-minus", ev.target.closest(".rez-in")); if (b) b.click();
+  });
+
+  // tiri del deck · c = { deck, iface, check(label, mods, extra), dmg(label, expr, note), msg(text) }
+  const NET_VS = "vs Interface + 1d10 del Netrunner, o DEF + 1d10 di un programma / Black ICE";
+  function deckRoll(c, what) {
+    const [t, a, b, j] = String(what).split(":");
+    const B = NET.boosts(c.deck), bon = k => B[k] || [];
+    const I0 = { l: "Interface", v: c.iface };
+    if (t === "def") return c.check("NET Defense", [I0], { note: "Difesa contro un attacco NET" });
+    if (t === "speed") return c.check("NET Speed", [I0, ...bon("speed")], { note: "Agguato: vs VEL + 1d10 del Black ICE" });
+    if (t === "ab") {
+      const A = NET.ABILITIES.find(x => x.id === a); if (!A) return;
+      if (b === "dmg") return c.dmg(`${A.name} · damage`, A.dmg[0].x, "1d6 REZ a un programma o al cervello di un Netrunner");
+      return c.check(A.attack ? `${A.name} · attack` : A.name, [I0, ...bon(A.id)], { note: A.attack ? NET_VS : A.eff });
+    }
+    if (t !== "it") return;
+    const it = ((c.deck || {}).items || [])[+a]; if (!it) return;
+    const I = NET.itemInfo(it);
+    if (b === "atk") return c.check(`${I.label} · attack`, I.ice ? [{ l: "ATK", v: I.atk }] : [I0, { l: `${I.name} ATK`, v: I.atk }],
+      { note: `${vsOf(I)}${I.ice ? "" : " · si disattiva dopo l'uso"}${I.eff ? ` · ${I.eff}` : ""}` });
+    if (b === "def") return c.check(`${I.label} · defense`, [{ l: "DEF", v: I.def }], { note: "Difesa del programma contro l'attacco" });
+    if (b === "dmg") { const d = (I.dmg || [])[+j]; if (d) c.dmg(`${I.label} · ${d.u === "brain" ? "brain damage" : d.u === "REZ" ? "REZ damage" : "damage"} ${d.l}`, d.x, I.eff); return; }
+    if (b === "fx") {
+      if (!(I.fx || []).length) return c.msg(`${I.label}: ${I.eff}`);
+      I.fx.forEach(f => c.dmg(`${I.label} · ${f.l}`, f.x, I.eff));
+    }
+  }
+  const sheetDeckCtx = e => ({
+    deck: sheetOf(e).deck || { items: [] }, iface: ifaceOf(e),
+    check: (label, parts, extra) => sheetCheck(e, label, parts, extra),
+    dmg: (label, x, note) => { const r = CPR.rollExpr(x); if (r) postRoll({ kind: "damage", who: e.name, entryId: e.id, label, ...r, note: note || "" }); },
+    msg: text => postRoll({ kind: "msg", who: e.name, entryId: e.id, text }),
+  });
+  // tiri veloci (Party, pannello del token): Zap e i programmi offensivi
+  function netQuick(deck, iface, mk) {
+    const off = ((deck || {}).items || []).map((it, i) => ({ it, i, I: NET.itemInfo(it) }))
+      .filter(x => !x.it.dead && !x.I.hw && (x.I.ice || NET.offensive(x.I.cls))).slice(0, 3);
+    return mk("ab:zap", `⌁ Zap <b>${iface}</b>`, "chip") + off.map(x => mk(`it:${x.i}:atk`, `⌁ ${esc(x.I.name)} <b>${x.I.ice ? x.I.atk : iface + x.I.atk}</b>`, "chip")).join("");
+  }
+  // Rez / Derez, REZ, «una volta per Netrun», Distrutto e Nuova Netrun dalla scheda
+  function deckAdj(e, i, op) {
+    sheetPatch(e.id, s => {
+      const d = s.deck = s.deck || { items: [] }, items = d.items = d.items || [];
+      if (op === "reset") { items.forEach(it => { it.on = false; it.used = false; it.cur = null; }); return s; }
+      const it = items[i]; if (!it) return s;
+      const I = NET.itemInfo(it);
+      if (op === "on") {
+        if (!it.on && I.once && it.used) { toast(`${I.name}: già usato in questa Netrun`, "err"); return s; }
+        it.on = !it.on;
+        if (it.on) { it.cur = null; if (I.once) it.used = true; }   // riattivato = di nuovo a REZ piena
+      } else if (op.startsWith("rez:")) it.cur = clamp(NET.curRez(it, I) + num(op.slice(4)), 0, I.rez);
+      else if (op === "used") it.used = !it.used;
+      else if (op === "dead") { it.dead = !it.dead; if (it.dead) it.on = false; }
+      return s;
+    });
+  }
+
+  // ---------- editor del deck (scheda e nemico) ----------
+  const deckOpt = (v, label, sel) => `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(label)}</option>`;
+  const deckRefOptions = sel => `
+    ${Object.entries(NET.CLASSES).map(([k, c]) => `<optgroup label="${esc(c.label)}">${NET.PROGRAMS.filter(p => p.cls === k).map(p => deckOpt("prog:" + p.id, `${p.name} · ATK ${p.atk} DEF ${p.def} REZ ${p.rez}`, sel)).join("")}</optgroup>`).join("")}
+    <optgroup label="Black ICE (2 slot)">${NET.ICE.map(c => deckOpt("ice:" + c.id, `${NET.iceLabel(c)} · ${NET.CLASSES[c.cls].short} · ATK ${c.atk} REZ ${c.rez}`, sel)).join("")}</optgroup>
+    <optgroup label="Hardware">${NET.HARDWARE.map(h => deckOpt("hw:" + h.id, `${h.name} · ${h.slots} slot`, sel)).join("")}</optgroup>
+    <optgroup label="Altro">${deckOpt("custom", "Personalizzato…", sel)}</optgroup>`;
+  const deckInfoTxt = it => { const I = NET.itemInfo(it); return `${I.slots} slot${I.eff ? " · " + I.eff : ""}`; };
+  function deckRow(it = { ref: "prog:sword" }) {
+    const custom = it.ref === "custom";
+    const n = (f, ph, w = "") => `<input data-f="${f}" type="number" min="0" max="99" placeholder="${ph}" title="${ph}" value="${esc(it[f] ?? "")}" class="nd-c ${w}">`;
+    return `<div class="sh-row nd-row ${custom ? "custom" : ""}">
+      <select data-f="ref" aria-label="Programma o hardware">${deckRefOptions(it.ref || "custom")}</select>
+      <span class="nd-info">${custom ? "" : esc(deckInfoTxt(it))}</span>
+      <input data-f="name" placeholder="Nome" value="${esc(it.name || "")}" class="nd-c">
+      <select data-f="cls" class="nd-c" aria-label="Classe">${[...Object.entries(NET.CLASSES).map(([k, c]) => [k, c.short]), ["ice", "Black ICE"], ["hw", "Hardware"]].map(([k, l]) => deckOpt(k, l, it.cls || "antipersonnel")).join("")}</select>
+      ${n("atk", "ATK")}${n("def", "DEF")}${n("rez", "REZ")}${n("per", "PER")}${n("spd", "SPD")}${n("slots", "Slot")}
+      <input data-f="dmg" placeholder="Danno (2d6)" value="${esc(it.dmg || "")}" class="nd-c">
+      <input data-f="eff" placeholder="Effetto" value="${esc(it.eff || "")}" class="nd-c wide">
+      <input type="hidden" data-f="st" value="${esc(JSON.stringify({ ref: it.ref, name: it.name || "", cur: it.cur ?? null, on: !!it.on, used: !!it.used, dead: !!it.dead }))}">
+      <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
+  }
+  function deckEditorHtml(deck) {
+    const d = deck || { name: "Cyberdeck", slots: 7, items: [] };
+    return `<div class="nd-edit">
+      <div class="fields">
+        <div class="field"><label>Nome del deck</label><input data-nd="name" value="${esc(d.name || "")}" placeholder="es. Zetatech Paraline"></div>
+        <div class="field"><label>Slot</label><input data-nd="slots" type="number" min="1" max="20" value="${esc(d.slots ?? 7)}"><span class="hint">${NET.DECK_QUALITY.map(q => `${q.label} ${q.slots}`).join(" · ")}</span></div>
+        <div class="field full"><label class="check"><input type="checkbox" data-nd="bodyweight" ${d.bodyweight ? "checked" : ""}> Tuta Bodyweight: +1 slot solo per l'hardware</label>
+          <label class="check"><input type="checkbox" data-nd="cyberarm" ${d.cyberarm ? "checked" : ""}> Cyberdeck nel cyberbraccio: +1 slot</label></div>
+      </div>
+      <div class="en-budget" data-nd-count></div>
+      <div class="sh-rows nd-rows">${(d.items || []).map(deckRow).join("")}</div>
+      <button type="button" class="btn ghost small cyan" data-nd-add>+ Programma / Hardware</button>
+    </div>`;
+  }
+  function readDeck(root, old = null) {
+    const box = $(".nd-edit", root); if (!box) return old;
+    const val = k => $(`[data-nd=${k}]`, box);
+    const items = readRows(box, ".nd-row").map(r => {
+      let st = {}; try { st = JSON.parse(r.st || "{}"); } catch { st = {}; }
+      const base = r.ref === "custom"
+        ? { ref: "custom", name: r.name, cls: r.cls, atk: num(r.atk), def: num(r.def), rez: num(r.rez), per: num(r.per), spd: num(r.spd), slots: num(r.slots) || (r.cls === "ice" ? 2 : 1), dmg: r.dmg, eff: r.eff }
+        : { ref: r.ref };
+      // lo stato della Netrun resta se l'oggetto è lo stesso
+      const same = st.ref === r.ref && (r.ref !== "custom" || st.name === r.name);
+      return same ? { ...base, cur: st.cur ?? null, on: !!st.on, used: !!st.used, dead: !!st.dead } : base;
+    }).filter(it => it.ref !== "custom" || it.name);
+    return { name: val("name").value.trim(), slots: clamp(num(val("slots").value) || 7, 1, 20), bodyweight: val("bodyweight").checked, cyberarm: val("cyberarm").checked, items };
+  }
+  // contatore degli slot e campi del personalizzato
+  function bindDeckEditor(root) {
+    const count = () => {
+      const box = $(".nd-edit", root); if (!box) return;
+      const S = NET.deckSlots(readDeck(root));
+      const el = $("[data-nd-count]", box);
+      el.className = "en-budget" + (S.over ? " over" : "");
+      el.innerHTML = `Slot usati <b>${S.used}</b> / ${S.total}${S.hwExtra ? ` (di cui ${S.hwExtra} solo hardware)` : ""}${S.over ? " · troppi oggetti per questo deck" : ""} · programmi 1 slot, Black ICE 2`;
+    };
+    root.addEventListener("click", ev => {
+      if (ev.target.closest("[data-nd-add]")) { $(".nd-rows", root).insertAdjacentHTML("beforeend", deckRow()); count(); return; }
+      if (ev.target.closest(".nd-row [data-row-del]")) setTimeout(count);
+    });
+    root.addEventListener("change", ev => {
+      const sel = ev.target.closest(".nd-row [data-f=ref]");
+      if (sel) { const row = sel.closest(".nd-row"); row.classList.toggle("custom", sel.value === "custom"); $(".nd-info", row).textContent = sel.value === "custom" ? "" : deckInfoTxt({ ref: sel.value }); }
+      if (ev.target.closest(".nd-edit")) count();
+    });
+    root.addEventListener("input", ev => { if (ev.target.closest(".nd-edit")) count(); });
+    count();
   }
 
   // ---------- DADI: log condiviso, stile chat ----------
@@ -2476,6 +2684,7 @@
           ${roll("init", "Initiative", "chip y")}${roll("death", "Death Save", "chip r")}
           ${top.map(k => roll(k.key, `${esc(k.label)} <b>${k.base}</b>`)).join("")}
           ${(sheetOf(e).weapons || []).slice(0, 2).map((wp, i) => roll(`wpn:${i}:atk`, `⌖ ${esc(wp.name)}`) + (wp.dmg ? roll(`wpn:${i}:dmg`, `${esc(wp.dmg)}`, "chip y") : "")).join("")}
+          ${isNetrunner(e) ? netQuick(sheetOf(e).deck, ifaceOf(e), (w, l, c) => roll("deck:" + w, l, c)) : ""}
         </div>
         <div class="pc-foot">
           <button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="sheet">Scheda completa</button>
@@ -2535,6 +2744,13 @@
     const wound = w && w.pen ? [{ l: w.label, v: w.pen }] : [];
     const arm = stat => pen && CPR.PEN_STATS.includes(stat) ? [{ l: "Armor", v: pen }] : [];
     const meta = { who: t ? tokName(t) : e.name, enemyId: e.id, gmOnly: !t || tokHidden(t) };
+    if (String(what).startsWith("deck:")) {
+      if (!D.ability || !D.ability.deck) return;
+      return deckRoll({ deck: D.ability.deck, iface: D.ability.rank,
+        check: (label, parts, extra) => postRoll({ kind: "check", label, ...meta, ...CPR.check([...parts, ...wound]), ...extra }),
+        dmg: (label, x, note) => { const r = CPR.rollExpr(x); if (r) postRoll({ kind: "damage", label, ...meta, ...r, note: note || "" }); },
+        msg: text => postRoll({ kind: "msg", ...meta, text }) }, String(what).slice(5));
+    }
     const [type, a, b] = String(what).split(":");
     if (type === "stat") { const s = D.stats[a]; return postRoll({ kind: "check", label: `${a} check`, ...meta, ...CPR.check([{ l: a, v: s.v }, ...arm(a), ...wound]) }); }
     if (type === "skill") {
@@ -2568,6 +2784,7 @@
       ${enemyBtn(e, "init", `Initiative <b>${initTotal(D)}</b>`, "chip y", t)}
       ${D.weapons.map((w, i) => enemyBtn(e, `wpn:${i}:atk`, `⌖ ${esc(w.name)} <b>${finalOf(w)}</b>`, "chip", t, formula(w, D.pen).replace(/<[^>]+>/g, "")) + enemyBtn(e, `wpn:${i}:dmg`, esc(w.dmg), "chip y", t)).join("")}
       ${top.map(x => enemyBtn(e, `skill:${x.i}`, `${esc(x.s.label)} <b>${finalOf(x.s)}</b>`, "chip", t)).join("")}
+      ${D.ability && D.ability.deck ? netQuick(D.ability.deck, D.ability.rank, (w, l, c) => enemyBtn(e, "deck:" + w, l, c, t)) : ""}
       ${ca && ca.deflect ? `<span class="hint">Deflettere Danni: −${ca.deflect} al primo danno del round</span>` : ""}
     </div>`;
   }
@@ -2580,6 +2797,7 @@
       <div class="hint">Punti di ruolo usati ${A.caUsed} / ${A.rank}. Attacco Preciso e Reazione sono già nei tiri; Individuare Minacce è nella Perception.</div>`;
     if (A.maker) body = `<div class="hint">Esperienza sul Campo ${A.maker.field} (sommata a Basic Tech, Cybertech, Electronics/Security, Weaponstech e tecnologie dei veicoli) · Upgrade ${A.maker.upgrade}.</div>`;
     if (A.med) body = `<div class="hint">Chirurgia ${A.med.surgery} (Surgery ${Math.min(10, 2 * A.med.surgery)}) · Farmaceutica ${A.med.pharma} · Criosistemi ${A.med.cryo} (Medical Tech ${Math.min(10, (+A.med.pharma || 0) + (+A.med.cryo || 0))}).</div>`;
+    if (A.actions) body = `<div class="hint">Interfaccia ${A.rank}: <b>${A.actions}</b> Azioni NET per turno · le Capacità d'Interfaccia e i programmi si tirano dal Cyberdeck qui sotto.</div>`;
     if (A.vehicles !== undefined) body = `<div class="hint">Garage ${A.rank} sommato a Drive, Pilot e tecnologie dei veicoli · Scuderia di Famiglia: ${esc(A.vehicles)}.</div>`;
     return `<div class="en-role"><span class="en-role-h">${esc(A.nameIt)} <small>(${esc(A.name)})</small> · grado <b>${A.rank}</b>${A.src ? " ⚡" : ""}</span>${body}</div>`;
   }
@@ -2613,6 +2831,7 @@
         </div>
         <div class="en-hp hint">HP: ${D.hpParts.map((p, i) => i ? `${p.v >= 0 ? "+" : "−"}${Math.abs(p.v)} (${esc(p.l)})` : `${esc(p.l)} = ${p.v}`).join(" ")} → <b>${D.hp}</b></div>
         ${roleBlock(D)}
+        ${D.ability && D.ability.deck ? deckHtml(D.ability.deck, { iface: D.ability.rank, roll: w => `data-action="enemy-roll" data-id="${esc(e.id)}" data-roll="deck:${w}"`, adj: null }) : ""}
         ${D.budget || D.picks.length ? `<div class="en-elite">
           <span class="en-budget">Punti <b>${D.spent}</b> / ${D.budget}${E.extraPoints ? ` (di cui ${E.extraPoints} extra)` : ""} · tratti apice ${D.apexUsed} / ${D.apexLimit}</span>
           ${D.picks.map(o => `<span class="${o.apex ? "apex" : ""}">⚡ ${esc(o.label)} <small>${o.cost} pt${o.apex ? " · apice" : ""}</small></span>`).join("") || `<span class="hint">Nessun potenziamento acquistato.</span>`}
@@ -2703,6 +2922,7 @@
             <div class="field full"><label class="check"><input type="checkbox" name="noPen" ${E0.noPen ? "checked" : ""}> Armatura già migliorata (niente malus, fuori dal budget)</label></div>
           </div>
           <div id="en-role-box"></div>
+          <div id="en-deck-box"></div>
           <h3 class="sh-h">Weapons <small>la base d'attacco si calcola dalla skill dell'arma · ⚄ ripesca la singola arma</small>
             <button type="button" class="btn ghost small yellow" data-wpn-reroll-all>⚄ Ripesca armi</button></h3>
           <div class="sh-rows" id="en-wpns">${(E0.weapons || []).map(wRow).join("")}</div>
@@ -2743,8 +2963,19 @@
         extreme: form.elements["extreme"].checked && num(v("tier")) >= 3 && v("level") === "elite",
         extraPoints: Math.max(0, num(v("extraPoints"))), frameBody, comp, picks,
         cyber: v("cyber"), gear: v("gear"), notes: v("notes"),
+        deck: role === "netrunner" ? readDeck($("#en-deck-box", form), E0.deck || null) : null,
       };
     };
+    // Netrunner: Cyberdeck modificabile (resta com'è mentre cambi il resto della scheda)
+    const renderDeck = (role, deck) => {
+      const box = $("#en-deck-box", form);
+      box.innerHTML = role === "netrunner" ? `<h3 class="sh-h">Cyberdeck <small>programmi 1 slot, Black ICE 2 · Interfaccia = grado della Capacità di Ruolo</small>
+        <button type="button" class="btn ghost small yellow" data-nd-auto>⚄ Deck casuale</button></h3>${deckEditorHtml(deck)}` : "";
+      if (role === "netrunner") $("[data-nd-count]", box) && ndCount();
+    };
+    const ndCount = () => { const ev = new Event("input", { bubbles: true }); const el = $("#en-deck-box [data-nd=name]", form); if (el) el.dispatchEvent(ev); };
+    bindDeckEditor($("#en-deck-box", form));
+    renderDeck(E0.role, E0.deck || (E0.role === "netrunner" ? NET.autoDeck(E0.tier, E0.level) : null));
     // Capacità di Ruolo: Sensi da Combattimento (punti per uso) o Medicina (punti per specializzazione)
     const renderRole = E => {
       const box = $("#en-role-box", form), R = CPR.roleOf(E.role), D = CPR.deriveEnemy(E), A = D.ability;
@@ -2817,6 +3048,7 @@
         if (w) { row.outerHTML = wRow(w); refresh(); }
         return;
       }
+      if (ev.target.closest("[data-nd-auto]")) { renderDeck("netrunner", NET.autoDeck(num(form.elements["tier"].value), form.elements["level"].value)); return; }
       if (ev.target.closest("[data-ca-auto]")) { ca = CPR.autoCA(CPR.deriveEnemy({ ...readForm(), picks }).ability.rank); refresh(); return; }
       if (ev.target.closest("[data-en-reroll]")) { const E = readForm(); picks = CPR.rollElite({ ...E, picks: [] }); refresh(); return; }
       if (ev.target.closest("[data-en-clear]")) { picks = []; refresh(); return; }
@@ -2831,6 +3063,7 @@
       if (t.matches("[data-en-comp]")) comp = t.value;
       if (t.matches("[data-ca]")) { ca = { ...(ca || {}), [t.dataset.ca]: Math.max(0, num(t.value)) }; }
       if (t.matches("[data-med]")) { med = { ...(med || {}), [t.dataset.med]: Math.max(0, num(t.value)) }; }
+      if (t.name === "role" && (t.value === "netrunner") !== !!$("#en-deck-box .nd-edit", form)) renderDeck(t.value, t.value === "netrunner" ? NET.autoDeck(num(form.elements["tier"].value), form.elements["level"].value) : null);
       if (t.name === "role") { const r = CPR.roleOf(t.value); form.elements["roleRank"].value = r.ability ? CPR.roleRank(num(form.elements["tier"].value), form.elements["level"].value) : 0; ca = null; med = null; }
       if (t.matches(".en-wpn [data-f=cat]")) {
         const w = CPR.weaponType(t.value), row = t.closest(".sh-row");
@@ -2931,7 +3164,14 @@
         <span class="en-actions"><button type="button" class="btn small yellow" data-action="gm-gen-enemy">⚄ Genera nemico</button>
         <button type="button" class="btn ghost small" data-action="gm-new-enemy">+ Nemico a mano</button></span></div>
       ${enemies.length ? `<div class="en-grid">${enemies.map(enemyCard).join("")}</div>`
-        : `<p class="hint">Nessun nemico. «Genera nemico» crea una scheda semplificata come quelle del manuale scegliendo Fascia (1 Scagnozzi → 4 Boss), Livello (Base, Hardened, Elite) e, se vuoi, un Ruolo (Solo, Tech, Medtech, Nomade).</p>`}
+        : `<p class="hint">Nessun nemico. «Genera nemico» crea una scheda semplificata come quelle del manuale scegliendo Fascia (1 Scagnozzi → 4 Boss), Livello (Base, Hardened, Elite) e, se vuoi, un Ruolo (Solo, Tech, Medtech, Nomade, Netrunner).</p>`}
+
+      <div class="section-title" style="margin-top:28px"><h2>⌬ Architetture NET <span class="hint">${state.netarch.length}</span></h2>
+        <span class="en-actions"><button type="button" class="btn small yellow" data-action="net-gen">⚄ Genera architettura</button>
+        <button type="button" class="btn ghost small" data-action="net-new">+ Architettura a mano</button>
+        ${state.netview.length ? `<a class="btn ghost small cyan" href="#/net">Pagina NET →</a>` : ""}</span></div>
+      ${state.netarch.length ? `<div class="en-grid">${[...state.netarch].sort((a, b) => (a.name || "").localeCompare(b.name || "", "it")).map(archCard).join("")}</div>`
+        : `<p class="hint">Nessuna architettura. «Genera architettura» segue le tabelle del manuale (3d6 piani, bivi con il d10, Ingresso e piani inferiori per difficoltà); «a mano» per costruirla piano per piano. Con «👁 Mostra ai giocatori» i piani rivelati compaiono nella pagina NET.</p>`}
 
       <div class="section-title" style="margin-top:28px"><h2>🔒 Dossier segreti <span class="hint">${secretEntries.length}</span></h2></div>
       ${secretEntries.length ? `<div class="grid">${secretEntries.map(cardEntry).join("")}</div>`
@@ -2986,6 +3226,439 @@
       box.innerHTML = list.map(g => `<div class="gm-item static"><b>${esc(g.email)}</b>${norm(g.email) === norm(Store.user) ? `<span>tu</span>` : ""}
         <button type="button" class="btn ghost small danger" data-action="gm-remove" data-email="${esc(g.email)}">Togli</button></div>`).join("") || `<p class="hint">Nessun GM.</p>`;
     } catch (e) { box.innerHTML = `<p class="hint">Impossibile leggere l'elenco: ${esc(e.message || e)}</p>`; }
+  }
+
+
+  // ---------- ARCHITETTURE NET (area GM) ----------
+  // netarch (🔒 solo GM) = { name, diff, branches[{ fork (piano del ramo principale da cui parte), floors[{ t, dv, ice[{ ref, cur }], label, note, seen, done }] }],
+  //                           demons[{ ref, cur, note }], notes, shared, gen }
+  // netview (pubblica)    = copia con i soli piani rivelati, scritta dal GM quando «Mostra ai giocatori» è acceso
+  const branchLetter = bi => String.fromCharCode(65 + bi);
+  const branchName = bi => bi ? `Ramo ${branchLetter(bi)}` : "Ramo principale";
+  const archById = id => state.netarch.find(a => a.id === id);
+  const archStats = A => {
+    const fl = NET.archFloors(A);
+    return { floors: fl.length, forks: Math.max(0, (A.branches || []).length - 1), ice: fl.reduce((t, x) => t + (x.f.t === "ice" ? x.f.ice.length : 0), 0),
+      bottom: (A.branches || [])[0] ? A.branches[0].floors.length : 0, seen: fl.filter(x => x.f.seen).length };
+  };
+  const diffInfo = D => `VD ${D.dv} · Interfaccia per avere una chance ${D.need}+ · rischia di morire prima del fondo: ${D.risk}`;
+
+  function archCard(A) {
+    const D = NET.diffOf(A.diff), S = archStats(A);
+    return `<article class="en-card na-card">
+      <button type="button" class="en-card-main" data-action="net-open" data-id="${esc(A.id)}">
+        <span class="en-type">${esc(D.label)} · VD ${D.dv}</span>
+        <h3>${esc(A.name || "Architettura")}</h3>
+        <span class="en-line">${S.floors} piani${S.forks ? ` · ${S.forks} biv${S.forks === 1 ? "io" : "i"}` : ""} · ${S.ice} Black ICE${(A.demons || []).length ? ` · ${(A.demons || []).map(d => esc(NET.demonOf(d.ref).name)).join(", ")}` : ""}</span>
+        ${A.shared ? `<span class="en-line na-shared">● visibile ai giocatori · ${S.seen} piani rivelati</span>` : ""}
+      </button>
+    </article>`;
+  }
+
+  // schema: una colonna per ramo, una riga per piano; le linee le disegna drawArchLinks
+  // o = { gm: true → pulsanti di gioco, id: architettura }
+  function archDiagram(A, o = {}) {
+    const brs = (A.branches || []).filter(b => b.floors.length);
+    if (!brs.length) return `<p class="hint">Nessun piano.</p>`;
+    const rows = Math.max(...brs.map(b => NET.depthOf(b, b.floors.length - 1)));
+    const main = brs[0];
+    const cells = brs.flatMap((b, bi) => b.floors.map((f, i) => {
+      const depth = NET.depthOf(b, i);
+      const prev = i > 0 ? b.floors[i - 1].id : b.fork ? ((main.floors[b.fork - 1] || {}).id || "") : "";
+      const bottom = o.gm ? bi === 0 && i === b.floors.length - 1 : !!f.bottom;   // nella copia pubblica: solo se è davvero il fondo
+      return `<div class="na-floor t-${esc(f.t)} ${f.seen ? "seen" : ""} ${f.done ? "done" : ""}" style="grid-column:${bi + 1};grid-row:${depth}" data-floor="${esc(f.id)}" data-prev="${esc(prev)}">
+        ${floorHtml(f, depth, bi, bottom, o)}</div>`;
+    }));
+    return `<div class="na-wrap"><div class="na-grid" style="grid-template-columns:repeat(${brs.length}, minmax(240px, 1fr));grid-template-rows:repeat(${rows}, auto)">
+      ${brs.map((b, bi) => bi ? `<span class="na-bh" style="grid-column:${bi + 1};grid-row:${Math.max(1, +b.fork || 1)}">${branchName(bi)}<small>parte dopo il piano ${+b.fork}</small></span>` : "").join("")}
+      ${cells.join("")}</div><svg class="na-links" aria-hidden="true"></svg></div>`;
+  }
+  function floorHtml(f, depth, bi, bottom, o) {
+    const T = NET.floorType(f.t), gm = o.gm;
+    const act = (op, inner, title, cls = "gp-btn") => `<button type="button" class="${cls}" data-action="net-adj" data-id="${esc(o.id)}" data-floor="${esc(f.id)}" data-op="${op}" title="${esc(title)}" aria-label="${esc(title)}">${inner}</button>`;
+    const roll = (k, what, inner, cls = "chip", title = "") => `<button type="button" class="${cls}" data-action="net-roll" data-id="${esc(o.id)}" data-floor="${esc(f.id)}" data-k="${k}" data-roll="${what}" ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
+    const head = `<div class="na-fh"><span class="na-depth">Piano ${depth}${bi ? ` <small>${branchLetter(bi)}</small>` : ""}</span>${bottom ? `<span class="na-tag">fondo</span>` : ""}
+      ${gm ? `<span class="na-ctl">${act("seen", f.seen ? "👁" : "◌", f.seen ? "Rivelato ai giocatori: clicca per nasconderlo" : "Non ancora raggiunto: clicca per rivelarlo", `gp-btn ${f.seen ? "on" : ""}`)}${act("done", "✓", f.done ? "Superato: clicca per annullare" : "Segna come superato", `gp-btn ${f.done ? "on" : ""}`)}</span>` : f.done ? `<span class="na-tag ok">superato</span>` : ""}</div>`;
+    let body;
+    if (f.t === "ice") {
+      body = (f.ice || []).map((x, k) => {
+        const c = NET.iceOf(x.ref); if (!c) return "";
+        const cur = x.cur == null ? c.rez : clamp(num(x.cur), 0, c.rez);
+        return `<div class="na-ice ${cur <= 0 ? "derez" : ""}">
+          <div class="na-ice-h"><b>☠ ${esc(NET.iceLabel(c))}</b><span class="nd-cls">${esc(NET.CLASSES[c.cls].short)}</span>${cur <= 0 ? `<span class="nd-cls dead">derezzato</span>` : ""}</div>
+          <small class="na-st">PER ${c.per} · VEL ${c.spd} · ATT ${c.atk} · DIF ${c.def} · REZ ${cur}/${c.rez}</small>
+          <span class="sp-bar nd-bar"><i style="width:${cur / c.rez * 100}%"></i></span>
+          ${gm ? `<em>${esc(c.eff)}</em>
+          <div class="pc-rolls">${roll(k, "spd", `Agguato <b>${c.spd}</b>`, "chip y", "VEL + 1d10 contro Interface + bonus + 1d10 del Netrunner")}${roll(k, "atk", `Attacco <b>${c.atk}</b>`, "chip r", `ATT + 1d10 · ${c.cls === "antiprogram" ? "vs DIF + 1d10 di un programma Rezzato a caso" : "vs Interface + 1d10 del Netrunner"}`)}${(c.dmg || []).map((d, j) => roll(k, "dmg:" + j, `${esc(d.x)}${d.u === "REZ" ? " REZ" : ""}`, "chip y", `${d.l}`)).join("")}${(c.fx || []).length ? roll(k, "fx", `Effetto ${esc(c.fx.map(z => z.x).join("/"))}`, "chip y") : !(c.dmg || []).length ? roll(k, "fx", "Effetto", "chip y") : ""}${roll(k, "def", `Difesa <b>${c.def}</b>`, "chip", "DIF + 1d10 contro un attacco")}
+            <span class="sh-adj">${[-1, 1].map(d => act(`rez:${k}:${d}`, d > 0 ? "+1" : "−1", `${d > 0 ? "+" : "−"}1 REZ`)).join("")}${act(`rez:${k}:reset`, "↺", "REZ piena")}</span>
+            ${rezIn(sg => `data-action="net-adj" data-id="${esc(o.id)}" data-floor="${esc(f.id)}" data-op="rez:${k}:in${sg}"`)}</div>
+          <small class="hint">Bypass: Interface + 1d10 vs PER ${c.per} + 1d10</small>` : ""}
+        </div>`;
+      }).join("") || `<span class="hint">Nessun Black ICE scelto.</span>`;
+    } else {
+      body = `<div class="na-what"><b>${T.icon} ${esc(T.label)}</b>${T.dv && f.dv ? ` <span class="na-dv">VD ${num(f.dv)}</span>` : ""}${T.ab ? ` <small class="hint">${T.ab}</small>` : ""}</div>
+        ${f.label ? `<div class="na-label">${esc(f.label)}</div>` : ""}`;
+    }
+    return head + body + (gm && f.note ? `<div class="na-note">${esc(f.note)}</div>` : "") + (gm && f.roll ? `<small class="na-roll">${esc(f.roll)}</small>` : "");
+  }
+  // linee tra un piano e il precedente (anche dove un ramo si stacca)
+  function drawArchLinks(root = document) {
+    $$(".na-wrap", root).forEach(wrap => {
+      const svg = $(".na-links", wrap), grid = $(".na-grid", wrap); if (!svg || !grid) return;
+      const W = grid.scrollWidth, Hh = grid.scrollHeight, base = grid.getBoundingClientRect();
+      svg.setAttribute("width", W); svg.setAttribute("height", Hh); svg.setAttribute("viewBox", `0 0 ${W} ${Hh}`);
+      const pos = el => { const r = el.getBoundingClientRect(); return { x: r.left - base.left + r.width / 2, top: r.top - base.top, bot: r.bottom - base.top, right: r.right - base.left }; };
+      svg.innerHTML = $$(".na-floor[data-prev]", grid).map(el => {
+        const prev = el.dataset.prev && $(`.na-floor[data-floor="${CSS.escape(el.dataset.prev)}"]`, grid); if (!prev) return "";
+        const a = pos(prev), b = pos(el);
+        if (Math.abs(a.x - b.x) < 2) return `<line x1="${a.x}" y1="${a.bot}" x2="${b.x}" y2="${b.top}" />`;
+        return `<path d="M${a.right} ${a.bot - 14} H${b.x} V${b.top}" class="fork" />`;
+      }).join("");
+    });
+  }
+  window.addEventListener("resize", () => { if ($(".na-wrap")) drawArchLinks(); });
+
+  function archViewHtml(A) {
+    const D = NET.diffOf(A.diff), S = archStats(A), id = A.id;
+    const dmBtn = (k, what, inner, cls = "chip", title = "") => `<button type="button" class="${cls}" data-action="net-roll" data-id="${esc(id)}" data-demon="${k}" data-roll="${what}" ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
+    const dmAdj = (k, op, inner, title) => `<button type="button" class="gp-btn" data-action="net-adj" data-id="${esc(id)}" data-demon="${k}" data-op="${op}" title="${esc(title)}" aria-label="${esc(title)}">${inner}</button>`;
+    return `<div class="na-view" data-arch="${esc(id)}">
+      <div class="na-info">
+        <span><small class="sh-k">Difficoltà</small> <b>${esc(D.label)}</b></span>
+        <span><small class="sh-k">VD</small> <b>${D.dv}</b></span>
+        <span><small class="sh-k">Interfaccia per una chance</small> <b>${D.need}</b></span>
+        <span><small class="sh-k">Rischia di morire</small> <b>${esc(D.risk)}</b></span>
+        <span><small class="sh-k">Piani</small> <b>${S.floors}</b>${S.forks ? ` · ${S.forks} biv${S.forks === 1 ? "io" : "i"}` : ""}</span>
+        <span><small class="sh-k">Rivelati</small> <b>${S.seen}</b> / ${S.floors}</span>
+      </div>
+      ${A.gen ? `<p class="hint">Tiri del generatore: ${esc(A.gen.floors)} · ${esc(A.gen.forks)}</p>` : ""}
+      <p class="hint">Il Netrunner scende un piano alla volta (quanti ne vuole per turno, se nessuna Password lo ferma). I Black ICE in agguato tirano VEL + 1d10 contro la sua Interface + 1d10 e, se vincono, colpiscono subito e vanno in cima all'Iniziativa. 👁 rivela il piano ai giocatori.</p>
+      ${archDiagram(A, { gm: true, id })}
+      ${(A.demons || []).length ? `<div class="sh-sec-head"><h4>Demoni</h4><span class="hint">nessuna Password li ferma, battono sempre in velocità i programmi · si difendono con Interface + 1d10 · Zap e Control come Azioni NET</span></div>
+      <div class="sh-weapons">${A.demons.map((d, k) => {
+        const M = NET.demonOf(d.ref), cur = d.cur == null ? M.rez : clamp(num(d.cur), 0, M.rez);
+        return `<div class="wpn nd-item demon ${cur <= 0 ? "derez" : ""}"><span class="wpn-n"><span class="nd-name">${esc(M.name)} <span class="nd-cls">Demone</span>${cur <= 0 ? ` <span class="nd-cls dead">derezzato</span>` : ""}</span>
+          <small>REZ ${cur}/${M.rez} · Interface ${M.iface} · ${M.actions} Azioni NET · Combattimento ${M.combat}</small><span class="sp-bar nd-bar"><i style="width:${cur / M.rez * 100}%"></i></span>${d.note ? `<em>${esc(d.note)}</em>` : ""}</span>
+          <span class="nd-acts">${dmBtn(k, "zap", `Zap <b>${M.iface}</b>`, "btn small", "Interface + 1d10")}${dmBtn(k, "zapdmg", "1d6", "btn small yellow", "Danno dello Zap")}${dmBtn(k, "control", `Control <b>${M.iface}</b>`, "btn small ghost")}${dmBtn(k, "def", `Difesa <b>${M.iface}</b>`, "btn small ghost", "Interface + 1d10")}${dmBtn(k, "combat", `Combattimento <b>${M.combat}</b>`, "btn small ghost", "Droni e torrette: Combattimento + 1d10")}
+            <span class="sh-adj">${dmAdj(k, "rez:-1", "−1", "−1 REZ")}${dmAdj(k, "rez:1", "+1", "+1 REZ")}${dmAdj(k, "rez:reset", "↺", "REZ piena")}</span>
+            ${rezIn(sg => `data-action="net-adj" data-id="${esc(id)}" data-demon="${k}" data-op="rez:in${sg}"`)}</span></div>`;
+      }).join("")}</div>` : ""}
+      ${A.notes ? `<div class="block"><h4>Note</h4><div class="prewrap">${esc(A.notes)}</div></div>` : ""}
+    </div>`;
+  }
+  function openArch(id) {
+    const A = archById(id); if (!A || !isGm()) return;
+    openModal(`
+      <div class="modal-head"><h2>// 🔒 ARCHITETTURA NET</h2><button class="x" data-action="close" aria-label="Chiudi">×</button></div>
+      <div class="modal-body">
+        <div class="tab-title"><h1>${esc(A.name || "Architettura")}</h1>${A.shared ? `<span class="badge na-shared">● visibile ai giocatori</span>` : `<span class="badge gm">🔒 SOLO GM</span>`}</div>
+        ${archViewHtml(A)}
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost small left" data-action="net-delete" data-id="${esc(A.id)}">Elimina</button>
+        <button class="btn ghost small" data-action="net-copy" data-id="${esc(A.id)}">Duplica</button>
+        <button class="btn ghost small" data-action="net-reset" data-id="${esc(A.id)}" title="REZ piena, piani da rivelare e da superare">↺ Nuova Netrun</button>
+        <button class="btn ghost small yellow" data-action="net-share" data-id="${esc(A.id)}">${A.shared ? "🔒 Nascondi ai giocatori" : "👁 Mostra ai giocatori"}</button>
+        <button class="btn cyan" data-action="net-edit" data-id="${esc(A.id)}">Modifica</button>
+      </div>`);
+    drawArchLinks($("#modal"));
+  }
+  function refreshArchView(id) {
+    const A = archById(id); if (!A) return;
+    $$(`.na-view[data-arch="${CSS.escape(id)}"]`).forEach(box => {
+      const host = box.parentElement, y = $("#modal").scrollTop, x = ($(".na-wrap", box) || {}).scrollLeft || 0;
+      box.outerHTML = archViewHtml(A);
+      const w = $(`.na-view[data-arch="${CSS.escape(id)}"] .na-wrap`, host); if (w) w.scrollLeft = x;
+      $("#modal").scrollTop = y; drawArchLinks(host);
+    });
+  }
+
+  // copia pubblica: solo i piani rivelati (niente note del GM né piani non raggiunti)
+  function publicView(A) {
+    const main = (A.branches || [])[0] || { floors: [] }, last = main.floors[main.floors.length - 1];
+    const keep = f => ({ id: f.id, t: f.t, dv: f.dv, label: f.label || "", done: !!f.done, seen: true, bottom: f === last, ice: (f.ice || []).map(x => ({ ref: x.ref, cur: x.cur })) });
+    const branches = (A.branches || []).map((b, bi) => {
+      const seen = [];
+      for (const f of b.floors) { if (!f.seen) break; seen.push(keep(f)); }   // i piani si aprono in ordine
+      return { id: b.id, fork: b.fork, floors: seen };
+    }).filter((b, bi) => bi === 0 || (b.floors.length && main.floors.slice(0, b.fork).every(f => f.seen)));
+    return { id: "nv-" + A.id, archId: A.id, name: A.name, diff: A.diff, branches, gmOnly: false };
+  }
+  async function syncNetView(A) {
+    const vid = "nv-" + A.id, had = state.netview.find(v => v.id === vid);
+    if (A.shared) {
+      const saved = await Store.save("netview", { ...(had || {}), ...publicView(A) });
+      upsert(state.netview, saved); liveSend("netview", saved);
+    } else if (had) {
+      await Store.remove("netview", had); Store.send({ t: "del", col: "netview", id: vid });
+      state.netview = state.netview.filter(v => v.id !== vid);
+    }
+  }
+  // modifiche di gioco (piani rivelati, REZ): aggiorno subito la vista e salvo dopo una breve pausa
+  const archTimers = new Map();
+  function archPatch(id, fn) {
+    const A = archById(id); if (!A) return;
+    upsert(state.netarch, fn(JSON.parse(JSON.stringify(A))));
+    refreshArchView(id);
+    clearTimeout(archTimers.get(id));
+    archTimers.set(id, setTimeout(async () => {
+      archTimers.delete(id);
+      try {
+        const saved = await Store.save("netarch", { ...archById(id), gmOnly: true });
+        if (!archTimers.has(id)) upsert(state.netarch, saved);
+        liveSend("netarch", saved);
+        await syncNetView(saved);
+      } catch (err) { fail(err); }
+    }, 500));
+  }
+  const findFloor = (A, fid) => NET.archFloors(A).find(x => x.f.id === fid);
+  function archAdj(el) {
+    const id = el.dataset.id, op = rezOp(el, el.dataset.op), fid = el.dataset.floor, dk = el.dataset.demon;
+    if (!op) return;
+    archPatch(id, A => {
+      if (dk != null && dk !== "") {
+        const d = (A.demons || [])[+dk]; if (!d) return A;
+        const M = NET.demonOf(d.ref), cur = d.cur == null ? M.rez : num(d.cur);
+        d.cur = op === "rez:reset" ? M.rez : clamp(cur + num(op.split(":")[1]), 0, M.rez);
+        return A;
+      }
+      const x = findFloor(A, fid); if (!x) return A;
+      const f = x.f;
+      if (op === "seen") {
+        // rivelare un piano rivela anche quelli sopra (si scende in ordine); nasconderlo nasconde quelli sotto
+        const on = !f.seen, chain = [];
+        const main = A.branches[0];
+        if (x.bi > 0) chain.push(...main.floors.slice(0, x.b.fork));
+        chain.push(...x.b.floors.slice(0, x.i + 1));
+        if (on) chain.forEach(g => { g.seen = true; });
+        else { x.b.floors.slice(x.i).forEach(g => { g.seen = false; }); if (x.bi === 0) A.branches.slice(1).forEach(b => { if (+b.fork >= x.depth) b.floors.forEach(g => { g.seen = false; }); }); }
+      } else if (op === "done") f.done = !f.done;
+      else if (op.startsWith("rez:")) {
+        const [, k, d] = op.split(":"), ice = (f.ice || [])[+k], c = ice && NET.iceOf(ice.ref); if (!c) return A;
+        const cur = ice.cur == null ? c.rez : num(ice.cur);
+        ice.cur = d === "reset" ? c.rez : clamp(cur + num(d), 0, c.rez);
+      }
+      return A;
+    });
+  }
+  function archRoll(el) {
+    const A = archById(el.dataset.id); if (!A) return;
+    const what = el.dataset.roll, dk = el.dataset.demon;
+    if (dk != null && dk !== "") {
+      const d = (A.demons || [])[+dk]; if (!d) return;
+      const M = NET.demonOf(d.ref), meta = { who: M.name };
+      if (what === "zapdmg") { const r = CPR.rollExpr("1d6"); return postRoll({ kind: "damage", label: "Zap · damage", ...meta, ...r, note: "1d6 REZ a un programma o al cervello di un Netrunner" }); }
+      const lab = { zap: ["Zap · attack", "Interface", M.iface, "vs Interface + 1d10 del Netrunner, o DEF + 1d10 di un programma"], control: ["Control", "Interface", M.iface, "Attiva un Nodo di Controllo (una volta per turno)"],
+        def: ["Defense", "Interface", M.iface, "Difesa del Demone contro un attacco NET"], combat: ["Combattimento", "Combattimento", M.combat, "Droni, torrette e difese collegate ai Nodi"] }[what];
+      if (!lab) return;
+      return postRoll({ kind: "check", label: lab[0], ...meta, ...CPR.check([{ l: lab[1], v: lab[2] }]), note: lab[3] });
+    }
+    const x = findFloor(A, el.dataset.floor), ice = x && (x.f.ice || [])[+el.dataset.k], c = ice && NET.iceOf(ice.ref); if (!c) return;
+    const meta = { who: NET.iceLabel(c) };
+    const [t, j] = what.split(":");
+    if (t === "spd") return postRoll({ kind: "check", label: "Agguato (VEL)", ...meta, ...CPR.check([{ l: "VEL", v: c.spd }]), note: "vs Interface + bonus alla Velocità + 1d10 del Netrunner: se vince, colpisce subito e va in cima all'Iniziativa" });
+    if (t === "atk") return postRoll({ kind: "check", label: "Attacco", ...meta, ...CPR.check([{ l: "ATT", v: c.atk }]), note: `${c.cls === "antiprogram" ? "vs DIF + 1d10 di un programma Rezzato a caso" : "vs Interface + 1d10 del Netrunner"} · ${c.eff}` });
+    if (t === "def") return postRoll({ kind: "check", label: "Difesa", ...meta, ...CPR.check([{ l: "DIF", v: c.def }]), note: "Contro l'attacco di un programma o uno Zap" });
+    if (t === "dmg") { const d = (c.dmg || [])[+j]; if (!d) return; const r = CPR.rollExpr(d.x); return postRoll({ kind: "damage", label: `${d.u === "brain" ? "brain damage" : "REZ damage"} ${d.l}`, ...meta, ...r, note: c.eff }); }
+    if (t === "fx") {
+      if (!(c.fx || []).length) return postRoll({ kind: "msg", ...meta, text: c.eff });
+      c.fx.forEach(z => { const r = CPR.rollExpr(z.x); postRoll({ kind: "damage", label: z.l, ...meta, ...r, note: c.eff }); });
+    }
+  }
+
+  // ---------- editor dell'architettura: forma, piani, Black ICE, Demoni ----------
+  function editArch(id, preset = null) {
+    if (!isGm() && Store.gmReady) return;
+    const old = archById(id);
+    let A = JSON.parse(JSON.stringify(preset || old || NET.blank()));
+    const iceSel = (v, k) => `<select data-fl="ice${k}" aria-label="Black ICE ${k + 1}"><option value="">${k ? "—" : "scegli…"}</option>${NET.ICE.map(c => `<option value="${c.id}" ${c.id === v ? "selected" : ""}>${esc(NET.iceLabel(c))} (${c.cls === "antiprogram" ? "Anti-Prog." : "Anti-Op."} ATT ${c.atk})</option>`).join("")}</select>`;
+    const floorRow = (b, bi, f, i) => {
+      const T = NET.floorType(f.t), depth = NET.depthOf(b, i);
+      return `<div class="na-erow" data-b="${bi}" data-i="${i}">
+        <span class="na-edepth">P${depth}</span>
+        <select data-fl="t" aria-label="Tipo di piano">${NET.FLOOR_TYPES.map(t => `<option value="${t.id}" ${t.id === f.t ? "selected" : ""}>${t.icon} ${t.label}</option>`).join("")}</select>
+        ${f.t === "ice" ? `<span class="na-eice">${[0, 1, 2].map(k => iceSel(((f.ice || [])[k] || {}).ref || "", k)).join("")}</span>`
+          : `<input data-fl="dv" type="number" min="0" max="30" placeholder="VD" title="VD" value="${esc(f.dv ?? "")}" ${T.dv ? "" : "disabled"}>
+             <input data-fl="label" placeholder="${f.t === "control" ? "es. Telecamere, Torretta" : f.t === "file" ? "es. Contabilità" : "Descrizione"}" value="${esc(f.label || "")}">`}
+        <input data-fl="note" placeholder="Note del GM" value="${esc(f.note || "")}" class="na-enote">
+        <span class="na-ebtn"><button type="button" class="gp-btn" data-na="reroll" title="Ritira questo piano con la tabella" aria-label="Ritira questo piano">⚄</button><button type="button" class="gp-btn" data-na="up" title="Sposta su" aria-label="Sposta su" ${i ? "" : "disabled"}>↑</button><button type="button" class="gp-btn" data-na="down" title="Sposta giù" aria-label="Sposta giù" ${i < b.floors.length - 1 ? "" : "disabled"}>↓</button><button type="button" class="gp-btn del" data-na="del" title="Elimina il piano" aria-label="Elimina il piano">✕</button></span>
+      </div>`;
+    };
+    const body = () => {
+      const D = NET.diffOf(A.diff), main = A.branches[0] || { floors: [] };
+      return `
+        <div class="en-gen en-steps">
+          <div class="field"><label for="na-diff">Difficoltà</label><select id="na-diff" data-top="diff">${NET.DIFFS.map(d => `<option value="${d.id}" ${d.id === A.diff ? "selected" : ""}>${d.label} · VD ${d.dv}</option>`).join("")}</select></div>
+          <div class="field"><label for="na-dem">Demone (se ci sono Nodi)</label><select id="na-dem" data-top="demon">${[["auto", `Secondo la difficoltà (${NET.demonOf(D.demon).name})`], ["none", "Nessuno"], ...NET.DEMONS.map(d => [d.id, d.name])].map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>
+          <button type="button" class="btn yellow" data-na="gen">⚄ Genera</button>
+          <span class="hint">${esc(diffInfo(D))}. Genera tira 3d6 piani, il d10 dei bivi, l'Ingresso (1d6) per i primi due piani e la tabella dei piani inferiori (3d6) per gli altri, ritirando programmi e Password già usciti.</span>
+        </div>
+        ${A.gen ? `<p class="hint">Ultima generazione: ${esc(A.gen.floors)} · ${esc(A.gen.forks)}</p>` : ""}
+        <div class="fields" style="margin-top:12px">
+          <div class="field full"><label class="req" for="na-name">Nome</label><input id="na-name" data-top="name" required value="${esc(A.name || "")}" placeholder="es. Server della Biotechnica, piano 12"></div>
+        </div>
+        ${A.branches.map((b, bi) => `<section class="na-ebranch">
+          <h3 class="sh-h">${branchName(bi)}${bi ? ` <small>parte dopo il piano</small> <select data-fork="${bi}" aria-label="Piano del ramo principale da cui parte">${main.floors.map((_, i) => i + 1).filter(n => n >= 2 && n < main.floors.length).map(n => `<option ${n === +b.fork ? "selected" : ""}>${n}</option>`).join("") || `<option>${+b.fork || 2}</option>`}</select>
+            <button type="button" class="btn ghost small danger" data-na="delbranch" data-b="${bi}">Elimina ramo</button>` : ` <small>${main.floors.length} piani · il fondo è l'ultimo piano</small>`}</h3>
+          <div class="na-erows">${b.floors.map((f, i) => floorRow(b, bi, f, i)).join("")}</div>
+          <button type="button" class="btn ghost small cyan" data-na="add" data-b="${bi}">+ Piano</button>
+        </section>`).join("")}
+        <button type="button" class="btn ghost small yellow" data-na="addbranch" ${main.floors.length >= 4 ? "" : "disabled title=\"Servono almeno 4 piani nel ramo principale\""}>+ Ramo (bivio)</button>
+        <div id="na-warn" class="en-check"></div>
+        <h3 class="sh-h">Demoni <small>gestiscono i Nodi di Controllo; le Difese Attive ne richiedono almeno uno · Imp i più comuni</small></h3>
+        <div class="na-erows">${(A.demons || []).map((d, k) => `<div class="na-erow demon" data-dm="${k}">
+          <select data-dmf="ref" aria-label="Demone">${NET.DEMONS.map(m => `<option value="${m.id}" ${m.id === d.ref ? "selected" : ""}>${m.name} · REZ ${m.rez} · Interface ${m.iface} · ${m.actions} Azioni NET</option>`).join("")}</select>
+          <input data-dmf="note" placeholder="Quali Nodi gestisce, trigger…" value="${esc(d.note || "")}" class="na-enote">
+          <span class="na-ebtn"><button type="button" class="gp-btn del" data-na="deldemon" data-k="${k}" aria-label="Elimina il Demone">✕</button></span></div>`).join("")}</div>
+        <button type="button" class="btn ghost small cyan" data-na="adddemon">+ Demone</button>
+        <div class="fields" style="margin-top:16px"><div class="field full"><label for="na-notes">Note (scopo dell'Architettura, collegamenti col Meatspace, chi conosce le Password)</label><textarea id="na-notes" data-top="notes" rows="3">${esc(A.notes || "")}</textarea></div></div>`;
+    };
+    openModal(`
+      <form class="form" id="arch-form">
+        <div class="modal-head"><h2>// 🔒 ${old ? "MODIFICA ARCHITETTURA" : "NUOVA ARCHITETTURA NET"}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+        <div class="modal-body" id="na-body"></div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost small left" data-action="${old && !/^#\/net/.test(location.hash) ? "net-open" : "close"}" data-id="${esc(old ? old.id : "")}">Annulla</button>
+          <button type="submit" class="btn">Salva architettura</button>
+        </div>
+      </form>`);
+    const form = $("#arch-form"), box = $("#na-body", form);
+    let demonOpt = "auto";
+    // leggo i campi nel modello, poi ridisegno (per i cambi di struttura)
+    const sync = () => {
+      const top = k => $(`[data-top=${k}]`, box);
+      A.name = top("name").value.trim(); A.diff = top("diff").value; A.notes = top("notes").value.trim(); demonOpt = top("demon").value;
+      $$(".na-erow[data-b]", box).forEach(row => {
+        const f = A.branches[+row.dataset.b].floors[+row.dataset.i], g = k => $(`[data-fl=${k}]`, row);
+        f.t = g("t").value; f.note = g("note").value.trim();
+        if (g("ice0")) {
+          const prevIce = f.ice || [];
+          f.ice = [0, 1, 2].map(k => g("ice" + k).value).filter(Boolean).map((ref, k) => (prevIce[k] && prevIce[k].ref === ref ? prevIce[k] : { ref, cur: (NET.iceOf(ref) || {}).rez }));
+        } else if (g("dv")) { f.dv = g("dv").value === "" ? null : num(g("dv").value); f.label = g("label").value.trim(); }
+      });
+      $$("[data-fork]", box).forEach(s => { A.branches[+s.dataset.fork].fork = num(s.value); });
+      $$(".na-erow[data-dm]", box).forEach(row => { const d = A.demons[+row.dataset.dm]; const ref = $("[data-dmf=ref]", row).value; if (d.ref !== ref) d.cur = null; d.ref = ref; d.note = $("[data-dmf=note]", row).value.trim(); });
+    };
+    const warn = () => {
+      const main = A.branches[0] || { floors: [] }, L = main.floors.length, msgs = [];
+      A.branches.slice(1).forEach((b, k) => {
+        const n = k + 2;
+        if (+b.fork < 2) msgs.push(`Ramo ${branchLetter(n - 1)}: i bivi partono dopo il 2° piano del ramo principale`);
+        if (+b.fork >= L) msgs.push(`Ramo ${branchLetter(n - 1)}: deve staccarsi prima dell'ultimo piano del ramo principale`);
+        if (+b.fork + b.floors.length >= L) msgs.push(`Ramo ${branchLetter(n - 1)}: arriva in fondo quanto il ramo principale (il «fondo» dovrebbe essere uno solo)`);
+        if (!b.floors.length) msgs.push(`Ramo ${branchLetter(n - 1)}: nessun piano`);
+      });
+      if (!L) msgs.push("Il ramo principale non ha piani");
+      $$(".na-erow[data-b]", box).forEach(row => { const f = A.branches[+row.dataset.b].floors[+row.dataset.i]; if (f.t === "ice" && !(f.ice || []).length) msgs.push(`Piano ${$(".na-edepth", row).textContent}: scegli almeno un Black ICE`); });
+      const hasNode = A.branches.some(b => b.floors.some(f => f.t === "control"));
+      if (hasNode && !(A.demons || []).length) msgs.push("Ci sono Nodi di Controllo ma nessun Demone (va bene per i Nodi semplici; le Difese Attive ne vogliono uno)");
+      $("#na-warn", box).innerHTML = msgs.map(m => `<div class="warn">⚠ ${esc(m)}</div>`).join("") || `<div class="ok">✓ ${archStats(A).floors} piani pronti</div>`;
+    };
+    const draw = () => { box.innerHTML = body(); $("[data-top=demon]", box).value = demonOpt; warn(); };
+    draw();
+    box.addEventListener("change", ev => {
+      const t = ev.target;
+      sync();
+      if (t.matches("[data-fl=t]")) {
+        const f = A.branches[+t.closest(".na-erow").dataset.b].floors[+t.closest(".na-erow").dataset.i];
+        if (f.t === "ice") { f.dv = null; f.label = ""; } else { f.ice = []; if (NET.floorType(f.t).dv && f.dv == null) f.dv = NET.diffOf(A.diff).dv; }
+        return draw();
+      }
+      if (t.matches("[data-fork], [data-fl^=ice], [data-dmf=ref], [data-top=diff]")) return draw();
+      warn();
+    });
+    box.addEventListener("input", () => { sync(); warn(); });
+    box.addEventListener("click", async ev => {
+      const b = ev.target.closest("[data-na]"); if (!b) return;
+      sync();
+      const op = b.dataset.na, row = b.closest(".na-erow"), bi = row ? +row.dataset.b : +b.dataset.b, i = row ? +row.dataset.i : 0;
+      const br = A.branches[bi];
+      if (op === "gen") {
+        if (archStats(A).floors > 3 && !(await askConfirm("Rigenerare tutta l'architettura? I piani attuali si perdono.", "Genera"))) return;
+        const name = A.name && !/^Architettura /.test(A.name) ? A.name : "", notes = A.notes;
+        A = { ...NET.generate(A.diff, { demon: demonOpt, name }), id: A.id, notes, shared: !!A.shared };
+      }
+      if (op === "reroll" && row) { const f = NET.rerollFloor(A.diff, NET.depthOf(br, i)); br.floors[i] = { ...f, id: br.floors[i].id }; }
+      if (op === "up" && i > 0) [br.floors[i - 1], br.floors[i]] = [br.floors[i], br.floors[i - 1]];
+      if (op === "down" && i < br.floors.length - 1) [br.floors[i + 1], br.floors[i]] = [br.floors[i], br.floors[i + 1]];
+      if (["del", "add", "addbranch", "delbranch"].includes(op)) delete A.gen;   // i tiri del generatore non descrivono più la forma
+      if (op === "del" && row) br.floors.splice(i, 1);
+      if (op === "add") br.floors.push(NET.rerollFloor(A.diff, NET.depthOf(br, br.floors.length)));
+      if (op === "addbranch") { const L = A.branches[0].floors.length; A.branches.push({ id: NET.uid(), fork: Math.min(L - 2, 2 + Math.floor(Math.random() * Math.max(1, L - 4))), floors: [NET.rerollFloor(A.diff, 3)] }); }
+      if (op === "delbranch") A.branches.splice(+b.dataset.b, 1);
+      if (op === "adddemon") A.demons = [...(A.demons || []), { id: NET.uid(), ref: NET.diffOf(A.diff).demon, cur: null, note: "" }];
+      if (op === "deldemon") A.demons.splice(+b.dataset.k, 1);
+      draw();
+    });
+    form.addEventListener("submit", async ev => {
+      ev.preventDefault(); sync();
+      if (!A.name) return toast("Dai un nome all'architettura", "err");
+      if (!(A.branches[0] || { floors: [] }).floors.length) return toast("Il ramo principale deve avere almeno un piano", "err");
+      A.branches = A.branches.filter((b, bi) => bi === 0 || b.floors.length);
+      A.branches.forEach(f => f.floors.forEach(x => { if (x.t === "ice") x.ice = (x.ice || []).filter(z => NET.iceOf(z.ref)); }));
+      try {
+        const saved = await Store.save("netarch", { ...(old || {}), ...A, v: 1, gmOnly: true });
+        upsert(state.netarch, saved); liveSend("netarch", saved);
+        if (saved.shared) await syncNetView(saved);
+        toast("Architettura salvata", "ok");
+        if (/^#\/net/.test(location.hash)) { netOpen.add(saved.id); closeModal(); refreshNetPage(); }
+        else openArch(saved.id);
+        if (/^#\/gm/.test(location.hash)) route();
+      } catch (err) { fail(err); }
+    });
+  }
+
+  // ---------- pagina NET: le architetture che il GM mostra ai giocatori ----------
+  function viewNet() {
+    const views = [...state.netview].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    return `
+      <div class="page-head">
+        <div><div class="kicker">// NET_ARCHITECTURE</div><h1>NET</h1><p>Le Architetture di Rete in cui si sta muovendo il Netrunner: compaiono i piani man mano che li raggiunge. I tiri si fanno dal Cyberdeck nella scheda.</p></div>
+        <div class="row-btns">${isGm() ? `<button type="button" class="btn small yellow" data-action="net-gen">⚄ Genera architettura</button><button type="button" class="btn ghost small" data-action="net-new">+ A mano</button>` : ""}<button type="button" class="btn ghost small cyan" data-action="dice-open">⬢ Dice log</button></div>
+      </div>
+      <div id="net-views">${isGm() ? netGmHtml() : netViewsHtml(views)}</div>`;
+  }
+  // GM: le condivise aperte in cima, le altre chiuse sotto · 👁 sui piani li rivela ai giocatori
+  const netOpen = new Set();
+  function netGmHtml() {
+    const list = [...state.netarch].sort((a, b) => (b.shared ? 1 : 0) - (a.shared ? 1 : 0) || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    if (!list.length) return `<div class="empty"><div class="big">// NESSUNA ARCHITETTURA</div>«⚄ Genera architettura» segue le tabelle del manuale, «+ A mano» la costruisci piano per piano.</div>`;
+    return `<p class="hint">🔒 Vista del GM: con 👁 su un piano lo riveli ai giocatori (anche quelli sopra), ✓ lo segna come superato. I giocatori vedono solo le architetture con «Mostra ai giocatori» acceso e solo i piani rivelati.</p>` +
+      list.map(A => {
+        const S = archStats(A), open = A.shared || netOpen.has(A.id);
+        return `<details class="na-det" data-arch-det="${esc(A.id)}" ${open ? "open" : ""}>
+          <summary><span class="na-sum-t">⌬ ${esc(A.name || "Architettura")}</span>
+            ${A.shared ? `<span class="badge na-shared">● visibile ai giocatori</span>` : `<span class="badge gm">🔒 nascosta</span>`}
+            <span class="hint">${esc(NET.diffOf(A.diff).label)} · ${S.seen}/${S.floors} piani rivelati</span></summary>
+          <div class="na-det-bar">
+            <button type="button" class="btn small ${A.shared ? "ghost" : "yellow"}" data-action="net-share" data-id="${esc(A.id)}">${A.shared ? "🔒 Nascondi ai giocatori" : "👁 Mostra ai giocatori"}</button>
+            <button type="button" class="btn ghost small" data-action="net-reset" data-id="${esc(A.id)}" title="REZ piena, piani da rivelare e da superare">↺ Nuova Netrun</button>
+            <button type="button" class="btn ghost small" data-action="net-copy" data-id="${esc(A.id)}">Duplica</button>
+            <button type="button" class="btn ghost small danger" data-action="net-delete" data-id="${esc(A.id)}">Elimina</button>
+            <button type="button" class="btn small cyan" data-action="net-edit" data-id="${esc(A.id)}">Modifica</button>
+          </div>
+          ${archViewHtml(A)}
+        </details>`;
+      }).join("");
+  }
+  // un'architettura aperta o chiusa: me lo ricordo e ridisegno le linee (da chiusa non hanno misure)
+  document.addEventListener("toggle", ev => {
+    const d = ev.target; if (!d.matches || !d.matches("details.na-det")) return;
+    if (d.open) { netOpen.add(d.dataset.archDet); drawArchLinks(d); } else netOpen.delete(d.dataset.archDet);
+  }, true);
+  function netViewsHtml(views) {
+    return views.length ? views.map(v => {
+      const D = NET.diffOf(v.diff), n = NET.archFloors(v).length;
+      return `<section class="na-pub"><div class="section-title"><h2>⌬ ${esc(v.name || "Architettura")} <span class="hint">${n} piani raggiunti</span></h2></div>
+        ${n ? archDiagram(v, { gm: false }) : `<p class="hint">Il Netrunner non è ancora entrato.</p>`}</section>`;
+    }).join("") : `<div class="empty"><div class="big">// NESSUNA ARCHITETTURA</div>Il GM non ne sta mostrando nessuna.</div>`;
+  }
+  function refreshNetPage() {
+    const box = $("#net-views"); if (!box || !/^#\/net/.test(location.hash)) return;
+    const x = [...$$(".na-wrap", box)].map(w => w.scrollLeft);
+    box.innerHTML = isGm() ? netGmHtml() : netViewsHtml([...state.netview].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")));
+    $$(".na-wrap", box).forEach((w, i) => { w.scrollLeft = x[i] || 0; });
+    drawArchLinks(box);
   }
 
   // ---------- TAVOLO DI GIOCO: mappa, token, iniziativa ----------
@@ -3615,19 +4288,19 @@
     if (col === "meta") { if (msg.rec && msg.rec.id === "site") applySharedMap(msg.rec.tableMap); return; }
     // riga diventata segreta: i giocatori la tolgono, i GM la rileggono dal database (sul canale non viaggia)
     if (msg.t === "gm") {
-      if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes"].includes(col) || !msg.id) return;
+      if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes", "netarch"].includes(col) || !msg.id) return;
       const id = String(msg.id);
       if (isGm()) { Store.get(col, id).then(rec => rec && applyLive(col, rec, true)).catch(e => console.warn(e)); return; }
       return removeLive(col, id);
     }
     if (msg.t === "rec" && msg.rec && msg.rec.id) return applyLive(col, msg.rec, false);
-    if (msg.t === "del" && ["rolls", "tokens", "maps"].includes(col) && msg.id) return removeLive(col, String(msg.id));
+    if (msg.t === "del" && ["rolls", "tokens", "maps", "netview", "netarch"].includes(col) && msg.id) return removeLive(col, String(msg.id));
   }
 
   // trusted = letto dal database (non dal canale pubblico)
   function applyLive(col, rec, trusted) {
-    if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes"].includes(col)) return;
-    if (!trusted && (rec.gmOnly || ["notes", "gmnotes"].includes(col))) return;
+    if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes", "netarch", "netview"].includes(col)) return;
+    if (!trusted && (rec.gmOnly || ["notes", "gmnotes", "netarch"].includes(col))) return;
     let oldTurn = null;
     if (col === "entries" && !trusted) {
       // dal canale accetto solo la parte "sheet" di schede già esistenti
@@ -3660,6 +4333,16 @@
   }
   function afterLive(col, rec, oldTurn) {
     if (col === "rolls") { sortRolls(); renderLogs(); return; }
+    if (col === "netview") { if (!isGm()) refreshNetPage(); return; }
+    if (col === "netarch") {
+      if (rec && !archTimers.has(rec.id) && !$("#arch-form")) {
+        if (/^#\/net/.test(location.hash) && !$(`.na-view[data-arch="${CSS.escape(rec.id)}"]`, $("#net-views") || document)) refreshNetPage();
+        refreshArchView(rec.id);
+      }
+      if (!rec && /^#\/net/.test(location.hash)) refreshNetPage();
+      if (/^#\/gm/.test(location.hash) && !$("#modal").open) route();
+      return;
+    }
     if (col === "notes" || col === "gmnotes" || col === "entries") {
       if (/^#\/(gm|appunti|database|party)/.test(location.hash) && !$("#modal").open) route();
       if (col === "entries" && onTable()) { renderTokens(); renderSide(); }
@@ -3705,6 +4388,18 @@
     if (Date.now() - lastRefresh >= every) { lastRefresh = Date.now(); refreshLive(); }
   }, 2000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && onTable()) { lastRefresh = Date.now(); refreshLive(); } });
+  // pagina NET: se un messaggio si perde, la rileggo ogni tanto
+  let lastNet = 0;
+  setInterval(async () => {
+    if (!/^#\/net/.test(location.hash) || document.hidden) return;
+    if (Date.now() - lastNet < (Store.mode === "cloud" && !Store.liveOk ? 6000 : 30000)) return;
+    lastNet = Date.now();
+    try {
+      if (isGm()) { if (archTimers.size || $("#modal").open) return; state.netarch = await Store.list("netarch"); }
+      else state.netview = await Store.list("netview");
+      refreshNetPage();
+    } catch (e) { console.warn(e); }
+  }, 2000);
   // quando il canale si riconnette dopo un'interruzione, recupero quello che mi sono perso
   const onLiveStatus = (ok, wasOk) => { if (ok && wasOk === false && onTable()) refreshLive(); };
 
@@ -3784,7 +4479,7 @@
   async function doExport() {
     try {
       toast("Preparo il backup…");
-      const data = await Store.exportAll(["entries", "songs", "meta", "notes", "events", "weather", "diary", "quests", "maps", "tokens"]);
+      const data = await Store.exportAll(["entries", "songs", "meta", "notes", "events", "weather", "diary", "quests", "maps", "tokens", "netview", ...(isGm() ? ["netarch"] : [])]);
       const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -3928,6 +4623,33 @@
         break;
       }
       case "gm-new-note": editNote(null, { gmOnly: true, category: "GM" }); break;
+      // architetture NET
+      case "net-gen": editArch(null, NET.generate("standard")); break;
+      case "net-new": editArch(null, NET.blank()); break;
+      case "net-open": openArch(id); break;
+      case "net-edit": editArch(id); break;
+      case "net-copy": { const A = archById(id); if (A) { const c = JSON.parse(JSON.stringify(A)); delete c.id; delete c.createdAt; editArch(null, { ...c, name: (A.name || "Architettura") + " (copia)", shared: false }); } break; }
+      case "net-adj": archAdj(el); break;
+      case "net-roll": archRoll(el); break;
+      case "net-reset": archPatch(id, A => { A.branches.forEach(b => b.floors.forEach(f => { f.seen = false; f.done = false; (f.ice || []).forEach(x => { x.cur = null; }); })); (A.demons || []).forEach(d => { d.cur = null; }); return A; }); break;
+      case "net-share": {
+        const A = archById(id); if (!A) break;
+        const on = !A.shared;
+        archPatch(id, X => ({ ...X, shared: on }));
+        toast(on ? "Visibile nella pagina NET: compaiono solo i piani rivelati (👁)" : "Architettura nascosta ai giocatori", "ok");
+        el.textContent = on ? "🔒 Nascondi ai giocatori" : "👁 Mostra ai giocatori";
+        if (/^#\/net/.test(location.hash)) { netOpen.add(id); refreshNetPage(); }
+        break;
+      }
+      case "net-delete": {
+        const v = state.netview.find(x => x.id === "nv-" + id);
+        confirmDelete("netarch", state.netarch, id, r => r.name || "architettura", async r => {
+          state.netarch = state.netarch.filter(x => x.id !== r.id);
+          Store.send({ t: "del", col: "netarch", id: r.id });
+          if (v) { try { await Store.remove("netview", v); Store.send({ t: "del", col: "netview", id: v.id }); state.netview = state.netview.filter(x => x.id !== v.id); } catch (e) { console.warn(e); } }
+        });
+        break;
+      }
       case "gm-add": {
         const inp = $("#gm-email"), email = inp && inp.value.trim();
         if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("Scrivi un'email valida", "err"); break; }
@@ -4007,6 +4729,7 @@
       // scheda personaggio
       case "edit-sheet": editSheet(id); break;
       case "sheet-roll": { const e = state.entries.find(x => x.id === id); if (e) sheetRoll(e, el.dataset.roll); break; }
+      case "deck-adj": { const e = state.entries.find(x => x.id === id), op = rezOp(el, el.dataset.op); if (e && op && Store.canEdit()) deckAdj(e, num(el.dataset.i), op); break; }
       case "sheet-adj": {
         const e = state.entries.find(x => x.id === id); if (!e || !Store.canEdit()) break;
         const f = el.dataset.f, d = el.dataset.d;
