@@ -41,20 +41,31 @@ Ogni PG e NPC ha una **Scheda** con le regole di *Cyberpunk RED* (nomi in ingles
 
 Basta un clic su una STAT, un'abilità o un'arma per **tirare i dadi**: base + 1d10 con il successo critico sul 10 e il fallimento critico sull'1, malus delle ferite applicato da solo, campo **MOD** per i modificatori di situazione. I danni delle armi segnalano la **Critical Injury** quando escono due 6.
 
+#### ⚔ Combattimento
+La tab **Combattimento** del dossier raccoglie HP, armatura, iniziativa, Death Save, movimento, Evasion, stati, modificatori speciali, armi e Critical Injury. Ogni arma ha, direttamente nella sua scheda:
+- **⌖ Attack**, la spunta **Mirato −8** con la parte del corpo (testa, oggetto in mano, gamba) e, per SMG e fucili d'assalto, **Autofire** e **Soppressione**;
+- la scelta delle **munizioni** (catalogo nelle Regole della campagna) e il pulsante del **danno**: in autofire (REF + skill Autofire) il danno è 2d6 × quanto superi la VD, al massimo ×3 per gli SMG e ×4 per i fucili d'assalto. Per le armi modificate danno dell'autofire e moltiplicatore massimo si cambiano nella scheda dell'arma;
+- la **tabella delle VD per distanza** come parte della descrizione, con le tabelle estese (21 tipi di arma per il colpo singolo, 4 per l'autofire). La tabella viene dalla categoria dell'arma e si cambia dal menu sotto (l'arma la ricorda). Dopo il tiro ogni distanza si segna ✓ o ✗, con il moltiplicatore dell'autofire, e il Dice log elenca le distanze a cui colpisci.
+
+I nemici del GM usano un pannello con le stesse regole, aperto da «Attack».
+
+Ci sono anche gli **stati** (in fiamme, accecato… con il loro malus, se il GM lo imposta), i **modificatori speciali** (cyberware, talenti: «Mirino ottico +1 ai colpi mirati») che si sommano da soli ai tiri del tipo scelto, e le **Critical Injury** tirabili (2d6, corpo o testa) da aggiungere alla scheda con il +1 al Death Save.
+
 #### ⌁ Cyberdeck (Netrunner)
-Se il ruolo è **Netrunner** (o la Role Ability è *Interface*) la scheda ha il riquadro **Cyberdeck**, con il catalogo del manuale base (pag. 201–208, nomi dell'edizione italiana):
+Se il ruolo è **Netrunner** (o la Role Ability è *Interface*) il dossier ha la tab **Cyberdeck**: si possono tenere **più deck** (di scorta, nel cyberbraccio…) e scegliere quello in uso. Il catalogo è il catalogo del manuale base (pag. 201–208, nomi dell'edizione italiana):
 - **programmi** Boost, Difensivi, Anti-Programma e Anti-Operatore, **Black ICE** (2 slot) e **hardware** (Barriera KRASH, Blocco DNA, Cavi Isolati, Circuiti Rinforzati, Disco di Backup, Portata Migliorata), più programmi personalizzati; il contatore degli slot tiene conto della Tuta Bodyweight e del deck nel cyberbraccio;
 - ogni programma si tira come un'arma: **Attack** = Interface + ATK + 1d10 (i Black ICE del deck usano il loro ATK), poi il **danno** (REZ ai programmi o al cervello, con i valori diversi contro i Black ICE) o l'**effetto** con i suoi dadi;
 - le **Capacità d'Interfaccia** (Backdoor, Bypass, Cloak, Control, I-D, Mapper, Scanner, Virus, Zap), **Defense** e **Speed** sono pulsanti; i Boost Rezzati aggiungono il loro +2 da soli;
 - durante la Netrun si tengono **Rez/Derez**, i **REZ** rimasti, i programmi «una volta per Netrun» già usati e quelli Distrutti; «↺ Nuova Netrun» rimette tutto a posto. Le **Azioni NET** si leggono dal Rank (2, 3, 4 o 5).
 
-### 🎲 Tavolo — `// TACTICAL_GRID`
-Il tavolo di gioco per i combattimenti, condiviso **in tempo reale** tra tutti quelli che hanno il sito aperto.
+### 🎲 Mappa — `// TACTICAL_GRID`
+La mappa per i combattimenti, condiviso **in tempo reale** tra tutti quelli che hanno il sito aperto.
 - **Mappe** con immagine di sfondo e griglia (1 casella = 2 m), zoom con la rotella e spostamento della vista trascinando lo sfondo.
 - **Mappa condivisa**: il GM prepara le mappe in privato e con «Mostra a tutti» porta tutti i giocatori su quella giusta. Chi sta guardando un'altra mappa ci viene spostato con un avviso.
 - **Token** trascinabili per PG, NPC e nemici generici, con la barra degli HP presa dalla scheda. Nel pannello del token HP e armatura (SP di testa e corpo) hanno le barre e i pulsanti per danni, ablazione e riparazione; i token generici e i nemici hanno HP e SP propri, modificabili anche da «Modifica». Durante lo spostamento una **freccia** va dalla casella di partenza a quella d'arrivo, con la distanza in metri, e la vedono anche gli altri giocatori. Le frecce della tastiera muovono il token selezionato di una casella.
 - **Iniziativa**: un pulsante tira REF + 1d10 per tutti, poi «Turno ▶» passa al prossimo e conta i round.
-- **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto: `2d6+3` per un tiro libero, `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
+- **Pop-up dei tiri**: sulla mappa ogni tiro (tuo o degli altri) compare per qualche secondo in alto a destra e resta nel Dice log. Ogni token ha i suoi **stati**, segnati da un contatore sul token.
+- **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto: `2d6+3` per un tiro libero, `3d6kh2` per tirare 3d6 e tenere i 2 più alti (`kl` per i più bassi; vale anche nei danni delle armi), `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
 
 ### ⌬ NET — `// NET_ARCHITECTURE`
 Le Architetture di Rete che il GM sta mostrando: compaiono piano per piano mentre il Netrunner scende, con Password, File, Nodi e Black ICE (REZ compresi), aggiornate in tempo reale. I piani non ancora raggiunti e le note del GM non arrivano ai giocatori.
@@ -81,8 +92,9 @@ Una sezione che vedono **solo i GM**: le righe segrete non arrivano proprio ai g
 
   Ogni valore è scomposto: **base_naturale = STAT + livello della skill**, **base_effettiva = naturale + HQ + Smartgun** (entro il tetto della fascia) **+ bonus del ruolo**, con il malus dell'armatura indicato a parte; il Dice log mostra ogni addendo. Le STAT naturali non superano 8; il BODY sale solo con gli impianti (Bone Lace 10, Linear Frame Σ 12, β 14, superiore 16–18), e 9–10 si comprano solo in Fascia 3–4. I **tratti apice** (REF/DEX 10, Ruolo 10, skill di combattimento 10, BODY 16–18, Metalgear 18) sono al massimo 1 in Fascia 3 e 1 in Fascia 4, 2 se Estremo. Con la **regola del 20** (STAT 10 + skill 10) scatta la compensazione: SP massimo 11 oppure HP ridotti. Un validatore controlla tetti, punti e fasce mentre compili. Le schede delle versioni precedenti si convertono da sole all'apertura.
 
-  Con «⇲ Sul tavolo» si mettono N copie sulla mappa, anche nascoste: ogni token ha HP e SP propri e tira dal suo pannello.
-- **⌬ Architetture NET**: «⚄ Genera» segue il manuale (pag. 209–211): 3d6 piani, un bivio per ogni d10 da 7 in su (i bivi partono dopo il 2° piano e il ramo principale resta il più profondo), tabella dell'**Ingresso** (1d6) per i primi due piani e dei **piani inferiori** (3d6) secondo la difficoltà Base / Standard / Non Comune / Avanzata (VD 6 / 8 / 10 / 12), ritirando programmi e Password già usciti, più un **Demone** se ci sono Nodi di Controllo. Oppure si costruisce a mano: piani (Password, File, Nodo di Controllo, Black ICE, altro) con VD, descrizione e note, rami, Demoni, ⚄ per ritirare un singolo piano. Nella vista di gioco ogni Black ICE ha i pulsanti **Agguato** (VEL), **Attacco** (ATT), danno o effetto e **Difesa** (DIF), con i REZ da scalare; i Demoni tirano Zap, Control, Difesa e Combattimento. Con «👁 Mostra ai giocatori» la pagina **NET** mostra a tutti i soli piani rivelati con 👁 (rivelarne uno rivela quelli sopra).
+  Con «⇲ Sulla mappa» si mettono N copie sulla mappa, anche nascoste: ogni token ha HP e SP propri e tira dal suo pannello.
+- **⌬ Architetture NET**: «⚄ Genera» segue il manuale (pag. 209–211): 3d6 piani, un bivio per ogni d10 da 7 in su (i bivi partono dopo il 2° piano e il ramo principale resta il più profondo), tabella dell'**Ingresso** (1d6) per i primi due piani e dei **piani inferiori** (3d6) secondo la difficoltà Base / Standard / Non Comune / Avanzata (VD 6 / 8 / 10 / 12), ritirando programmi e Password già usciti, più un **Demone** se ci sono Nodi di Controllo. Oppure si costruisce a mano: piani (Password, File, Nodo di Controllo, Black ICE, altro) con VD, descrizione e note, rami, Demoni, ⚄ per ritirare un singolo piano. Nella vista di gioco ogni Black ICE ha i pulsanti **Agguato** (VEL), **Attacco** (ATT), danno o effetto e **Difesa** (DIF), con i REZ da scalare; i Demoni tirano Zap, Control, Difesa e Combattimento. Con «👁 Mostra ai giocatori» la pagina **NET** mostra a tutti i soli piani rivelati con 👁 (rivelarne uno rivela quelli sopra). Nella pagina NET il GM gestisce tutto anche lì e crea **Black ICE e Demoni homebrew**, che compaiono negli elenchi delle architetture e dei Cyberdeck.
+- **⚙ Regole della campagna**: catalogo delle **munizioni** (per famiglia di armi, con modificatore al colpire, danno sostitutivo o modificatore al danno ed effetto) e degli **stati**.
 - Con il ruolo GM attivo, mappe, token, turni e «Mostra a tutti» li gestiscono solo i GM. I giocatori muovono i token visibili, cambiano gli HP e tirano.
 
 **Per attivarlo** (una volta sola): su Supabase apri *SQL Editor*, incolla tutto `supabase/schema.sql`, togli i due trattini dall'ultima riga mettendo l'email del primo GM e premi *Run*. Gli altri GM si aggiungono poi dal sito.
@@ -151,6 +163,8 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 | `gmnotes` | note del GM sui personaggi (sempre segrete) |
 | `netarch` | architetture NET del GM (sempre segrete) |
 | `netview` | copia pubblica di un'architettura: solo i piani rivelati |
+
+In `meta` ci sono anche `rules` (munizioni e stati) e `nethb` (Black ICE e Demoni homebrew).
 
 Le schede dei personaggi stanno dentro `entries` (campo `sheet`). Il tavolo usa i canali *broadcast* di Supabase Realtime per gli aggiornamenti istantanei: non serve configurare niente nel database. Se il canale non è disponibile, il tavolo si aggiorna da solo ogni pochi secondi. Anche con il canale attivo, ogni 30 secondi (e quando si torna sulla pagina) il tavolo si riallinea con il database, così un messaggio perso non lascia nessuno indietro. La mappa mostrata a tutti è salvata in `meta` (campo `tableMap`).
 

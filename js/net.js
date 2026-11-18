@@ -72,6 +72,19 @@ window.NET = (() => {
   ];
   const iceLabel = c => c.alias ? `${c.name} (${c.alias})` : c.name;
 
+  // ---------- homebrew del GM (meta "nethb"): Black ICE e Demoni in più ----------
+  // ice = { id: "hb-…", name, cls, per, spd, atk, def, rez, dmgX, dmgU ("brain" | "REZ"), fxX, fxL, eff }
+  let HB = { ice: [], demons: [] };
+  const n0 = v => (v === "" || v == null || isNaN(+v)) ? 0 : +v;
+  const hbIce = h => ({ ...h, cls: h.cls === "antiprogram" ? "antiprogram" : "antipersonnel", per: n0(h.per), spd: n0(h.spd), atk: n0(h.atk), def: n0(h.def), rez: Math.max(1, n0(h.rez)),
+    cost: n0(h.cost), ice: true, slots: 2, homebrew: true,
+    dmg: h.dmgX && CPR.parse(h.dmgX) ? [{ l: h.dmgU === "REZ" ? "a un programma" : "al cervello", x: String(h.dmgX).replace(/\s+/g, ""), u: h.dmgU === "REZ" ? "REZ" : "brain" }] : [],
+    fx: h.fxX && CPR.parse(h.fxX) ? [{ l: h.fxL || "effetto", x: String(h.fxX).replace(/\s+/g, "") }] : [] });
+  const hbDemon = d => ({ ...d, rez: Math.max(1, n0(d.rez)), iface: n0(d.iface), actions: Math.max(1, n0(d.actions) || 2), combat: n0(d.combat), homebrew: true });
+  function setHomebrew(rec) { HB = { ice: ((rec && rec.ice) || []).map(hbIce), demons: ((rec && rec.demons) || []).map(hbDemon) }; }
+  const homebrew = () => HB;
+  const allIce = () => [...ICE, ...HB.ice];
+
   // ---------- hardware del Cyberdeck ----------
   const HARDWARE = [
     { id: "krash", name: "Barriera KRASH", slots: 2, cost: 100, eff: "Immune ai programmi che costringono a Scollegarsi." },
@@ -103,7 +116,7 @@ window.NET = (() => {
   function catalogOf(ref) {
     const [k, id] = String(ref || "").split(":");
     if (k === "prog") return PROGRAMS.find(p => p.id === id);
-    if (k === "ice") return ICE.find(p => p.id === id);
+    if (k === "ice") return allIce().find(p => p.id === id);
     if (k === "hw") return HARDWARE.find(p => p.id === id);
     return null;
   }
@@ -166,7 +179,8 @@ window.NET = (() => {
     { id: "ifrit", name: "Ifrit", rez: 25, iface: 4, actions: 3, combat: 14 },
     { id: "balron", name: "Balron", rez: 30, iface: 7, actions: 4, combat: 14 },
   ];
-  const demonOf = id => DEMONS.find(d => d.id === id) || DEMONS[0];
+  const allDemons = () => [...DEMONS, ...HB.demons];
+  const demonOf = id => allDemons().find(d => d.id === id) || DEMONS[0];
 
   // ---------- Architetture di Rete ----------
   const DIFFS = [
@@ -208,7 +222,7 @@ window.NET = (() => {
   const FILES = ["Registro del personale", "Contabilità", "Email riservate", "Planimetrie", "Registrazioni video", "Dati di ricerca",
     "Codici d'accesso", "Materiale di ricatto", "Ordini di consegna", "Turni della sicurezza"];
 
-  const iceOf = id => ICE.find(c => c.id === id);
+  const iceOf = id => allIce().find(c => c.id === id);
   const iceList = ids => ids.map(id => ({ ref: id, cur: (iceOf(id) || {}).rez || 0 }));
   // un piano dalla tabella: entrata = 1d6, sotto = 3d6 sulla colonna della difficoltà
   function rollFloor(diffId, entrance) {
@@ -281,7 +295,7 @@ window.NET = (() => {
   const archFloors = A => (A.branches || []).flatMap((b, bi) => b.floors.map((f, i) => ({ f, b, bi, i, depth: depthOf(b, i) })));
 
   return {
-    CLASSES, offensive, PROGRAMS, ICE, iceOf, iceLabel, HARDWARE, ABILITIES, netActions, DECK_QUALITY,
+    CLASSES, offensive, PROGRAMS, ICE, iceOf, iceLabel, allIce, allDemons, setHomebrew, homebrew, HARDWARE, ABILITIES, netActions, DECK_QUALITY,
     catalogOf, itemInfo, hasRez, curRez, deckSlots, boosts, autoDeck,
     DEMONS, demonOf, DIFFS, diffOf, FLOOR_TYPES, floorType, CONTROLS, FILES,
     generate, rerollFloor, emptyFloor, blank, depthOf, archFloors, uid,
