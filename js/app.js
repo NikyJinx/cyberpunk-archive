@@ -188,6 +188,8 @@
       ["entries", "songs", "meta", "notes", "events", "weather", "diary", "quests"].map(c => Store.list(c)));
     Object.assign(state, { entries, songs, notes, events, weather, diary, quests });
     state.site = meta.find(m => m.id === "site") || null;
+    state.rules = meta.find(m => m.id === "rules") || null;
+    state.nethb = meta.find(m => m.id === "nethb") || null; NET.setHomebrew(state.nethb);
     // tavolo di gioco: se qualcosa va storto qui, il resto del sito funziona lo stesso
     try {
       const [maps, tokens, rolls] = await Promise.all([Store.list("maps"), Store.list("tokens"), Store.list("rolls", { limit: 100 })]);
@@ -221,7 +223,7 @@
   const MENU_INFO = {
     home: ["⌂", "Pagina iniziale"], database: ["▤", "PG, NPC, fazioni, luoghi"], diario: ["✎", "Cronaca e quest"],
     calendario: ["▦", "Eventi e meteo"], appunti: ["✉", "Note della campagna"], tracce: ["♫", "Colonna sonora"],
-    party: ["◈", "Schede dei PG"], tavolo: ["⬡", "Mappa, token e dadi"], net: ["⌬", "Architetture di Rete"], gm: ["🔒", "Solo per i GM"],
+    party: ["◈", "Schede dei PG"], mappa: ["⬡", "Mappa, token e iniziativa"], net: ["⌬", "Architetture di Rete"], gm: ["🔒", "Solo per i GM"],
   };
   function renderSideMenu() {
     const box = $("#side-nav"); if (!box) return;
@@ -288,7 +290,8 @@
       } else app.innerHTML = viewMonth(p);
       viewKey = location.hash;
     }
-    else if (page === "tavolo") app.innerHTML = viewTable();
+    else if (page === "tavolo") { location.replace("#/mappa"); return; }   // vecchio indirizzo
+    else if (page === "mappa") app.innerHTML = viewTable();
     else if (page === "party") app.innerHTML = viewParty();
     else if (page === "net") app.innerHTML = viewNet();
     else if (page === "gm") {
@@ -296,7 +299,7 @@
       app.innerHTML = viewGm();
     }
     else app.innerHTML = viewHome();
-    app.classList.toggle("wide", page === "tavolo");
+    app.classList.toggle("wide", page === "mappa");
     hydrate(app);
     bindPage(page);
     if (page === "database" && arg) openEntry(arg);
@@ -911,11 +914,7 @@
 
   // prova con le regole di Cyberpunk RED: base + 1d10, malus ferite e MOD
   function sheetCheck(e, label, parts, extra = {}) {
-    const mods = [...parts];
-    const w = woundOf(e);
-    if (w.pen) mods.push({ l: w.label, v: w.pen });
-    if (sheetMod) mods.push({ l: "MOD", v: sheetMod });
-    postRoll({ kind: "check", who: e.name, entryId: e.id, label, ...CPR.check(mods), ...extra });
+    return postRoll({ kind: "check", who: e.name, entryId: e.id, label, ...CPR.check([...parts, ...sheetExtra(e)]), ...extra });
   }
 
   function sheetRoll(e, what) {
@@ -935,13 +934,7 @@
     }
     if (type === "wpn") {
       const w = (sheetOf(e).weapons || [])[+a]; if (!w) return;
-      if (b === "dmg") {
-        const r = CPR.rollExpr(w.dmg, { damage: true });
-        if (!r) return toast(`Danno non valido: "${w.dmg}" (es. 3d6)`, "err");
-        return postRoll({ kind: "damage", who: e.name, entryId: e.id, label: `${w.name} · damage`, ...r });
-      }
-      const k = skillByKey(e, weaponSkillKey(w.skill)) || skillByKey(e, "skill:handgun");
-      return sheetCheck(e, `${w.name} · attack (${k.label})`, [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }]);
+      return b === "dmg" ? cbDamage(e, +a) : cbRoll(e, +a, "single");
     }
     if (type === "init") return rollInitiative(e);
     if (type === "death") {
@@ -954,8 +947,8 @@
   }
 
   function rollInitiative(e, extra = {}) {
-    const d = CPR.die(10), ref = statEff(e, "REF");
-    return postRoll({ kind: "init", who: e.name, entryId: e.id, label: "Initiative", dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }], total: d + ref, ...extra });
+    const d = CPR.die(10), ref = statEff(e, "REF"), im = modsFor(sheetOf(e).mods, ["init"]);
+    return postRoll({ kind: "init", who: e.name, entryId: e.id, label: "Initiative", dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }, ...im], total: d + ref + im.reduce((t, m) => t + m.v, 0), ...extra });
   }
 
   // modifiche rapide dalla scheda (PF, fortuna, SP…): aggiorno subito la vista e salvo dopo una breve pausa
@@ -976,10 +969,14 @@
     }, 500));
   }
   function refreshSheetView(id) {
-    const box = $(`#modal .sh[data-sheet="${CSS.escape(id)}"]`); if (!box) return;
     const e = state.entries.find(x => x.id === id); if (!e) return;
+    const box = $(`#modal .sh[data-sheet="${CSS.escape(id)}"]`), dt = $(`#modal .nd-tab[data-deck-tab="${CSS.escape(id)}"]`), cb = $(`#modal .cb[data-combat="${CSS.escape(id)}"]`);
+    if (!box && !dt && !cb) return;
     const y = $("#modal").scrollTop;
-    box.outerHTML = sheetHtml(e); $("#modal").scrollTop = y;
+    if (box) box.outerHTML = sheetHtml(e);
+    if (cb) cb.outerHTML = combatHtml(e);
+    if (dt) dt.outerHTML = deckTabHtml(e);
+    $("#modal").scrollTop = y;
   }
 
   // armatura come gli HP: barra + pulsanti (−1 ablazione, +1 riparazione, ↺ SP piena)
@@ -1015,13 +1012,177 @@
         <span class="sk-n">${esc(k.label)}${k.x2 ? ` <i title="Costo doppio">×2</i>` : ""}</span><span class="sk-s">${k.stat}</span><span class="sk-l">${k.lvl}</span><span class="sk-b">${statEff(e, k.stat) + k.lvl}</span>`,
         "sk " + (k.lvl ? "" : "zero"), `Tira ${k.label}: ${k.stat} + livello + 1d10`)).join("")}</section>`;
     }).join("");
-    const arm = loc => spBar(loc === "head" ? "Head" : "Body", armorOf(e, loc), edit && (d => `data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="${d}"`));
     const weapons = s.weapons || [];
     return `
       <div class="sh" data-sheet="${id}">
         <div class="sh-bar">
           <label class="sh-mod" title="Modificatore situazionale aggiunto a tutti i tiri di prova (es. −2 copertura, +1 mira)">MOD <input type="number" step="1" data-sheet-mod value="${sheetMod}"></label>
-          <span class="hint">Clicca una STAT, un'abilità o un'arma per tirare.</span>
+          <span class="hint">Clicca una STAT o un'abilità per tirare · armi e danni nella tab Combattimento.</span>
+          <button type="button" class="btn ghost small cyan" data-action="dice-open">⬢ Dice log</button>
+        </div>
+        <div class="sh-top">
+          <div class="sh-box hp w-${w.id}">
+            <span class="l">Hit Points</span>
+            <span class="n">${hp}<small> / ${max}</small></span>
+            <span class="sh-hpbar"><i style="width:${pct(hp)}%"></i><b style="left:${pct(CPR.seriousAt(max))}%" title="Seriously Wounded"></b></span>
+            <span class="sh-sub">${w.label}${w.pen ? ` · ${w.pen} to all Actions` : ""}</span>
+            ${edit ? adjBtns(e.id, "hp", [-5, -1, 1, 5]) : ""}
+          </div>
+          <div class="sh-box">
+            <span class="l">Role · ${esc(e.role || "—")}</span>
+            ${roll("ability", `<span class="n sm">${esc(ability)}</span><span class="sh-sub">Rank ${num(s.rank)} · tira Rank + 1d10</span>`, "sh-rollbox")}
+          </div>
+          <div class="sh-box">
+            <span class="l">Humanity</span>
+            ${cs.current != null ? `<span class="n">${cs.current}<small> / ${cs.max}</small></span><span class="sh-sub">EMP ${statEff(e, "EMP")} (base ${statBase(e, "EMP")}) · dal cyberware</span>`
+              : `<span class="n">${statBase(e, "EMP") * 10}</span><span class="sh-sub">EMP × 10 · imposta l'umanità nel cyberware</span>`}
+          </div>
+          <div class="sh-box"><span class="l">Luck</span><span class="n">${luckOf(e)}<small> / ${statBase(e, "LUCK")}</small></span>
+            ${edit ? `<span class="sh-adj"><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="-1" title="Spendi 1 punto">−</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="1">+</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="reset" title="Ripristina (nuova sessione)">↺</button></span>` : ""}</div>
+          <div class="sh-box"><span class="l">Move</span><span class="n">${statEff(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statEff(e, "MOVE")} squares · Run ${statEff(e, "MOVE") * 4} m</span></div>
+        </div>
+        ${pcPen(e) ? `<div class="en-pen">Armatura pesante: ${pcPen(e)} a REF, DEX e MOVE (già calcolato nei valori e nei tiri)</div>` : ""}
+        ${(s.status || []).length ? `<div class="sh-status"><span class="sh-k">Stati</span>${statusChips(s.status, null)}</div>` : ""}
+
+        <div class="sh-stats">${CPR.STATS.map(st => roll("stat:" + st.id, `<span class="k">${st.id}</span><span class="v">${statEff(e, st.id)}</span>${statEff(e, st.id) !== statBase(e, st.id) ? `<small>base ${statBase(e, st.id)}</small>` : ""}`, "sh-stat", `${st.label}: ${st.id} + 1d10`)).join("")}</div>
+
+        <div class="sh-sec-head"><h4>Combat</h4><span class="hint">${weapons.length} arm${weapons.length === 1 ? "a" : "i"} · HP, armatura, iniziativa, stati e Critical Injury</span>
+          <button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="combat">Apri Combattimento →</button></div>
+        ${isNetrunner(e) ? `<div class="sh-sec-head"><h4>Cyberdeck</h4><span class="hint">${esc(activeDeck(e).name || "Cyberdeck")} · Interface ${ifaceOf(e)} · ${CPR.netActions(ifaceOf(e))} NET Actions</span>
+          <button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="deck">Apri il Cyberdeck →</button></div>` : ""}
+
+        <div class="sh-sec-head"><h4>Skills</h4><label class="check"><input type="checkbox" data-sk-all ${showAll ? "checked" : ""}> mostra anche le abilità a 0</label></div>
+        <div class="sk-head"><span>Skill</span><span>STAT</span><span>LVL</span><span>BASE</span></div>
+        <div class="sh-skills">${groups || `<p class="hint">Nessuna abilità con livello. Spunta "mostra anche le abilità a 0".</p>`}</div>
+
+        <div class="sh-foot">
+          <div><span class="sh-k">Reputation</span> <b>${num(s.rep)}</b></div>
+          <div><span class="sh-k">Improvement Points</span> <b>${num(s.ip)}</b></div>
+          ${s.owner ? `<div><span class="sh-k">Player</span> <b>${esc(s.owner)}</b></div>` : ""}
+        </div>
+        ${s.notes ? `<div class="block"><h4>Notes</h4><div class="prewrap">${esc(s.notes)}</div></div>` : ""}
+      </div>`;
+  }
+
+
+  // ---------- tab COMBATTIMENTO: HP, armatura, iniziativa, stati, modificatori, armi, Critical Injury ----------
+  // per ogni arma: colpo mirato e ultimo tiro restano in memoria (per dispositivo), munizioni e tabella delle VD nella scheda
+  const cbMem = {};
+  const cbKey = (e, i) => e.id + ":" + i;
+  function cbInfo(e, i) {
+    const s = sheetOf(e), w = (s.weapons || [])[i]; if (!w) return null;
+    const cat = sheetWeaponCat(w), T = CPR.weaponType(cat) || {}, melee = CPR.isMelee(cat);
+    const k = skillByKey(e, weaponSkillKey(w.skill)) || skillByKey(e, "skill:handgun"), af = skillByKey(e, "skill:autofire");
+    const autoMax = num(w.auto) || T.auto || 0;
+    const RT = melee ? null : CPR.rangeById(w.range == null ? CPR.rangeDefault(cat) : w.range || CPR.rangeDefault(cat));
+    const AT = autoMax ? CPR.autoById(w.autoRange || CPR.autoDefault(cat) || "smg") : null;
+    const ammo = ammoOf(cat, w.ammo || "");
+    // autofire: danno e moltiplicatore massimo si possono cambiare per l'arma (es. modificata dal Tech)
+    const afDmg = w.afDmg && CPR.parse(w.afDmg) ? String(w.afDmg).replace(/\s+/g, "") : "2d6";
+    const afBase = statEff(e, "REF") + (af ? af.lvl : 0);
+    return { s, w, cat, T, melee, k, af, autoMax, afDmg, afBase, RT, AT, ammo, dmg: ammo.dmg && CPR.parse(ammo.dmg) ? ammo.dmg : (w.dmg || T.dmg || "") };
+  }
+  function cbParts(e, X, mode, aimLoc) {
+    const auto = mode === "auto" || mode === "supp";
+    const parts = auto ? [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: X.af ? X.af.lvl : 0 }] : [{ l: X.k.stat, v: statEff(e, X.k.stat) }, { l: X.k.label, v: X.k.lvl }];
+    if (aimLoc) parts.push({ l: `Colpo mirato (${(CPR.AIMED.find(a => a.id === aimLoc) || {}).label})`, v: -8 });
+    if (num(X.ammo.atk)) parts.push({ l: X.ammo.name, v: num(X.ammo.atk) });
+    parts.push(...modsFor(X.s.mods, ["attack", X.melee ? "melee" : "ranged", ...(aimLoc ? ["aimed"] : []), ...(auto ? ["autofire"] : [])]).map(m => ({ l: m.l, v: m.v })));
+    return [...parts, ...sheetExtra(e)];
+  }
+  function cbRoll(e, i, mode = "single") {
+    const X = cbInfo(e, i); if (!X) return;
+    const key = cbKey(e, i), M = cbMem[key] = cbMem[key] || {};
+    const auto = mode === "auto" || mode === "supp", aimLoc = !auto && M.aim ? (M.loc || "head") : "";
+    const r = CPR.check(cbParts(e, X, mode, aimLoc));
+    const T = auto ? X.AT : X.RT;
+    const bands = T ? T.dv.map((dv, j) => ({ label: CPR.RANGE_BANDS[j], dv, hit: dv != null && r.total > dv, mult: mode === "auto" && dv != null && r.total > dv ? Math.min(r.total - dv, X.autoMax) : 0 })) : [];
+    M.last = { mode, total: r.total, crit: r.crit, bands, aim: aimLoc, dmg: X.dmg };
+    const reach = bands.filter(b => b.hit).map(b => b.label + (b.mult ? ` ×${b.mult}` : "")).join(", ");
+    const aimed = aimLoc ? CPR.AIMED.find(a => a.id === aimLoc) : null;
+    const note = [
+      X.melee ? "vs DEX + Evasion + 1d10 del difensore" : T ? `${T.label}: ${reach ? `colpisce a ${reach}` : "fuori portata a ogni distanza"}` : "",
+      mode === "auto" ? `autofire (10 colpi): danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}` : mode === "supp" ? "fuoco di soppressione (10 colpi): chi è entro 25 m tira WILL + Concentration contro questo totale" : "",
+      aimed ? `mirato: ${aimed.label} · ${aimed.eff}` : "",
+      X.ammo.id ? `${X.ammo.name}${X.ammo.eff ? `: ${X.ammo.eff}` : ""}` : "",
+    ].filter(Boolean).join(" · ");
+    postRoll({ kind: "check", who: e.name, entryId: e.id, label: `${X.w.name} · ${{ single: aimed ? `aimed shot (${aimed.label})` : "attack", auto: "autofire", supp: "suppressive fire" }[mode]}`, ...r, note });
+    refreshSheetView(e.id);
+  }
+  function cbDamage(e, i, mult) {
+    const X = cbInfo(e, i); if (!X) return;
+    const L = (cbMem[cbKey(e, i)] || {}).last, auto = L && L.mode === "auto" && mult;
+    const r = CPR.rollExpr(auto ? X.afDmg : X.dmg, { damage: true });
+    if (!r) return toast(`Danno non valido: "${X.dmg}"`, "err");
+    if (auto && mult > 1) { const raw = r.total - (r.crit === "injury" ? 5 : 0), add = raw * (mult - 1); r.mods.push({ l: `× ${mult} autofire`, v: add }); r.total += add; }
+    [...(num(X.ammo.dmgMod) ? [{ l: X.ammo.name, v: num(X.ammo.dmgMod) }] : []), ...modsFor(X.s.mods, ["damage"])].forEach(m => { r.mods.push({ l: m.l, v: m.v }); r.total += m.v; });
+    const aimed = L && L.aim && !auto ? CPR.AIMED.find(a => a.id === L.aim) : null;
+    const note = [aimed ? `${aimed.label}: ${aimed.eff}` : "", X.ammo.eff ? `${X.ammo.name}: ${X.ammo.eff}` : "", r.crit === "injury" ? "Due 6: tira la Critical Injury dalla scheda del bersaglio" : ""].filter(Boolean).join(" · ");
+    postRoll({ kind: "damage", who: e.name, entryId: e.id, label: `${X.w.name} · damage${auto ? ` (autofire ×${mult})` : aimed ? ` (aimed: ${aimed.label})` : ""}`, ...r, note });
+  }
+  // la tabella delle VD fa parte della descrizione dell'arma; dopo un tiro segna ✓ / ✗ per ogni distanza
+  function cbTable(X, L, edit, e, i) {
+    if (X.melee) return `<p class="hint cb-melee">Mischia: il difensore tira DEX + Evasion + 1d10.</p>`;
+    const rowsOf = (T, isAuto) => {
+      if (!T) return "";
+      const last = L && (isAuto ? L.mode === "auto" || L.mode === "supp" : L.mode === "single") ? L : null;
+      return `<tr class="${last ? "rolled" : ""}"><th>${isAuto ? "Autofire" : "Colpo singolo"}</th>${CPR.RANGE_BANDS.map((_, j) => {
+        const dv = T.dv[j]; if (j >= T.dv.length) return `<td class="na">—</td>`;
+        const b = last && last.bands[j];
+        return `<td class="${dv == null ? "na" : b ? (b.hit ? "hit" : "miss") : ""}">${dv == null ? "N/A" : dv}${b && dv != null ? `<i>${b.hit ? (b.mult ? `✓×${b.mult}` : "✓") : "✗"}</i>` : ""}</td>`;
+      }).join("")}</tr>`;
+    };
+    const sel = (attr, list, cur, title) => edit ? `<select class="cb-tsel" ${attr} title="${title}" aria-label="${title}">${list.map(t => `<option value="${t.id}" ${t.id === cur ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</select>` : "";
+    return `<div class="cb-dvwrap"><table class="cb-dv">
+      <thead><tr><th>VD</th>${CPR.RANGE_BANDS.map(b => `<th>${b.replace(" m", "")}</th>`).join("")}</tr></thead>
+      <tbody>${rowsOf(X.RT, false)}${rowsOf(X.AT, true)}</tbody></table>
+      <div class="cb-tables">${X.RT ? `Tabella ${sel(`data-cb-table data-id="${esc(e.id)}" data-i="${i}"`, CPR.RANGE_TABLES, X.RT.id, "Tabella delle distanze")}${edit ? "" : esc(X.RT.label)}` : `<span class="hint">Nessuna tabella delle distanze</span>`}
+        ${X.AT ? ` · autofire ${sel(`data-cb-atable data-id="${esc(e.id)}" data-i="${i}"`, CPR.AUTO_TABLES, X.AT.id, "Tabella dell'autofire")}${edit ? "" : esc(X.AT.label)}` : ""}</div></div>`;
+  }
+  function cbCard(e, i, edit) {
+    const X = cbInfo(e, i); if (!X) return "";
+    const id = esc(e.id), M = cbMem[cbKey(e, i)] || {}, L = M.last;
+    const btn = (attrs, inner, cls, title = "") => `<button type="button" class="${cls}" ${attrs} ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
+    const base = statEff(e, X.k.stat) + X.k.lvl;
+    const ammoOpts = ammoList(X.cat);
+    let dmg = "";
+    if (L && L.mode !== "supp") {
+      if (L.mode === "auto") dmg = [...new Set(L.bands.filter(b => b.mult).map(b => b.mult))].sort((a, b) => a - b).map(m => btn(`data-action="cb-dmg" data-id="${id}" data-i="${i}" data-mult="${m}"`, `Danno ${esc(X.afDmg)} × ${m}`, "btn small yellow")).join("");
+    }
+    if (!dmg) dmg = btn(`data-action="cb-dmg" data-id="${id}" data-i="${i}"`, `Damage ${esc(X.dmg)}`, "btn small yellow", L && L.aim ? (CPR.AIMED.find(a => a.id === L.aim) || {}).eff : "");
+    return `<div class="wpn cb-wpn">
+      <div class="cb-wh"><span class="wpn-n"><span class="nd-name">${esc(X.w.name)}</span>
+        <small>${X.T.label ? esc(X.T.label) + " · " : ""}${esc(X.k.label)} · base ${base}${X.w.rof ? ` · ROF ${esc(X.w.rof)}` : ""}${X.w.mag ? ` · Mag ${esc(X.w.mag)}` : ""}${X.autoMax ? ` · Autofire ${esc(X.afDmg)} ×${X.autoMax}` : ""} · danno ${esc(X.dmg)}</small>${X.w.note ? `<em>${esc(X.w.note)}</em>` : ""}</span>
+        ${L ? `<span class="cb-last ${L.crit ? "c-" + L.crit : ""}" title="Ultimo tiro">${L.total}</span>` : ""}</div>
+      <div class="cb-ctl">
+        ${btn(`data-action="cb-roll" data-id="${id}" data-i="${i}" data-mode="single"`, `⌖ Attack <b>${base}</b>`, "btn small", "Tira per colpire: il risultato si segna sulla tabella delle VD")}
+        <label class="check cb-aim" title="Colpo mirato: −8 al tiro"><input type="checkbox" data-cb-aim="${id}:${i}" ${M.aim ? "checked" : ""}> Mirato −8</label>
+        <select class="cb-loc" data-cb-loc="${id}:${i}" aria-label="Dove miri" ${M.aim ? "" : "disabled"}>${CPR.AIMED.map(a => `<option value="${a.id}" ${a.id === (M.loc || "head") ? "selected" : ""}>${a.label}</option>`).join("")}</select>
+        ${X.autoMax ? btn(`data-action="cb-roll" data-id="${id}" data-i="${i}" data-mode="auto"`, `Autofire <b>${X.afBase}</b> ×${X.autoMax}`, "btn small ghost", `REF + Autofire ${X.af ? X.af.lvl : 0} + 1d10, 10 colpi: danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}`) + btn(`data-action="cb-roll" data-id="${id}" data-i="${i}" data-mode="supp"`, "Soppressione", "btn small ghost", "Fuoco di soppressione, 10 colpi") : ""}
+        ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo="${id}:${i}" ${edit ? "" : "disabled"}>${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>` : ""}
+        <span class="cb-dmg">${dmg}</span>
+      </div>
+      ${X.ammo.eff ? `<p class="hint">${esc(X.ammo.name)}: ${esc(X.ammo.eff)}</p>` : ""}
+      ${M.aim ? `<p class="hint">${esc((CPR.AIMED.find(a => a.id === (M.loc || "head")) || {}).eff || "")}</p>` : ""}
+      ${cbTable(X, L, edit, e, i)}
+    </div>`;
+  }
+  function combatHtml(e) {
+    const s = sheetOf(e), edit = Store.canEdit(), id = esc(e.id);
+    if (!hasSheet(e)) return `<div class="cb" data-combat="${id}"><div class="empty"><div class="big">// SCHEDA VUOTA</div>Compila prima la scheda.
+      ${edit ? `<br><button class="btn" data-action="edit-sheet" data-id="${id}">Compila la scheda</button>` : ""}</div></div>`;
+    const max = hpMaxOf(e), hp = hpOf(e), w = woundOf(e);
+    const pct = v => Math.max(0, Math.min(100, max ? v / max * 100 : 0));
+    const roll = (what, inner, cls = "", title = "") => `<button type="button" class="${cls}" data-action="sheet-roll" data-id="${id}" data-roll="${what}" ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
+    const arm = loc => spBar(loc === "head" ? "Head" : "Body", armorOf(e, loc), edit && (d => `data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="${d}"`));
+    const weapons = s.weapons || [];
+    const mods = (s.mods || []).filter(m => m.on !== false && num(m.value));
+    const im = modsFor(s.mods, ["init"]).reduce((t, m) => t + m.v, 0);
+    return `
+      <div class="cb sh" data-combat="${id}">
+        <div class="sh-bar">
+          <label class="sh-mod" title="Modificatore situazionale aggiunto a tutti i tiri (es. −2 copertura, +1 mira)">MOD <input type="number" step="1" data-sheet-mod value="${sheetMod}"></label>
+          <span class="hint">Spunta «Mirato» e scegli le munizioni prima di attaccare · il tiro si segna sulla tabella delle VD.</span>
           <button type="button" class="btn ghost small cyan" data-action="dice-open">⬢ Dice log</button>
         </div>
         <div class="sh-top">
@@ -1034,56 +1195,25 @@
           </div>
           <div class="sh-box"><span class="l">Armor · SP</span>${arm("head")}${arm("body")}</div>
           <div class="sh-box">
-            <span class="l">Role · ${esc(e.role || "—")}</span>
-            ${roll("ability", `<span class="n sm">${esc(ability)}</span><span class="sh-sub">Rank ${num(s.rank)} · tira Rank + 1d10</span>`, "sh-rollbox")}
+            <span class="l">Initiative</span>
+            ${roll("init", `<span class="n">REF ${statEff(e, "REF")}${im ? ` <small>${im > 0 ? "+" : ""}${im}</small>` : ""}</span><span class="sh-sub">tira REF + 1d10</span>`, "sh-rollbox")}
           </div>
-          <div class="sh-box">
-            <span class="l">Humanity</span>
-            ${cs.current != null ? `<span class="n">${cs.current}<small> / ${cs.max}</small></span><span class="sh-sub">EMP ${statEff(e, "EMP")} (base ${statBase(e, "EMP")}) · dal cyberware</span>`
-              : `<span class="n">${statBase(e, "EMP") * 10}</span><span class="sh-sub">EMP × 10 · imposta l'umanità nel cyberware</span>`}
-          </div>
-          <div class="sh-box"><span class="l">Luck</span><span class="n">${luckOf(e)}<small> / ${statBase(e, "LUCK")}</small></span>
-            ${edit ? `<span class="sh-adj"><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="-1" title="Spendi 1 punto">−</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="1">+</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="reset" title="Ripristina (nuova sessione)">↺</button></span>` : ""}</div>
           <div class="sh-box">
             <span class="l">Death Save</span>
             ${roll("death", `<span class="n">${statBase(e, "BODY")}</span><span class="sh-sub">BODY · penalty +${num(s.dsp)}</span>`, "sh-rollbox", "Tira 1d10 + penalità contro BODY")}
             ${edit ? adjBtns(e.id, "dsp", [-1, 1]) : ""}
           </div>
-          <div class="sh-box">
-            <span class="l">Initiative</span>
-            ${roll("init", `<span class="n">REF ${statEff(e, "REF")}</span><span class="sh-sub">tira REF + 1d10</span>`, "sh-rollbox")}
-          </div>
           <div class="sh-box"><span class="l">Move</span><span class="n">${statEff(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statEff(e, "MOVE")} squares · Run ${statEff(e, "MOVE") * 4} m</span></div>
+          <div class="sh-box"><span class="l">Evasion</span>${(() => { const k = skillByKey(e, "skill:evasion"); return roll("skill:evasion", `<span class="n">${statEff(e, "DEX") + (k ? k.lvl : 0)}</span><span class="sh-sub">DEX + Evasion${statEff(e, "REF") >= 8 ? " · schivi anche i proiettili" : ""}</span>`, "sh-rollbox", "Tira DEX + Evasion + 1d10"); })()}</div>
         </div>
         ${pcPen(e) ? `<div class="en-pen">Armatura pesante: ${pcPen(e)} a REF, DEX e MOVE (già calcolato nei valori e nei tiri)</div>` : ""}
-
-        <div class="sh-stats">${CPR.STATS.map(st => roll("stat:" + st.id, `<span class="k">${st.id}</span><span class="v">${statEff(e, st.id)}</span>${statEff(e, st.id) !== statBase(e, st.id) ? `<small>base ${statBase(e, st.id)}</small>` : ""}`, "sh-stat", `${st.label}: ${st.id} + 1d10`)).join("")}</div>
-
-        ${weapons.length ? `<div class="sh-sec-head"><h4>Weapons</h4></div>
-        <div class="sh-weapons">${weapons.map((wp, i) => {
-          const k = skillByKey(e, weaponSkillKey(wp.skill)) || skillByKey(e, "skill:handgun");
-          return `<div class="wpn">
-            <span class="wpn-n">${esc(wp.name)}<small>${esc(k.label)} · base ${statEff(e, k.stat) + k.lvl}${wp.rof ? ` · ROF ${esc(wp.rof)}` : ""}${wp.mag ? ` · Mag ${esc(wp.mag)}` : ""}</small>${wp.note ? `<em>${esc(wp.note)}</em>` : ""}</span>
-            ${roll(`wpn:${i}:atk`, "Attack", "btn small")}
-            ${wp.dmg ? roll(`wpn:${i}:dmg`, `Damage ${esc(wp.dmg)}`, "btn small yellow") : ""}
-          </div>`; }).join("")}</div>` : ""}
-        ${isNetrunner(e) ? deckHtml(s.deck, { iface: ifaceOf(e), roll: w => `data-action="sheet-roll" data-id="${id}" data-roll="deck:${w}"`,
-          adj: edit ? (i, op) => `data-action="deck-adj" data-id="${id}" data-i="${i}" data-op="${op}"` : null, reset: edit ? `data-action="deck-adj" data-id="${id}" data-op="reset"` : "" }) : ""}
-
-        <div class="sh-sec-head"><h4>Skills</h4><label class="check"><input type="checkbox" data-sk-all ${showAll ? "checked" : ""}> mostra anche le abilità a 0</label></div>
-        <div class="sk-head"><span>Skill</span><span>STAT</span><span>LVL</span><span>BASE</span></div>
-        <div class="sh-skills">${groups || `<p class="hint">Nessuna abilità con livello. Spunta "mostra anche le abilità a 0".</p>`}</div>
-
-        <div class="sh-foot">
-          <div><span class="sh-k">Reputation</span> <b>${num(s.rep)}</b></div>
-          <div><span class="sh-k">Improvement Points</span> <b>${num(s.ip)}</b></div>
-          ${s.owner ? `<div><span class="sh-k">Player</span> <b>${esc(s.owner)}</b></div>` : ""}
-        </div>
-        ${s.crit ? `<div class="block"><h4>Critical Injuries</h4><div class="prewrap">${esc(s.crit)}</div></div>` : ""}
-        ${s.notes ? `<div class="block"><h4>Notes</h4><div class="prewrap">${esc(s.notes)}</div></div>` : ""}
+        <div class="sh-status"><span class="sh-k">Stati</span>${statusChips(s.status, edit ? sheetStatusAttrs(e) : null)}</div>
+        ${mods.length ? `<div class="sh-mods"><span class="sh-k">Modificatori speciali</span>${mods.map(m => `<span class="st-chip" title="${esc(m.note || "")}">${esc(m.name || "Modificatore")} <b>${num(m.value) > 0 ? "+" : ""}${num(m.value)}</b> <small>${esc((CPR.MOD_TARGETS.find(t => t[0] === m.target) || [, ""])[1])}</small></span>`).join("")}</div>` : ""}
+        <div class="sh-sec-head"><h4>Weapons</h4></div>
+        ${weapons.length ? `<div class="sh-weapons">${weapons.map((_, i) => cbCard(e, i, edit)).join("")}</div>` : `<p class="hint">Nessuna arma: aggiungile da «Modifica scheda».</p>`}
+        ${critBlock(e, edit)}
       </div>`;
   }
-
   function editSheet(id) {
     const e = state.entries.find(x => x.id === id); if (!e) return;
     const fresh = !e.sheet;
@@ -1096,12 +1226,23 @@
       <input data-f="lvl" type="number" min="0" max="10" step="1" placeholder="LVL" value="${esc(c.lvl ?? "")}">
       <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
     const wpnRow = (w = {}) => `<div class="sh-row wpn-row">
+      <select data-f="cat" title="Categoria: decide VD delle distanze e autofire">${CPR.WEAPON_TYPES.map(t => `<option value="${t.id}" ${t.id === (w.name || w.cat ? (w.cat || CPR.guessWeapon(w.name, w.skill)) : "hpistol") ? "selected" : ""}>${t.label}</option>`).join("")}<option value="" ${(w.name || w.cat) && !(w.cat || CPR.guessWeapon(w.name, w.skill)) ? "selected" : ""}>Altro…</option></select>
       <input data-f="name" placeholder="Arma (es. Heavy Pistol)" value="${esc(w.name)}">
       <select data-f="skill">${CPR.WEAPON_SKILLS.map(k => `<option value="${k}" ${k === (w.skill || "handgun") ? "selected" : ""}>${CPR.skill(k).label}</option>`).join("")}</select>
       <input data-f="dmg" placeholder="Danno (3d6)" value="${esc(w.dmg)}">
       <input data-f="rof" placeholder="ROF" value="${esc(w.rof)}">
       <input data-f="mag" placeholder="Mag" value="${esc(w.mag)}">
+      <input data-f="afDmg" placeholder="Autofire 2d6" title="Danno dell'autofire (vuoto = 2d6). Vale anche 3d6kh2 = tira 3d6 e tieni i 2 più alti" value="${esc(w.afDmg || "")}">
+      <input data-f="auto" type="number" min="0" max="10" placeholder="× max" title="Moltiplicatore massimo dell'autofire (vuoto = quello della categoria: SMG 3, fucile d'assalto 4; 0 o vuoto su armi senza autofire)" value="${esc(w.auto ?? "")}">
       <input data-f="note" placeholder="Note (Smartgun, Excellent…)" value="${esc(w.note)}">
+      <input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}">
+      <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
+    const modRow = (m = {}) => `<div class="sh-row mod-row">
+      <label class="check" title="Attivo"><input type="checkbox" data-f="on" ${m.on === false ? "" : "checked"}></label>
+      <input data-f="name" placeholder="Nome (es. Mirino ottico)" value="${esc(m.name || "")}">
+      <select data-f="target">${CPR.MOD_TARGETS.map(([v, l]) => `<option value="${v}" ${v === (m.target || "attack") ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <input data-f="value" type="number" min="-20" max="20" placeholder="±" value="${esc(m.value ?? "")}">
+      <input data-f="note" placeholder="Note (da dove viene)" value="${esc(m.note || "")}">
       <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
     const a = loc => (s.armor || {})[loc] || {};
     const autoHp = CPR.hpMax(num(stats.BODY), num(stats.WILL));
@@ -1139,7 +1280,10 @@
           <h3 class="sh-h">Weapons</h3>
           <div class="sh-rows" id="sh-wpn">${(s.weapons || []).map(wpnRow).join("")}</div>
           <button type="button" class="btn ghost small cyan" data-sh-add="wpn">+ Arma</button>
-          ${isNetrunner(e) ? `<h3 class="sh-h">Cyberdeck <small>Interface = Rank della Role Ability · programmi 1 slot, Black ICE 2, hardware come indicato</small></h3>${deckEditorHtml(s.deck)}` : ""}
+
+          <h3 class="sh-h">Modificatori speciali <small>cyberware, talenti, situazioni fisse · si sommano da soli ai tiri del tipo scelto</small></h3>
+          <div class="sh-rows" id="sh-mods">${(s.mods || []).map(modRow).join("")}</div>
+          <button type="button" class="btn ghost small cyan" data-sh-add="mod">+ Modificatore (es. Mirino ottico +1 ai colpi mirati)</button>
 
           <div class="fields" style="margin-top:18px">
             <div class="field full"><label for="sh-crit">Critical Injuries</label><textarea id="sh-crit" name="crit" rows="2">${esc(s.crit || "")}</textarea></div>
@@ -1152,12 +1296,20 @@
         </div>
       </form>`);
     const form = $("#sheet-form");
-    if ($(".nd-edit", form)) bindDeckEditor(form);
     form.addEventListener("input", ev => {
       if (/^st-(BODY|WILL)$/.test(ev.target.name)) $("#sh-auto-hp").textContent = CPR.hpMax(num(form["st-BODY"].value), num(form["st-WILL"].value));
     });
     // tipo di armatura scelto: compilo SP e nome
     form.addEventListener("change", ev => {
+      // categoria dell'arma: compilo danno, ROF, caricatore e skill (il nome solo se è vuoto o generico)
+      const wc = ev.target.closest(".wpn-row [data-f=cat]");
+      if (wc) {
+        const T = CPR.weaponType(wc.value), row = wc.closest(".sh-row"), set = (f, v) => { const i = $(`[data-f=${f}]`, row); if (i) i.value = v ?? ""; };
+        set("range", ""); set("autoRange", "");
+        if (T) { set("skill", T.skill); set("dmg", T.dmg === "BODY" ? CPR.brawlDmg(num(form["st-BODY"].value)) : T.dmg); set("rof", T.rof); set("mag", T.mag || "");
+          const nm = $("[data-f=name]", row).value.trim(); if (!nm || CPR.WEAPON_TYPES.some(x => x.label === nm)) set("name", T.label); }
+        return;
+      }
       const sel = ev.target.closest("[data-sh-arm]"); if (!sel) return;
       const t = CPR.armorType(sel.value); if (!t) return;
       form.elements[sel.dataset.shArm + "-sp"].value = t.sp || "";
@@ -1166,21 +1318,23 @@
     form.addEventListener("click", ev => {
       const add = ev.target.closest("[data-sh-add]");
       if (add) {
-        const box = $(add.dataset.shAdd === "cus" ? "#sh-cus" : "#sh-wpn", form);
-        box.insertAdjacentHTML("beforeend", add.dataset.shAdd === "cus" ? cusRow() : wpnRow());
+        const kind = add.dataset.shAdd, box = $(kind === "cus" ? "#sh-cus" : kind === "mod" ? "#sh-mods" : "#sh-wpn", form);
+        box.insertAdjacentHTML("beforeend", kind === "cus" ? cusRow() : kind === "mod" ? modRow() : wpnRow());
         $(".sh-row:last-child input", box).focus();
       }
       const del = ev.target.closest("[data-row-del]"); if (del) del.closest(".sh-row").remove();
     });
     form.addEventListener("submit", async ev => {
       ev.preventDefault();
-      const deck = readDeck(form, s.deck || null);
       const v = n => form[n].value.trim(), nv = n => v(n) === "" ? null : num(v(n));
       const stats = {}, skills = {};
       for (const st of CPR.STATS) { const x = nv("st-" + st.id); if (x != null) stats[st.id] = x; }
       for (const k of CPR.SKILLS) { const x = nv("sk-" + k.id); if (x) skills[k.id] = x; }
       const custom = readRows(form, "#sh-cus .sh-row").filter(c => c.name).map(c => ({ ...c, lvl: num(c.lvl) }));
-      const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name);
+      const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name).map(w => ({ ...w, auto: w.auto === "" ? "" : num(w.auto) }));
+      const badW = weapons.filter(w => (w.dmg && !CPR.parse(w.dmg)) || (w.afDmg && !CPR.parse(w.afDmg)));
+      if (badW.length) return toast(`Danno non valido in: ${badW.map(w => w.name).join(", ")} (es. 3d6, 2d6+2, 3d6kh2)`, "err");
+      const mods = readRows(form, "#sh-mods .sh-row").filter(m => m.name || num(m.value)).map(m => ({ ...m, value: num(m.value) }));
       // la SP attuale (ablazione) resta, ma non oltre la nuova SP massima
       const armor = {};
       for (const [loc, p] of [["head", "ah"], ["body", "ab"]]) {
@@ -1189,7 +1343,7 @@
         if (old.sp !== sp) armor[loc].cur = sp;
       }
       const sheet = { ...s, owner: v("owner"), ability: v("ability"), rank: nv("rank"), stats, skills, custom, weapons, armor, armorNoPen: form.elements["armorNoPen"].checked,
-        hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes"), deck };
+        hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes"), mods };
       try {
         const saved = await Store.save("entries", { ...e, sheet });
         upsert(state.entries, saved); liveSend("entries", saved);
@@ -1200,11 +1354,295 @@
   }
 
 
+
+  // ---------- REGOLE DELLA CAMPAGNA: munizioni e stati (meta "rules", li modifica il GM) ----------
+  const rules = () => state.rules || { id: "rules", ammo: [], status: CPR.DEFAULT_STATUS };
+  const STD_AMMO = { id: "", name: "Standard", atk: 0, dmg: "", dmgMod: 0, eff: "" };
+  const ammoList = cat => [STD_AMMO, ...(rules().ammo || []).filter(a => !a.fam || ((CPR.weaponType(cat) || {}).ammo === a.fam))];
+  const ammoOf = (cat, id) => ammoList(cat).find(a => a.id === id) || STD_AMMO;
+  const statusList = () => rules().status || [];
+  const statusOf2 = id => statusList().find(s => s.id === id);
+  // malus degli stati di chi agisce (es. Accecato −4, se il GM lo imposta)
+  const statusParts = ids => (ids || []).map(statusOf2).filter(st => st && num(st.atk)).map(st => ({ l: st.name, v: num(st.atk) }));
+  // modificatori speciali della scheda attivi per un certo tipo di tiro
+  const modsFor = (mods, targets) => (mods || []).filter(m => m && m.on !== false && targets.includes(m.target) && num(m.value)).map(m => ({ l: m.name || "Modificatore", v: num(m.value), target: m.target }));
+
+  // ---------- TIRO PER COLPIRE ----------
+  // ctx = { key, title, who, cat, dmg, autoMax, single[], auto[] (addendi senza ferite/MOD), mods[], extra() → addendi della situazione,
+  //         ammo, onAmmo(id), post(r) → Promise, fix(r)?, crit: { target } }
+  const atkMem = {};
+  let atk = null;
+  // ctx.range / ctx.autoRange = tabella delle distanze scelta per l'arma (vuoto = quella della categoria) · ctx.onRange(patch) la ricorda
+  function openAttack(ctx) {
+    const mem = atkMem[ctx.key] || {};
+    const melee = CPR.isMelee(ctx.cat);
+    atk = { ctx, mode: mem.mode && (mem.mode !== "auto" && mem.mode !== "supp" || ctx.autoMax) ? mem.mode : "single", aim: mem.aim || "head",
+      band: null, dvMan: "", ammo: ctx.ammo || "", off: new Set(mem.off || []), last: null, melee,
+      table: ctx.range || CPR.rangeDefault(ctx.cat), atable: ctx.autoRange || CPR.autoDefault(ctx.cat) || "smg" };
+    let d = $("#atk-dialog");
+    if (!d) {
+      d = document.createElement("dialog"); d.id = "atk-dialog"; d.className = "modal narrow atk-dialog"; document.body.appendChild(d);
+      d.addEventListener("click", attackClick); d.addEventListener("change", attackChange); d.addEventListener("input", attackInput);
+      d.addEventListener("close", () => { atk = null; });
+      d.addEventListener("keydown", ev => { if (ev.key === "Enter" && !ev.target.closest("button, select")) { ev.preventDefault(); attackRoll(); } });
+    }
+    d.innerHTML = attackHtml();
+    if (!d.open) d.showModal();
+    $("[data-atk-roll]", d).focus();
+  }
+  function attackState() {
+    const A = atk, c = A.ctx, auto = A.mode === "auto" || A.mode === "supp";
+    const T = A.melee ? null : auto ? CPR.autoById(A.atable) : CPR.rangeById(A.table);
+    const bands = T ? T.dv.map((dv, i) => ({ i, label: CPR.RANGE_BANDS[i], dv })) : [];
+    const band = bands.find(b => b.i === A.band && b.dv != null) || null;
+    const dv = A.dvMan !== "" && !isNaN(+A.dvMan) ? +A.dvMan : band ? band.dv : null;
+    const ammo = ammoOf(c.cat, A.ammo);
+    const targets = ["attack", A.melee ? "melee" : "ranged", ...(A.mode === "aimed" ? ["aimed"] : []), ...(auto ? ["autofire"] : [])];
+    const mods = modsFor(c.mods, targets).map(m => ({ ...m, k: m.l + "|" + m.target }));
+    const parts = [...(auto ? c.auto : c.single)];
+    if (A.mode === "aimed") parts.push({ l: `Colpo mirato (${(CPR.AIMED.find(x => x.id === A.aim) || {}).label})`, v: -8 });
+    if (num(ammo.atk)) parts.push({ l: ammo.name, v: num(ammo.atk) });
+    mods.filter(m => !A.off.has(m.k)).forEach(m => parts.push({ l: m.l, v: m.v }));
+    return { auto, T, bands, band, dv, ammo, mods, parts, extra: c.extra() };
+  }
+  const multOf = (margin, max) => Math.min(margin, max);
+  function attackHtml() {
+    const A = atk, c = A.ctx, S = attackState();
+    const base = [...S.parts, ...S.extra].reduce((t, p) => t + p.v, 0);
+    const modes = [["single", "Colpo singolo"], ["aimed", "Colpo mirato −8"], ...(c.autoMax ? [["auto", `Autofire ×${c.autoMax}`], ["supp", "Fuoco di soppressione"]] : [])];
+    const chip = (on, attrs, inner, title = "") => `<button type="button" class="chip ${on ? "active" : ""}" ${attrs} ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
+    const L = A.last;
+    // tabella delle distanze: sempre visibile; dopo il tiro dice per ogni fascia se colpisci (e il moltiplicatore dell'autofire)
+    const rows = S.bands.map(b => {
+      const out = L && L.mode === A.mode && b.dv != null ? (L.total > b.dv ? "hit" : "miss") : "";
+      const m = out === "hit" && S.auto ? multOf(L.total - b.dv, c.autoMax) : 0;
+      return `<button type="button" class="atk-band ${b.dv == null ? "na" : ""} ${out} ${A.band === b.i && A.dvMan === "" ? "sel" : ""}" ${b.dv == null ? "disabled" : `data-atk-band="${b.i}"`} title="${b.dv == null ? "Fuori portata" : "Clicca per segnare la distanza del bersaglio"}">
+        <span>${b.label}</span><b>${b.dv == null ? "N/A" : b.dv}</b><em>${out === "hit" ? (S.auto ? (A.mode === "supp" ? "✓" : `✓ ×${m}`) : "✓") : out === "miss" ? "✗" : ""}</em></button>`;
+    }).join("");
+    const tables = S.auto ? CPR.AUTO_TABLES : CPR.RANGE_TABLES;
+    const curT = S.auto ? A.atable : A.table;
+    let dmg = "";
+    if (L && L.mode === A.mode && L.mode !== "supp") {
+      if (L.mode === "auto") {
+        const ms = L.dv != null ? (L.total > L.dv ? [multOf(L.total - L.dv, c.autoMax)] : [])
+          : [...new Set(S.bands.filter(b => b.dv != null && L.total > b.dv).map(b => multOf(L.total - b.dv, c.autoMax)))].sort((x, y) => x - y);
+        dmg = ms.map(m => `<button type="button" class="btn small yellow" data-atk-dmg="${m}">Danno 2d6 × ${m}</button>`).join("");
+      } else if (L.hit !== false) dmg = `<button type="button" class="btn small yellow" data-atk-dmg>Danno ${esc(L.dmg)}</button>`;
+    }
+    return `
+      <div class="modal-head"><h2>// ⌖ ${esc(c.title)}</h2><button type="button" class="x" data-atk-close aria-label="Chiudi">×</button></div>
+      <div class="modal-body atk">
+        <div class="atk-sec"><span class="lbl">Modalità</span><div class="chips">${modes.map(([m, l]) => chip(A.mode === m, `data-atk-mode="${m}"`, l)).join("")}</div>
+          ${A.mode === "aimed" ? `<div class="chips atk-sub">${CPR.AIMED.map(x => chip(A.aim === x.id, `data-atk-aim="${x.id}"`, x.label, x.eff)).join("")}</div><p class="hint">${esc((CPR.AIMED.find(x => x.id === A.aim) || {}).eff || "")}</p>` : ""}
+          ${A.mode === "auto" ? `<p class="hint">Autofire (REF + Autofire): spara 10 colpi. Se superi la VD, il danno è 2d6 × la differenza, al massimo ×${c.autoMax}.</p>` : ""}
+          ${A.mode === "supp" ? `<p class="hint">Spara 10 colpi. Chi è entro 25 m in linea di vista tira WILL + Concentration contro il tuo totale: se perde, usa il movimento per mettersi al riparo.</p>` : ""}
+        </div>
+        ${A.melee ? `<p class="hint">Mischia: il difensore tira DEX + Evasion + 1d10 (o la sua arma da mischia). Scrivi qui sotto il suo totale per sapere se colpisci.</p>` : `
+        <div class="atk-sec">
+          <div class="atk-th"><span class="lbl">VD per distanza ${S.auto ? "(autofire)" : ""}</span>
+            <select data-atk-table aria-label="Tabella delle distanze">${tables.map(t => `<option value="${t.id}" ${t.id === curT ? "selected" : ""}>${esc(t.label)}</option>`).join("")}${!S.auto ? `<option value="" ${!curT ? "selected" : ""}>Nessuna (VD a mano)</option>` : ""}</select></div>
+          ${S.bands.length ? `<div class="atk-bands">${rows}</div>` : `<p class="hint">Nessuna tabella: scrivi la VD a mano.</p>`}
+          <p class="hint">Tira e vedi subito a che distanza colpisci; clicca una fascia se sai dov'è il bersaglio. Con REF 8 o più il bersaglio può schivare: DEX + Evasion + 1d10 al posto della VD.</p></div>`}
+        <div class="atk-row">
+          <label class="field"><span class="lbl">${A.melee ? "Totale del difensore" : "VD a mano"}</span><input type="number" min="0" max="60" data-atk-dv value="${esc(A.dvMan)}" placeholder="${S.band ? S.band.dv : "—"}"></label>
+          <label class="field"><span class="lbl">Munizioni</span><select data-atk-ammo>${ammoList(c.cat).map(a => `<option value="${esc(a.id)}" ${a.id === (S.ammo.id || "") ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>
+        </div>
+        ${S.ammo.eff ? `<p class="hint">${esc(S.ammo.name)}: ${esc(S.ammo.eff)}</p>` : ""}
+        ${S.mods.length ? `<div class="atk-sec"><span class="lbl">Modificatori speciali</span>${S.mods.map(m => `<label class="check"><input type="checkbox" data-atk-mod="${esc(m.k)}" ${A.off.has(m.k) ? "" : "checked"}> ${esc(m.l)} <b>${m.v > 0 ? "+" : ""}${m.v}</b></label>`).join("")}</div>` : ""}
+        <div class="atk-sum">${[...S.parts, ...S.extra].map(p => `<span>${p.v < 0 ? "−" : "+"}${Math.abs(p.v)} <small>${esc(p.l)}</small></span>`).join("")} <b>= ${base} + 1d10</b>${S.dv != null ? ` <span class="atk-vs">vs ${A.melee ? "" : "VD "}${S.dv}</span>` : ""}</div>
+        ${L && L.mode === A.mode ? `<div class="atk-res ${L.hit === true ? "hit" : L.hit === false ? "miss" : ""}">
+          <span class="atk-tot">${L.total}</span>
+          <span>${L.hit === true ? `COLPITO${L.margin ? ` · supera di ${L.margin}` : ""}` : L.hit === false ? "MANCATO" : L.reach ? `colpisce: ${esc(L.reach)}` : S.bands.length ? "fuori portata ovunque" : "Tiro fatto"}${L.crit === "success" ? " · critico" : L.crit === "fail" ? " · fallimento critico" : ""}</span>
+          ${dmg ? `<span class="atk-dmg">${dmg}</span>` : ""}
+        </div>` : ""}
+      </div>
+      <div class="modal-foot"><button type="button" class="btn ghost small left" data-atk-close>Chiudi</button><button type="button" class="btn" data-atk-roll>⌖ Tira per colpire</button></div>`;
+  }
+  const atkRedraw = () => { const d = $("#atk-dialog"); if (d && atk) { const f = document.activeElement && document.activeElement.matches("[data-atk-dv]"); d.innerHTML = attackHtml(); if (f) { const i = $("[data-atk-dv]", d); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } } };
+  const atkSave = () => { const A = atk; atkMem[A.ctx.key] = { mode: A.mode, aim: A.aim, off: [...A.off] }; };
+  function attackClick(ev) {
+    const t = ev.target.closest("button"); if (!t || !atk) return;
+    if (t.matches("[data-atk-close]")) { $("#atk-dialog").close(); return; }
+    if (t.dataset.atkMode) { atk.mode = t.dataset.atkMode; atk.band = null; }
+    else if (t.dataset.atkAim) atk.aim = t.dataset.atkAim;
+    else if (t.dataset.atkBand != null) { const i = +t.dataset.atkBand; atk.band = atk.band === i && atk.dvMan === "" ? null : i; atk.dvMan = ""; }
+    else if (t.matches("[data-atk-roll]")) return attackRoll();
+    else if (t.matches("[data-atk-dmg]")) return attackDamage(num(t.dataset.atkDmg));
+    else return;
+    atkSave(); atkRedraw();
+  }
+  function attackChange(ev) {
+    if (!atk) return;
+    const t = ev.target;
+    if (t.matches("[data-atk-ammo]")) { atk.ammo = t.value; if (atk.ctx.onAmmo) atk.ctx.onAmmo(t.value); }
+    if (t.matches("[data-atk-mod]")) { if (t.checked) atk.off.delete(t.dataset.atkMod); else atk.off.add(t.dataset.atkMod); }
+    if (t.matches("[data-atk-table]")) {
+      const auto = atk.mode === "auto" || atk.mode === "supp";
+      if (auto) atk.atable = t.value; else atk.table = t.value;
+      atk.band = null; atk.last = null;
+      if (atk.ctx.onRange) atk.ctx.onRange(auto ? { autoRange: t.value } : { range: t.value });
+    }
+    atkSave(); atkRedraw();
+  }
+  function attackInput(ev) { if (atk && ev.target.matches("[data-atk-dv]")) { atk.dvMan = ev.target.value; atkRedraw(); } }
+  async function attackRoll() {
+    const A = atk; if (!A) return;
+    const c = A.ctx, S = attackState();
+    const r = CPR.check([...S.parts, ...S.extra]);
+    if (c.fix) c.fix(r, S.auto);
+    const hit = S.dv == null ? null : r.total > S.dv;
+    const margin = hit ? r.total - S.dv : 0;
+    const mult = S.auto && hit ? multOf(margin, c.autoMax) : 0;
+    // senza distanza scelta: per ogni fascia, colpito o no
+    const reach = S.dv == null ? S.bands.filter(b => b.dv != null && r.total > b.dv).map(b => `${b.label}${S.auto && A.mode === "auto" ? ` ×${multOf(r.total - b.dv, c.autoMax)}` : ""}`).join(", ") : "";
+    const modeTxt = { single: "", aimed: ` · mirato: ${(CPR.AIMED.find(x => x.id === A.aim) || {}).label}`, auto: " · autofire (10 colpi)", supp: " · fuoco di soppressione (10 colpi)" }[A.mode];
+    const tname = S.T ? S.T.label : "";
+    const vs = S.dv != null ? `vs ${A.melee ? "" : "VD "}${S.dv}${S.band && A.dvMan === "" ? ` (${S.band.label})` : ""} → ${hit ? `COLPITO${margin ? `, supera di ${margin}` : ""}` : "MANCATO"}`
+      : S.bands.length ? `${tname}: ${reach ? `colpisce a ${reach}` : "fuori portata a ogni distanza"}` : "";
+    const extra = A.mode === "auto" && hit ? ` · danno 2d6 × ${mult}` : A.mode === "supp" ? " · chi è entro 25 m tira WILL + Concentration contro questo totale" : A.mode === "aimed" ? ` · ${(CPR.AIMED.find(x => x.id === A.aim) || {}).eff}` : "";
+    const ammoTxt = S.ammo.id ? ` · ${S.ammo.name}${S.ammo.eff ? `: ${S.ammo.eff}` : ""}` : "";
+    const note = [vs, (modeTxt + extra + ammoTxt).replace(/^ · /, "")].filter(Boolean).join(" · ");
+    A.last = { total: r.total, crit: r.crit, hit, margin, mult, dv: S.dv, reach, mode: A.mode, aim: A.aim, dmg: (S.ammo.dmg && CPR.parse(S.ammo.dmg)) ? S.ammo.dmg : c.dmg };
+    atkRedraw();
+    await c.post({ kind: "check", label: `${c.title} · attack${modeTxt}`, ...r, note: (r.note ? r.note + " · " : "") + note });
+  }
+  function attackDamage(multArg) {
+    const A = atk, L = A && A.last; if (!L) return;
+    const c = A.ctx, S = attackState(), mult = L.mode === "auto" ? (multArg || L.mult) : 0;
+    const r = CPR.rollExpr(L.mode === "auto" ? (c.autoDmg || "2d6") : L.dmg, { damage: true });
+    if (!r) return toast(`Danno non valido: "${L.dmg}"`, "err");
+    if (L.mode === "auto" && mult > 1) {
+      const raw = r.total - (r.crit === "injury" ? 5 : 0), add = raw * (mult - 1);
+      r.mods.push({ l: `× ${mult} autofire`, v: add }); r.total += add;
+    }
+    const flat = [...(num(S.ammo.dmgMod) ? [{ l: S.ammo.name, v: num(S.ammo.dmgMod) }] : []), ...modsFor(c.mods, ["damage"])];
+    flat.forEach(m => { r.mods.push({ l: m.l, v: m.v }); r.total += m.v; });
+    const aim = L.mode === "aimed" ? CPR.AIMED.find(x => x.id === L.aim) : null;
+    const note = [aim ? `${aim.label}: ${aim.eff}` : "", S.ammo.eff ? `${S.ammo.name}: ${S.ammo.eff}` : "", r.crit === "injury" ? "Due 6: tira la Critical Injury dalla scheda del bersaglio" : ""].filter(Boolean).join(" · ");
+    c.post({ kind: "damage", label: `${c.title} · damage${L.mode === "auto" ? ` (autofire ×${mult})` : aim ? ` (mirato: ${aim.label})` : ""}`, ...r, note });
+  }
+
+  // contesto del tiro per un'arma della scheda
+  const sheetWeaponCat = w => w.cat || CPR.guessWeapon(w.name, w.skill);
+  function sheetExtra(e) {
+    const s = sheetOf(e), w = woundOf(e), out = [];
+    if (w.pen) out.push({ l: w.label, v: w.pen });
+    out.push(...statusParts(s.status), ...modsFor(s.mods, ["all"]));
+    if (sheetMod) out.push({ l: "MOD", v: sheetMod });
+    return out;
+  }
+
+
+
+  // ---------- stati, Critical Injury, modificatori speciali ----------
+  // chip degli stati · attrs(op, id) = attributi dei pulsanti, oppure null se non si può modificare
+  function statusChips(ids, attrs) {
+    const list = (ids || []).map(id => statusOf2(id) || { id, name: "?" });
+    const add = statusList().filter(st => !(ids || []).includes(st.id));
+    return `<div class="st-chips">${list.map(st => `<span class="st-chip" title="${esc([st.atk ? `${st.atk > 0 ? "+" : ""}${st.atk} alle prove` : "", st.dmg ? `${st.dmg} danni per round` : "", st.eff].filter(Boolean).join(" · ") || "Effetto da definire nelle Regole della campagna")}">
+        ${esc(st.name)}${num(st.atk) ? ` <b>${st.atk > 0 ? "+" : ""}${st.atk}</b>` : ""}
+        ${st.dmg && attrs ? `<button type="button" class="gp-btn" ${attrs("roll", st.id)} title="Tira il danno del round: ${esc(st.dmg)}" aria-label="Tira il danno dello stato">⚄</button>` : ""}
+        ${attrs ? `<button type="button" class="gp-btn del" ${attrs("del", st.id)} aria-label="Togli lo stato">✕</button>` : ""}</span>`).join("")}
+      ${attrs && add.length ? `<select class="st-add" ${attrs("add", "")} aria-label="Aggiungi uno stato"><option value="">+ stato…</option>${add.map(st => `<option value="${esc(st.id)}">${esc(st.name)}</option>`).join("")}</select>` : ""}
+      ${!list.length && !attrs ? `<span class="hint">nessuno</span>` : ""}</div>`;
+  }
+  // il select «+ stato» lavora al change, i pulsanti al click
+  function statusOp(el, apply) {
+    const op = el.dataset.stOp, id = el.tagName === "SELECT" ? el.value : el.dataset.st;
+    if (!id) return;
+    if (op === "roll") { const st = statusOf2(id); const r = st && CPR.rollExpr(st.dmg, { damage: false }); if (r) apply.roll(st, r); return; }
+    apply.set(list => op === "add" ? [...new Set([...(list || []), id])] : (list || []).filter(x => x !== id));
+  }
+  const sheetStatusAttrs = e => (op, st) => `${op === "add" ? "" : `data-action="sheet-status" `}data-st-sheet="${esc(e.id)}" data-st-op="${op}" data-st="${esc(st)}"`;
+  const sheetStatusApply = e => ({
+    set: fn => sheetPatch(e.id, s => { s.status = fn(s.status); return s; }),
+    roll: (st, r) => postRoll({ kind: "damage", who: e.name, entryId: e.id, label: `${st.name} · danno del round`, ...r, note: st.eff || "" }),
+  });
+
+  const lastCrit = {};
+  function critRoll(who, loc, post) {
+    const r = CPR.rollCrit(loc), I = r.injury;
+    post({ kind: "check", label: `Critical Injury · ${loc === "head" ? "testa" : "corpo"}: ${I.name}`, dice: r.dice, mods: [], total: r.total,
+      note: `${I.eff}${I.dsp ? " · +1 alla penalità del Death Save" : ""} · +5 danni diretti (già nel tiro di danno)` });
+    return { ...I, loc };
+  }
+  function critBlock(e, edit) {
+    const s = sheetOf(e), L = lastCrit[e.id];
+    return `<div class="block crit-block"><h4>Critical Injuries</h4>
+      ${s.crit ? `<div class="prewrap">${esc(s.crit)}</div>` : `<p class="hint">Nessuna. Con due 6 sul danno si tira la Critical Injury (2d6, corpo o testa).</p>`}
+      <div class="pc-rolls">
+        <button type="button" class="chip r" data-action="sheet-crit" data-id="${esc(e.id)}" data-loc="body">⚄ Critical Injury · corpo</button>
+        <button type="button" class="chip r" data-action="sheet-crit" data-id="${esc(e.id)}" data-loc="head">⚄ Critical Injury · testa</button>
+        ${L && edit ? `<span class="crit-last">Uscita: <b>${esc(L.name)}</b> <button type="button" class="btn ghost small" data-action="sheet-crit-add" data-id="${esc(e.id)}">+ Aggiungi alla scheda</button></span>` : ""}
+      </div></div>`;
+  }
+
+  // ---------- modulo delle Regole della campagna (GM) ----------
+  const AMMO_FAMS = [...new Set(CPR.WEAPON_TYPES.map(w => w.ammo).filter(Boolean))];
+  function editRules() {
+    if (!isGm() && Store.gmReady) return;
+    const R = rules();
+    const aRow = (a = {}) => `<div class="sh-row rl-ammo">
+      <input data-f="name" placeholder="Nome (es. Perforanti)" value="${esc(a.name || "")}">
+      <select data-f="fam" title="Per quali armi">${[["", "Tutte le armi"], ...AMMO_FAMS.map(f => [f, f])].map(([v, l]) => `<option value="${esc(v)}" ${v === (a.fam || "") ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
+      <input data-f="atk" type="number" min="-10" max="10" placeholder="± colpire" title="Modificatore al tiro per colpire" value="${esc(a.atk || "")}">
+      <input data-f="dmg" placeholder="Danno al posto (es. 2d6)" title="Danno che sostituisce quello dell'arma (vuoto = quello dell'arma)" value="${esc(a.dmg || "")}">
+      <input data-f="dmgMod" type="number" min="-20" max="20" placeholder="± danno" title="Modificatore al danno" value="${esc(a.dmgMod || "")}">
+      <input data-f="eff" placeholder="Effetto (compare nel Dice log)" value="${esc(a.eff || "")}" class="wide">
+      <input type="hidden" data-f="id" value="${esc(a.id || "")}">
+      <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
+    const sRow = (st = {}) => `<div class="sh-row rl-st">
+      <input data-f="name" placeholder="Nome (es. In fiamme)" value="${esc(st.name || "")}">
+      <input data-f="atk" type="number" min="-10" max="10" placeholder="± prove" title="Modificatore a tutte le prove di chi ha lo stato" value="${esc(st.atk || "")}">
+      <input data-f="dmg" placeholder="Danno per round (es. 1d6)" value="${esc(st.dmg || "")}">
+      <input data-f="eff" placeholder="Effetto" value="${esc(st.eff || "")}" class="wide">
+      <input type="hidden" data-f="id" value="${esc(st.id || "")}">
+      <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
+    openModal(`
+      <form class="form" id="rules-form">
+        <div class="modal-head"><h2>// REGOLE DELLA CAMPAGNA</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+        <div class="modal-body">
+          <h3 class="sh-h">Munizioni <small>si scelgono nel tiro per colpire di ogni arma compatibile · «Standard» c'è sempre</small></h3>
+          <div class="sh-rows" id="rl-ammo">${(R.ammo || []).map(aRow).join("")}</div>
+          <button type="button" class="btn ghost small cyan" data-rl-add="ammo">+ Munizione</button>
+          <h3 class="sh-h">Stati <small>si mettono su schede e token · il modificatore vale per tutte le prove di chi ha lo stato</small></h3>
+          <div class="sh-rows" id="rl-st">${(R.status || []).map(sRow).join("")}</div>
+          <button type="button" class="btn ghost small cyan" data-rl-add="st">+ Stato</button>
+          <p class="hint" style="margin-top:14px">I modificatori legati al cyberware o ai talenti (es. mirino ottico +1 ai colpi mirati) si mettono nella scheda di ogni personaggio, sezione «Modificatori speciali».</p>
+        </div>
+        <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button type="submit" class="btn">Salva regole</button></div>
+      </form>`);
+    const form = $("#rules-form");
+    form.addEventListener("click", ev => {
+      const add = ev.target.closest("[data-rl-add]");
+      if (add) { const box = $(add.dataset.rlAdd === "ammo" ? "#rl-ammo" : "#rl-st", form); box.insertAdjacentHTML("beforeend", add.dataset.rlAdd === "ammo" ? aRow() : sRow()); $(".sh-row:last-child input", box).focus(); }
+      const del = ev.target.closest("[data-row-del]"); if (del) del.closest(".sh-row").remove();
+    });
+    form.addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const idOf = (x, p) => x.id || p + NET.uid();
+      const ammo = readRows(form, "#rl-ammo .sh-row").filter(a => a.name).map(a => ({ id: idOf(a, "am-"), name: a.name, fam: a.fam, atk: num(a.atk), dmg: a.dmg, dmgMod: num(a.dmgMod), eff: a.eff }));
+      const status = readRows(form, "#rl-st .sh-row").filter(x => x.name).map(x => ({ id: idOf(x, "st-"), name: x.name, atk: num(x.atk), dmg: x.dmg, eff: x.eff }));
+      const bad = [...ammo.filter(a => a.dmg && !CPR.parse(a.dmg)).map(a => a.name), ...status.filter(x => x.dmg && !CPR.parse(x.dmg)).map(x => x.name)];
+      if (bad.length) return toast(`Danno non valido in: ${bad.join(", ")} (es. 2d6 o 1d6+2)`, "err");
+      try {
+        const saved = await Store.save("meta", { ...rules(), id: "rules", ammo, status });
+        state.rules = saved; liveSend("meta", saved);
+        toast("Regole salvate", "ok"); closeModal(); route();
+      } catch (err) { fail(err); }
+    });
+  }
+
   // ---------- CYBERDECK (Netrunner) ----------
   // sheet.deck = { name, slots, bodyweight, cyberarm, items[{ ref, …campi del personalizzato, cur (REZ attuale), on (Rezzato), used, dead }] }
   // Lo stesso riquadro serve alle schede dei PG (con lo stato della Netrun) e ai nemici Netrunner (solo tiri).
+  const decksOf = e => { const s = sheetOf(e); return Array.isArray(s.decks) ? s.decks : s.deck ? [s.deck] : []; };
+  const deckIdx = e => clamp(num(sheetOf(e).deckActive), 0, Math.max(0, decksOf(e).length - 1));
+  const activeDeck = e => decksOf(e)[deckIdx(e)] || { name: "Cyberdeck", slots: 7, items: [] };
+  // nel salvataggio porto le schede vecchie (deck singolo) all'elenco
+  const migrateDecks = s => { if (!Array.isArray(s.decks)) s.decks = s.deck ? [s.deck] : []; delete s.deck; s.deckActive = clamp(num(s.deckActive), 0, Math.max(0, s.decks.length - 1)); return s; };
   const isNetrunner = e => /netrunner/i.test((e && e.role) || "") || /^(interface|interfaccia)$/i.test(String(sheetOf(e).ability || "").trim())
-    || !!(((sheetOf(e).deck || {}).items) || []).length;
+    || decksOf(e).some(d => (d.items || []).length);
   const ifaceOf = e => num(sheetOf(e).rank);
   const clsTag = I => I.hw ? "Hardware" : I.ice ? `Black ICE · ${(NET.CLASSES[I.cls] || {}).short || ""}` : (NET.CLASSES[I.cls] || {}).label || "";
   const vsOf = I => I.cls === "antiprogram" ? "vs DEF + 1d10 di un programma o Black ICE" : "vs Interface + 1d10 del Netrunner";
@@ -1270,6 +1708,59 @@
     ev.preventDefault(); const b = $(".rez-minus", ev.target.closest(".rez-in")); if (b) b.click();
   });
 
+  function deckTabHtml(e) {
+    const id = esc(e.id), edit = Store.canEdit(), decks = decksOf(e), cur = deckIdx(e);
+    return `<div class="nd-tab" data-deck-tab="${id}">
+      <div class="sh-bar"><label class="sh-mod" title="Modificatore situazionale aggiunto ai tiri">MOD <input type="number" step="1" data-sheet-mod value="${sheetMod}"></label>
+        <span class="hint">Interface = Rank della Role Ability (${ifaceOf(e)}) · clicca un programma per tirare.</span>
+        <button type="button" class="btn ghost small cyan" data-action="dice-open">⬢ Dice log</button></div>
+      ${decks.length > 1 ? `<div class="chips nd-decks"><span class="lbl">Deck in uso</span>${decks.map((d, i) => `<button type="button" class="chip ${i === cur ? "active" : ""}" ${edit ? `data-action="deck-adj" data-id="${id}" data-i="${i}" data-op="active"` : "disabled"}>${esc(d.name || `Cyberdeck ${i + 1}`)}</button>`).join("")}</div>` : ""}
+      ${decks.length ? deckHtml(activeDeck(e), { iface: ifaceOf(e), roll: w => `data-action="sheet-roll" data-id="${id}" data-roll="deck:${w}"`,
+        adj: edit ? (i, op) => `data-action="deck-adj" data-id="${id}" data-i="${i}" data-op="${op}"` : null, reset: edit ? `data-action="deck-adj" data-id="${id}" data-op="reset"` : "" })
+        : `<div class="empty"><div class="big">// NESSUN CYBERDECK</div>${edit ? `<button class="btn" data-action="edit-decks" data-id="${id}">+ Aggiungi un Cyberdeck</button>` : ""}</div>`}
+    </div>`;
+  }
+  function editDecks(id) {
+    const e = state.entries.find(x => x.id === id); if (!e) return;
+    const decks = decksOf(e).length ? decksOf(e) : [{ name: "Cyberdeck", slots: 7, items: [] }];
+    const sec = (d, i, on) => `<section class="nd-sec" data-nd-sec>
+      <h3 class="sh-h"><label class="check"><input type="radio" name="deck-active" value="${i}" ${on ? "checked" : ""}> in uso</label>
+        <button type="button" class="btn ghost small danger" data-nd-delsec>Togli questo deck</button></h3>${deckEditorHtml(d)}</section>`;
+    openModal(`
+      <form class="form" id="decks-form">
+        <div class="modal-head"><h2>// CYBERDECK · ${esc(e.name)}</h2><button type="button" class="x" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="deck" aria-label="Chiudi">×</button></div>
+        <div class="modal-body">
+          <p class="hint">Programmi 1 slot, Black ICE 2, hardware come indicato. Puoi tenere più deck (es. uno di scorta o nel cyberbraccio): quello «in uso» è quello che tiri.</p>
+          <div id="nd-secs">${decks.map((d, i) => sec(d, i, i === deckIdx(e))).join("")}</div>
+          <button type="button" class="btn ghost small yellow" data-nd-newdeck>+ Cyberdeck</button>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost small left" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="deck">Annulla</button>
+          <button type="submit" class="btn">Salva Cyberdeck</button>
+        </div>
+      </form>`);
+    const form = $("#decks-form");
+    bindDeckEditor(form);
+    const renum = () => $$("[data-nd-sec]", form).forEach((x, i) => { $("input[type=radio]", x).value = i; });
+    form.addEventListener("click", ev => {
+      if (ev.target.closest("[data-nd-newdeck]")) { $("#nd-secs", form).insertAdjacentHTML("beforeend", sec({ name: `Cyberdeck ${$$("[data-nd-sec]", form).length + 1}`, slots: 7, items: [] }, 0, false)); renum(); return; }
+      const del = ev.target.closest("[data-nd-delsec]");
+      if (del) { del.closest("[data-nd-sec]").remove(); renum(); if (!$("input[name=deck-active]:checked", form) && $("input[name=deck-active]", form)) $("input[name=deck-active]", form).checked = true; }
+    });
+    form.addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const list = $$("[data-nd-sec] .nd-edit", form).map(b => readDeck(b));
+      const act = $("input[name=deck-active]:checked", form);
+      const s = migrateDecks(JSON.parse(JSON.stringify(sheetOf(e))));
+      s.decks = list; s.deckActive = act ? clamp(num(act.value), 0, Math.max(0, list.length - 1)) : 0;
+      try {
+        const saved = await Store.save("entries", { ...e, sheet: s });
+        upsert(state.entries, saved); liveSend("entries", saved);
+        toast("Cyberdeck salvati", "ok"); openEntry(saved.id, "deck"); refreshParty();
+      } catch (err) { fail(err); }
+    });
+  }
+
   // tiri del deck · c = { deck, iface, check(label, mods, extra), dmg(label, expr, note), msg(text) }
   const NET_VS = "vs Interface + 1d10 del Netrunner, o DEF + 1d10 di un programma / Black ICE";
   function deckRoll(c, what) {
@@ -1296,7 +1787,7 @@
     }
   }
   const sheetDeckCtx = e => ({
-    deck: sheetOf(e).deck || { items: [] }, iface: ifaceOf(e),
+    deck: activeDeck(e), iface: ifaceOf(e),
     check: (label, parts, extra) => sheetCheck(e, label, parts, extra),
     dmg: (label, x, note) => { const r = CPR.rollExpr(x); if (r) postRoll({ kind: "damage", who: e.name, entryId: e.id, label, ...r, note: note || "" }); },
     msg: text => postRoll({ kind: "msg", who: e.name, entryId: e.id, text }),
@@ -1310,7 +1801,10 @@
   // Rez / Derez, REZ, «una volta per Netrun», Distrutto e Nuova Netrun dalla scheda
   function deckAdj(e, i, op) {
     sheetPatch(e.id, s => {
-      const d = s.deck = s.deck || { items: [] }, items = d.items = d.items || [];
+      migrateDecks(s);
+      if (op === "active") { s.deckActive = clamp(i, 0, Math.max(0, s.decks.length - 1)); return s; }
+      if (!s.decks.length) s.decks.push({ name: "Cyberdeck", slots: 7, items: [] });
+      const d = s.decks[s.deckActive], items = d.items = d.items || [];
       if (op === "reset") { items.forEach(it => { it.on = false; it.used = false; it.cur = null; }); return s; }
       const it = items[i]; if (!it) return s;
       const I = NET.itemInfo(it);
@@ -1329,7 +1823,7 @@
   const deckOpt = (v, label, sel) => `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(label)}</option>`;
   const deckRefOptions = sel => `
     ${Object.entries(NET.CLASSES).map(([k, c]) => `<optgroup label="${esc(c.label)}">${NET.PROGRAMS.filter(p => p.cls === k).map(p => deckOpt("prog:" + p.id, `${p.name} · ATK ${p.atk} DEF ${p.def} REZ ${p.rez}`, sel)).join("")}</optgroup>`).join("")}
-    <optgroup label="Black ICE (2 slot)">${NET.ICE.map(c => deckOpt("ice:" + c.id, `${NET.iceLabel(c)} · ${NET.CLASSES[c.cls].short} · ATK ${c.atk} REZ ${c.rez}`, sel)).join("")}</optgroup>
+    <optgroup label="Black ICE (2 slot)">${NET.allIce().map(c => deckOpt("ice:" + c.id, `${NET.iceLabel(c)} · ${NET.CLASSES[c.cls].short} · ATK ${c.atk} REZ ${c.rez}`, sel)).join("")}</optgroup>
     <optgroup label="Hardware">${NET.HARDWARE.map(h => deckOpt("hw:" + h.id, `${h.name} · ${h.slots} slot`, sel)).join("")}</optgroup>
     <optgroup label="Altro">${deckOpt("custom", "Personalizzato…", sel)}</optgroup>`;
   const deckInfoTxt = it => { const I = NET.itemInfo(it); return `${I.slots} slot${I.eff ? " · " + I.eff : ""}`; };
@@ -1362,7 +1856,7 @@
     </div>`;
   }
   function readDeck(root, old = null) {
-    const box = $(".nd-edit", root); if (!box) return old;
+    const box = root && root.classList && root.classList.contains("nd-edit") ? root : $(".nd-edit", root); if (!box) return old;
     const val = k => $(`[data-nd=${k}]`, box);
     const items = readRows(box, ".nd-row").map(r => {
       let st = {}; try { st = JSON.parse(r.st || "{}"); } catch { st = {}; }
@@ -1377,15 +1871,15 @@
   }
   // contatore degli slot e campi del personalizzato
   function bindDeckEditor(root) {
-    const count = () => {
-      const box = $(".nd-edit", root); if (!box) return;
-      const S = NET.deckSlots(readDeck(root));
+    const count = () => $$(".nd-edit", root).forEach(box => {
+      const S = NET.deckSlots(readDeck(box));
       const el = $("[data-nd-count]", box);
       el.className = "en-budget" + (S.over ? " over" : "");
       el.innerHTML = `Slot usati <b>${S.used}</b> / ${S.total}${S.hwExtra ? ` (di cui ${S.hwExtra} solo hardware)` : ""}${S.over ? " · troppi oggetti per questo deck" : ""} · programmi 1 slot, Black ICE 2`;
-    };
+    });
     root.addEventListener("click", ev => {
-      if (ev.target.closest("[data-nd-add]")) { $(".nd-rows", root).insertAdjacentHTML("beforeend", deckRow()); count(); return; }
+      const addBtn = ev.target.closest("[data-nd-add]");
+      if (addBtn) { $(".nd-rows", addBtn.closest(".nd-edit")).insertAdjacentHTML("beforeend", deckRow()); count(); return; }
       if (ev.target.closest(".nd-row [data-row-del]")) setTimeout(count);
     });
     root.addEventListener("change", ev => {
@@ -1414,15 +1908,27 @@
       catch (err) { fail(err); }
     }
     upsert(state.rolls, out); sortRolls(); renderLogs();
-    if (!onTable() || $("#modal").open) openDrawer();
+    if (onTable() && !$("#modal").open && !$("#atk-dialog[open]")) popRoll(out); else openDrawer();
     return out;
   }
 
+  // pop-up di un tiro: compare per qualche secondo e resta nel Dice log
+  function popRoll(r) {
+    if (drawer && !drawer.hidden && !drawer.classList.contains("min")) return;   // il log è già aperto
+    let box = $("#roll-pops");
+    if (!box) { box = document.createElement("div"); box.id = "roll-pops"; box.className = "roll-pops"; box.setAttribute("aria-live", "polite"); document.body.appendChild(box); }
+    const el = document.createElement("div");
+    el.className = "roll-pop"; el.innerHTML = rollCard(r); el.title = "Clicca per aprire il Dice log";
+    el.addEventListener("click", () => { el.remove(); openDrawer(); });
+    box.appendChild(el);
+    while (box.children.length > 4) box.firstElementChild.remove();
+    setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 400); }, r.kind === "msg" ? 5000 : 6500);
+  }
   function rollCard(r) {
     const who = esc(r.who || (r.by ? r.by.split("@")[0] : "") || "Anonimo");
     const time = `<span class="rl-time">${fmtTime(r.at || r.createdAt)}</span>`;
     if (r.kind === "msg") return `<div class="rl msg ${r.local ? "local" : ""} ${r.gmOnly ? "secret" : ""}"><div class="rl-head"><b class="rl-who">${who}</b>${r.gmOnly ? `<span class="rl-secret">🔒 SEGRETO</span>` : ""}${time}</div><div class="rl-text">${esc(r.text)}</div></div>`;
-    const dice = (r.dice || []).map(d => `<span class="rd ${d.s === 10 ? "d10" : d.s === 6 ? "d6" : ""} ${esc(d.t || "")}" title="d${d.s}">${d.t === "minus" ? "−" : ""}${d.v}</span>`).join("");
+    const dice = (r.dice || []).map(d => `<span class="rd ${d.s === 10 ? "d10" : d.s === 6 ? "d6" : ""} ${esc(d.t || "")}" title="d${d.s}${d.t === "drop" ? " · scartato" : ""}">${d.t === "minus" ? "−" : ""}${d.v}</span>`).join("");
     const mods = (r.mods || []).map(m => `<span class="rm">${m.v < 0 ? "−" : "+"}${Math.abs(m.v)}${m.l ? ` <small>${esc(m.l)}</small>` : ""}</span>`).join("");
     const crit = { success: "Critical Success", fail: "Critical Failure", injury: "Critical Injury" }[r.crit];
     return `<div class="rl ${r.crit ? "c-" + esc(r.crit) : ""} ${r.local ? "local" : ""} ${r.gmOnly ? "secret" : ""}">
@@ -1445,7 +1951,7 @@
     return `
       <div class="roll-log" aria-live="polite">${logItems()}</div>
       <form class="roll-form ${secretRoll && isGm() ? "is-secret" : ""}" data-roll-form autocomplete="off">
-        <div class="roll-quick">${["1d10", "1d6", "2d6", "3d6", "4d6", "5d6", "6d6"].map(x => `<button type="button" class="chip" data-quick="${x}">${x}</button>`).join("")}<button type="button" class="chip" data-quick="check" title="Prova: 1d10 con critico sul 10 e fallimento sull'1">CHECK</button>
+        <div class="roll-quick">${["1d10", "1d6", "2d6", "3d6", "4d6", "5d6", "6d6", "3d6kh2"].map(x => `<button type="button" class="chip" data-quick="${x}">${x}</button>`).join("")}<button type="button" class="chip" data-quick="check" title="Prova: 1d10 con critico sul 10 e fallimento sull'1">CHECK</button>
           ${isGm() && Store.gmReady ? `<label class="roll-secret" title="I tuoi tiri e messaggi li vedono solo i GM"><input type="checkbox" data-secret ${secretRoll ? "checked" : ""}> 🔒 Segreto</label>` : ""}</div>
         <div class="roll-in">
           <select data-roll-as title="Tira come" aria-label="Tira come">${asOptions()}</select>
@@ -1523,12 +2029,12 @@
     const edit = Store.canEdit();
     const tabs = isPerson(e) ? `
       <div class="dossier-tabs" role="tablist">
-        ${[["dossier", "Dossier"], ["sheet", `Scheda${hasSheet(e) ? ` <span>${hpOf(e)}/${hpMaxOf(e)}</span>` : ""}`], ["cyber", `Cyberware${cyberCount(e) ? ` <span>${cyberCount(e)}</span>` : ""}`], ["gear", `Equipaggiamento${gearItems(e).length ? ` <span>${gearItems(e).length}</span>` : ""}`]]
+        ${[["dossier", "Dossier"], ["sheet", `Scheda${hasSheet(e) ? ` <span>${hpOf(e)}/${hpMaxOf(e)}</span>` : ""}`], ["combat", `Combattimento${(sheetOf(e).weapons || []).length ? ` <span>${sheetOf(e).weapons.length}</span>` : ""}`], ["cyber", `Cyberware${cyberCount(e) ? ` <span>${cyberCount(e)}</span>` : ""}`], ["gear", `Equipaggiamento${gearItems(e).length ? ` <span>${gearItems(e).length}</span>` : ""}`], ...(isNetrunner(e) ? [["deck", `Cyberdeck${decksOf(e).length > 1 ? ` <span>${decksOf(e).length}</span>` : ""}`]] : [])]
           .map(([t, l]) => `<button type="button" role="tab" class="${t === tab ? "active" : ""}" aria-selected="${t === tab}" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="${t}">${l}</button>`).join("")}
       </div>` : "";
     if (tab !== "dossier") {
       const k = kindOf(e.kind);
-      const T = { sheet: ["SCHEDA", sheetHtml, "edit-sheet", "scheda"], cyber: ["CYBERWARE", cyberHtml, "edit-cyber", "cyberware"], gear: ["EQUIPAGGIAMENTO", gearHtml, "edit-gear", "equipaggiamento"] }[tab] || [];
+      const T = { sheet: ["SCHEDA", sheetHtml, "edit-sheet", "scheda"], combat: ["COMBATTIMENTO", combatHtml, "edit-sheet", "scheda"], cyber: ["CYBERWARE", cyberHtml, "edit-cyber", "cyberware"], gear: ["EQUIPAGGIAMENTO", gearHtml, "edit-gear", "equipaggiamento"], deck: ["CYBERDECK", deckTabHtml, "edit-decks", "cyberdeck"] }[tab] || [];
       if (!T.length) return openEntry(id);
       openModal(`
         <div class="modal-head"><h2>// ${T[0]} · ${esc(k.label)}</h2><button class="x" data-action="close" aria-label="Chiudi">×</button></div>
@@ -1537,7 +2043,7 @@
           ${tabs}
           ${T[1](e)}
         </div>
-        ${edit && (tab !== "sheet" || hasSheet(e)) ? `<div class="modal-foot">
+        ${edit && (!["sheet", "combat"].includes(tab) || hasSheet(e)) ? `<div class="modal-foot">
           <button class="btn cyan" data-action="${T[2]}" data-id="${esc(e.id)}">Modifica ${T[3]}</button>
         </div>` : ""}`);
       const fig = $("#modal .cy-figure");
@@ -2684,7 +3190,7 @@
           ${roll("init", "Initiative", "chip y")}${roll("death", "Death Save", "chip r")}
           ${top.map(k => roll(k.key, `${esc(k.label)} <b>${k.base}</b>`)).join("")}
           ${(sheetOf(e).weapons || []).slice(0, 2).map((wp, i) => roll(`wpn:${i}:atk`, `⌖ ${esc(wp.name)}`) + (wp.dmg ? roll(`wpn:${i}:dmg`, `${esc(wp.dmg)}`, "chip y") : "")).join("")}
-          ${isNetrunner(e) ? netQuick(sheetOf(e).deck, ifaceOf(e), (w, l, c) => roll("deck:" + w, l, c)) : ""}
+          ${isNetrunner(e) ? netQuick(activeDeck(e), ifaceOf(e), (w, l, c) => roll("deck:" + w, l, c)) : ""}
         </div>
         <div class="pc-foot">
           <button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="sheet">Scheda completa</button>
@@ -2738,10 +3244,12 @@
 
   // tiri: ogni addendo compare nel Dice log. Dal token valgono le sue ferite (salvo Antidolorifico di Fascia 4);
   // i tiri dal modello o da un token nascosto sono segreti.
+  const enemyRange = {};
   function rollEnemy(e, what, t) {
     const D = enemyD(e), pen = D.pen, ca = D.ability && D.ability.ca;
     const hp = t && tokHp(t), w = hp && !D.painImmune ? CPR.wound(hp.hp, hp.max) : null;
     const wound = w && w.pen ? [{ l: w.label, v: w.pen }] : [];
+    if (t) wound.push(...statusParts(t.status));   // stati del token (es. Accecato)
     const arm = stat => pen && CPR.PEN_STATS.includes(stat) ? [{ l: "Armor", v: pen }] : [];
     const meta = { who: t ? tokName(t) : e.name, enemyId: e.id, gmOnly: !t || tokHidden(t) };
     if (String(what).startsWith("deck:")) {
@@ -2765,11 +3273,20 @@
         const note = ca && ca.weakness ? `Individuare Debolezze: +${ca.weakness} se è il primo colpo a segno del round` : "";
         return postRoll({ kind: "damage", label: `${wp.name} · damage`, ...meta, ...r, note });
       }
-      const r = CPR.check([{ l: wp.stat, v: wp.statV }, { l: wp.skillLabel, v: wp.lvl }, ...wp.bonus, ...arm(wp.stat), ...wound]);
-      // Recuperare da un Disastro: sparando, il fallimento critico non toglie il secondo dado (il tiro resta un 1)
-      if (ca && ca.recover && wp.firearm && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il tiro conta come 1)"; }
-      return postRoll({ kind: "check", label: `${wp.name} · attack`, ...meta, ...r });
+      const T = CPR.weaponType(wp.cat) || {}, af = D.skills.find(s => s.id === "autofire");
+      const precise = wp.bonus.filter(b => b.role);
+      return openAttack({
+        key: `${e.id}:${t ? t.id : "m"}:${a}`, title: wp.name, cat: wp.cat, dmg: wp.dmg, autoMax: T.auto || 0,
+        single: [{ l: wp.stat, v: wp.statV }, { l: wp.skillLabel, v: wp.lvl }, ...wp.bonus, ...arm(wp.stat)],
+        auto: [{ l: "REF", v: D.stats.REF.v }, { l: "Autofire", v: af ? af.lvl : 0 }, ...(af ? af.bonus : []), ...precise, ...arm("REF")],
+        mods: [], extra: () => wound, ammo: "", range: (enemyRange[`${e.id}:${a}`] || {}).range || "", autoRange: (enemyRange[`${e.id}:${a}`] || {}).autoRange || "",
+        onRange: patch => { enemyRange[`${e.id}:${a}`] = { ...(enemyRange[`${e.id}:${a}`] || {}), ...patch }; },
+        // Recuperare da un Disastro: sparando, il fallimento critico non toglie il secondo dado (il tiro resta un 1)
+        fix: r => { if (ca && ca.recover && wp.firearm && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il tiro conta come 1)"; } },
+        post: r => postRoll({ ...r, ...meta }),
+      });
     }
+    if (type === "crit") { critRoll(meta.who, a, r => postRoll({ ...r, ...meta })); return; }
     if (type === "init") { const d = CPR.die(10), ref = D.stats.REF.armor; return postRoll({ kind: "init", label: "Initiative", ...meta, dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }, ...D.initBonus], total: d + ref + D.initBonus.reduce((x, y) => x + y.v, 0) }); }
     if (type === "death") { const d = CPR.die(10); return postRoll({ kind: "death", label: "Death Save", ...meta, dice: [{ v: d, s: 10, t: d === 10 ? "fumble" : "" }], mods: [], total: d, note: d === 10 ? "Natural 10: always a failure" : `vs BODY ${D.body}`, crit: d === 10 ? "fail" : "" }); }
   }
@@ -2828,6 +3345,7 @@
           ${arm("head")}${arm("body")}
           ${enemyBtn(e, "init", `Initiative ${initTotal(D)}`, "chip y", null, esc(`REF ${D.stats.REF.armor}${D.initBonus.map(b => ` + ${b.l} ${b.v}`).join("")}`))}${enemyBtn(e, "death", "Death Save", "chip r")}
           ${D.ability ? enemyBtn(e, "ability", `${esc(D.ability.nameIt)} ${D.ability.rank}`, "chip y") : ""}
+          ${enemyBtn(e, "crit:body", "⚄ Crit. corpo", "chip r", null, "Critical Injury al corpo (2d6)")}${enemyBtn(e, "crit:head", "⚄ Crit. testa", "chip r", null, "Critical Injury alla testa (2d6)")}
         </div>
         <div class="en-hp hint">HP: ${D.hpParts.map((p, i) => i ? `${p.v >= 0 ? "+" : "−"}${Math.abs(p.v)} (${esc(p.l)})` : `${esc(p.l)} = ${p.v}`).join(" ")} → <b>${D.hp}</b></div>
         ${roleBlock(D)}
@@ -2865,7 +3383,7 @@
       <div class="modal-foot">
         <button class="btn ghost small left" data-action="delete-entry" data-id="${esc(e.id)}">Elimina</button>
         <button class="btn ghost small" data-action="enemy-copy" data-id="${esc(e.id)}">Duplica</button>
-        <button class="btn ghost small yellow" data-action="enemy-spawn" data-id="${esc(e.id)}">⇲ Sul tavolo</button>
+        <button class="btn ghost small yellow" data-action="enemy-spawn" data-id="${esc(e.id)}">⇲ Sulla mappa</button>
         <button class="btn cyan" data-action="enemy-edit" data-id="${esc(e.id)}">Modifica</button>
       </div>`);
   }
@@ -3102,7 +3620,7 @@
   function spawnEnemy(id) {
     const e = state.entries.find(x => x.id === id); if (!e) return;
     const m = curMap();
-    if (!m) return toast("Prima crea una mappa nel Tavolo", "err");
+    if (!m) return toast("Prima crea una mappa nella pagina Mappa", "err");
     const D = enemyD(e);
     openModal(`
       <form class="form" id="spawn-form">
@@ -3111,10 +3629,10 @@
           <div class="field full"><span class="lbl">Mappa</span><b>${esc(m.name || "Mappa")}</b>${m.hidden ? ` <span class="hint">(nascosta ai giocatori)</span>` : ""}</div>
           <div class="field"><label for="sp-n">Quanti</label><input id="sp-n" name="count" type="number" min="1" max="20" value="1"></div>
           <div class="field"><label for="sp-c">Colore</label><input id="sp-c" name="color" type="color" value="#ff8a3d"></div>
-          <label class="check field full gm-check"><input type="checkbox" name="hidden" checked> 🔒 Nascosti ai giocatori (li riveli dal tavolo)</label>
+          <label class="check field full gm-check"><input type="checkbox" name="hidden" checked> 🔒 Nascosti ai giocatori (li riveli dalla mappa)</label>
           <p class="hint field full">Ogni token ha HP (${D.hp}) e SP propri: si feriscono uno per uno. ${esc(D.T.ratio)}.</p>
         </div></div>
-        <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button type="submit" class="btn">Metti sul tavolo</button></div>
+        <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button type="submit" class="btn">Metti sulla mappa</button></div>
       </form>`, true);
     $("#spawn-form").addEventListener("submit", async ev => {
       ev.preventDefault();
@@ -3122,8 +3640,8 @@
       const taken = new Set(mapTokens(m).map(t => num(t.x) + "," + num(t.y)));
       closeModal();
       for (let i = 0; i < n; i++) await saveRec("tokens", enemyToken(e, m, { name: n > 1 ? `${e.name} ${i + 1}` : "", color: safeColor(f.color.value), hidden, ...freeCell(m, taken) }));
-      toast(`${n} × ${e.name} sul tavolo`, "ok");
-      tt.view = m.id; if (onTable()) { renderTokens(); renderSide(); } else location.hash = "#/tavolo";
+      toast(`${n} × ${e.name} sulla mappa`, "ok");
+      tt.view = m.id; if (onTable()) { renderTokens(); renderSide(); } else location.hash = "#/mappa";
     });
   }
 
@@ -3137,7 +3655,7 @@
         <span class="en-line">HP <b>${D.hp}</b> · SP <b>${+((D.armor.head || {}).sp) || 0}/${+((D.armor.body || {}).sp) || 0}</b> · Init <b>${initTotal(D)}</b>${D.budget ? ` · ⚡ ${D.spent}/${D.budget}` : ""}</span>
         <span class="en-line">${D.weapons.map(w => `${esc(w.name)} <b>${w.effArmor}</b>`).join(" · ") || "disarmato"}</span>
       </button>
-      <button type="button" class="btn ghost small yellow" data-action="enemy-spawn" data-id="${esc(e.id)}">⇲ Sul tavolo</button>
+      <button type="button" class="btn ghost small yellow" data-action="enemy-spawn" data-id="${esc(e.id)}">⇲ Sulla mappa</button>
     </article>`;
   }
 
@@ -3166,6 +3684,10 @@
       ${enemies.length ? `<div class="en-grid">${enemies.map(enemyCard).join("")}</div>`
         : `<p class="hint">Nessun nemico. «Genera nemico» crea una scheda semplificata come quelle del manuale scegliendo Fascia (1 Scagnozzi → 4 Boss), Livello (Base, Hardened, Elite) e, se vuoi, un Ruolo (Solo, Tech, Medtech, Nomade, Netrunner).</p>`}
 
+      <div class="section-title" style="margin-top:28px"><h2>⚙ Regole della campagna</h2>
+        <span class="en-actions"><button type="button" class="btn small" data-action="gm-rules">Modifica munizioni e stati</button></span></div>
+      <p class="hint">Munizioni: ${(rules().ammo || []).length ? (rules().ammo || []).map(a => esc(a.name)).join(", ") : "solo Standard"} · Stati: ${statusList().map(x => esc(x.name)).join(", ") || "nessuno"}. Le vedono tutti; le modificano i GM.</p>
+
       <div class="section-title" style="margin-top:28px"><h2>⌬ Architetture NET <span class="hint">${state.netarch.length}</span></h2>
         <span class="en-actions"><button type="button" class="btn small yellow" data-action="net-gen">⚄ Genera architettura</button>
         <button type="button" class="btn ghost small" data-action="net-new">+ Architettura a mano</button>
@@ -3192,14 +3714,14 @@
 
       <div class="gm-cols">
         <section>
-          <div class="section-title"><h2>Tavolo</h2><a class="see-all" href="#/tavolo">apri il tavolo →</a></div>
+          <div class="section-title"><h2>Mappe</h2><a class="see-all" href="#/mappa">apri la mappa →</a></div>
           ${state.maps.length ? `<div class="gm-list">${mapsSorted().map(m => {
             const nTok = mapTokens(m).length, nHid = mapTokens(m).filter(t => t.hidden).length;
             return `<button type="button" class="gm-item" data-action="gm-open-map" data-id="${esc(m.id)}">
               <b>${m.id === sharedMapId() ? "● " : ""}${m.hidden ? "🔒 " : ""}${esc(m.name || "Mappa")}</b>
               <span>${m.id === sharedMapId() ? "visibile a tutti" : m.hidden ? "nascosta ai giocatori" : "visibile"} · ${nTok} token${nHid ? ` (${nHid} nascosti)` : ""}</span></button>`; }).join("")}</div>`
             : `<p class="hint">Nessuna mappa. Le mappe nuove nascono nascoste: le riveli con «Mostra a tutti».</p>`}
-          ${hiddenTok.length ? `<p class="hint">Token nascosti in tutto: ${hiddenTok.length}. Selezionali sul tavolo e premi «👁 Rivela».</p>` : ""}
+          ${hiddenTok.length ? `<p class="hint">Token nascosti in tutto: ${hiddenTok.length}. Selezionali sulla mappa e premi «👁 Rivela».</p>` : ""}
         </section>
         <section>
           <div class="section-title"><h2>🔒 Ultimi tiri segreti</h2></div>
@@ -3471,7 +3993,7 @@
     if (!isGm() && Store.gmReady) return;
     const old = archById(id);
     let A = JSON.parse(JSON.stringify(preset || old || NET.blank()));
-    const iceSel = (v, k) => `<select data-fl="ice${k}" aria-label="Black ICE ${k + 1}"><option value="">${k ? "—" : "scegli…"}</option>${NET.ICE.map(c => `<option value="${c.id}" ${c.id === v ? "selected" : ""}>${esc(NET.iceLabel(c))} (${c.cls === "antiprogram" ? "Anti-Prog." : "Anti-Op."} ATT ${c.atk})</option>`).join("")}</select>`;
+    const iceSel = (v, k) => `<select data-fl="ice${k}" aria-label="Black ICE ${k + 1}"><option value="">${k ? "—" : "scegli…"}</option>${NET.allIce().map(c => `<option value="${c.id}" ${c.id === v ? "selected" : ""}>${esc(NET.iceLabel(c))} (${c.cls === "antiprogram" ? "Anti-Prog." : "Anti-Op."} ATT ${c.atk})</option>`).join("")}</select>`;
     const floorRow = (b, bi, f, i) => {
       const T = NET.floorType(f.t), depth = NET.depthOf(b, i);
       return `<div class="na-erow" data-b="${bi}" data-i="${i}">
@@ -3489,7 +4011,7 @@
       return `
         <div class="en-gen en-steps">
           <div class="field"><label for="na-diff">Difficoltà</label><select id="na-diff" data-top="diff">${NET.DIFFS.map(d => `<option value="${d.id}" ${d.id === A.diff ? "selected" : ""}>${d.label} · VD ${d.dv}</option>`).join("")}</select></div>
-          <div class="field"><label for="na-dem">Demone (se ci sono Nodi)</label><select id="na-dem" data-top="demon">${[["auto", `Secondo la difficoltà (${NET.demonOf(D.demon).name})`], ["none", "Nessuno"], ...NET.DEMONS.map(d => [d.id, d.name])].map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>
+          <div class="field"><label for="na-dem">Demone (se ci sono Nodi)</label><select id="na-dem" data-top="demon">${[["auto", `Secondo la difficoltà (${NET.demonOf(D.demon).name})`], ["none", "Nessuno"], ...NET.allDemons().map(d => [d.id, d.name])].map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>
           <button type="button" class="btn yellow" data-na="gen">⚄ Genera</button>
           <span class="hint">${esc(diffInfo(D))}. Genera tira 3d6 piani, il d10 dei bivi, l'Ingresso (1d6) per i primi due piani e la tabella dei piani inferiori (3d6) per gli altri, ritirando programmi e Password già usciti.</span>
         </div>
@@ -3507,7 +4029,7 @@
         <div id="na-warn" class="en-check"></div>
         <h3 class="sh-h">Demoni <small>gestiscono i Nodi di Controllo; le Difese Attive ne richiedono almeno uno · Imp i più comuni</small></h3>
         <div class="na-erows">${(A.demons || []).map((d, k) => `<div class="na-erow demon" data-dm="${k}">
-          <select data-dmf="ref" aria-label="Demone">${NET.DEMONS.map(m => `<option value="${m.id}" ${m.id === d.ref ? "selected" : ""}>${m.name} · REZ ${m.rez} · Interface ${m.iface} · ${m.actions} Azioni NET</option>`).join("")}</select>
+          <select data-dmf="ref" aria-label="Demone">${NET.allDemons().map(m => `<option value="${m.id}" ${m.id === d.ref ? "selected" : ""}>${m.name} · REZ ${m.rez} · Interface ${m.iface} · ${m.actions} Azioni NET</option>`).join("")}</select>
           <input data-dmf="note" placeholder="Quali Nodi gestisce, trigger…" value="${esc(d.note || "")}" class="na-enote">
           <span class="na-ebtn"><button type="button" class="gp-btn del" data-na="deldemon" data-k="${k}" aria-label="Elimina il Demone">✕</button></span></div>`).join("")}</div>
         <button type="button" class="btn ghost small cyan" data-na="adddemon">+ Demone</button>
@@ -3622,7 +4144,7 @@
   const netOpen = new Set();
   function netGmHtml() {
     const list = [...state.netarch].sort((a, b) => (b.shared ? 1 : 0) - (a.shared ? 1 : 0) || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
-    if (!list.length) return `<div class="empty"><div class="big">// NESSUNA ARCHITETTURA</div>«⚄ Genera architettura» segue le tabelle del manuale, «+ A mano» la costruisci piano per piano.</div>`;
+    if (!list.length) return `<div class="empty"><div class="big">// NESSUNA ARCHITETTURA</div>«⚄ Genera architettura» segue le tabelle del manuale, «+ A mano» la costruisci piano per piano.</div>` + homebrewHtml();
     return `<p class="hint">🔒 Vista del GM: con 👁 su un piano lo riveli ai giocatori (anche quelli sopra), ✓ lo segna come superato. I giocatori vedono solo le architetture con «Mostra ai giocatori» acceso e solo i piani rivelati.</p>` +
       list.map(A => {
         const S = archStats(A), open = A.shared || netOpen.has(A.id);
@@ -3639,7 +4161,7 @@
           </div>
           ${archViewHtml(A)}
         </details>`;
-      }).join("");
+      }).join("") + homebrewHtml();
   }
   // un'architettura aperta o chiusa: me lo ricordo e ridisegno le linee (da chiusa non hanno misure)
   document.addEventListener("toggle", ev => {
@@ -3661,13 +4183,80 @@
     drawArchLinks(box);
   }
 
+
+  // ---------- homebrew NET: Black ICE e Demoni del GM (meta "nethb", li vedono tutti per leggere le architetture) ----------
+  const hbRec = () => state.nethb || { id: "nethb", ice: [], demons: [] };
+  function homebrewHtml() {
+    const H = NET.homebrew();
+    const iceTxt = c => `${NET.CLASSES[c.cls].short} · PER ${c.per} · VEL ${c.spd} · ATT ${c.atk} · DIF ${c.def} · REZ ${c.rez}${(c.dmg || []).length ? ` · ${c.dmg[0].x} ${c.dmg[0].u === "REZ" ? "REZ" : "al cervello"}` : ""}`;
+    return `<details class="na-det na-hb" ${netOpen.has("hb") ? "open" : ""} data-arch-det="hb">
+      <summary><span class="na-sum-t">★ Homebrew</span><span class="hint">${H.ice.length} Black ICE · ${H.demons.length} Demoni · si usano nelle architetture e nei Cyberdeck</span></summary>
+      <div class="na-det-bar"><button type="button" class="btn small yellow" data-action="hb-edit" data-kind="ice">+ Black ICE</button><button type="button" class="btn small" data-action="hb-edit" data-kind="demon">+ Demone</button></div>
+      <div class="na-view"><div class="sh-weapons">
+        ${H.ice.map(c => `<div class="wpn nd-item ice"><span class="wpn-n"><span class="nd-name">☠ ${esc(c.name)} <span class="nd-cls">Black ICE homebrew</span></span><small>${esc(iceTxt(c))}</small>${c.eff ? `<em>${esc(c.eff)}</em>` : ""}</span>
+          <span class="nd-acts"><button type="button" class="btn ghost small cyan" data-action="hb-edit" data-kind="ice" data-id="${esc(c.id)}">Modifica</button></span></div>`).join("")}
+        ${H.demons.map(d => `<div class="wpn nd-item demon"><span class="wpn-n"><span class="nd-name">${esc(d.name)} <span class="nd-cls">Demone homebrew</span></span><small>REZ ${d.rez} · Interface ${d.iface} · ${d.actions} Azioni NET · Combattimento ${d.combat}</small>${d.eff ? `<em>${esc(d.eff)}</em>` : ""}</span>
+          <span class="nd-acts"><button type="button" class="btn ghost small cyan" data-action="hb-edit" data-kind="demon" data-id="${esc(d.id)}">Modifica</button></span></div>`).join("")}
+        ${!H.ice.length && !H.demons.length ? `<p class="hint">Nessuno. I Black ICE homebrew compaiono negli elenchi dell'editor delle architetture e del Cyberdeck; i Demoni nella lista dei Demoni.</p>` : ""}
+      </div></div></details>`;
+  }
+  function editHomebrew(kind, id) {
+    if (!isGm() && Store.gmReady) return;
+    const R = hbRec(), list = kind === "ice" ? (R.ice || []) : (R.demons || []), old = list.find(x => x.id === id) || {};
+    const n = (name, label, v, min = 0, max = 99) => `<div class="field"><label>${label}</label><input name="${name}" type="number" min="${min}" max="${max}" value="${esc(v ?? "")}"></div>`;
+    openModal(`
+      <form class="form" id="hb-form">
+        <div class="modal-head"><h2>// ★ ${kind === "ice" ? "BLACK ICE" : "DEMONE"} HOMEBREW</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+        <div class="modal-body"><div class="fields">
+          <div class="field full"><label class="req">Nome</label><input name="name" required value="${esc(old.name || "")}"></div>
+          ${kind === "ice" ? `
+          <div class="field"><label>Classe</label><select name="cls"><option value="antipersonnel" ${old.cls !== "antiprogram" ? "selected" : ""}>Anti-Operatore (attacca il Netrunner)</option><option value="antiprogram" ${old.cls === "antiprogram" ? "selected" : ""}>Anti-Programma (attacca i programmi)</option></select></div>
+          ${n("per", "PER (difficoltà del Bypass)", old.per ?? 4)}${n("spd", "VEL (agguato)", old.spd ?? 4)}${n("atk", "ATT", old.atk ?? 4)}${n("def", "DIF", old.def ?? 2)}${n("rez", "REZ", old.rez ?? 15, 1, 999)}
+          <div class="field"><label>Danno (es. 2d6, vuoto = nessuno)</label><input name="dmgX" value="${esc(old.dmgX || "")}"></div>
+          <div class="field"><label>Il danno va</label><select name="dmgU"><option value="brain" ${old.dmgU !== "REZ" ? "selected" : ""}>al cervello</option><option value="REZ" ${old.dmgU === "REZ" ? "selected" : ""}>ai REZ di un programma</option></select></div>
+          <div class="field"><label>Tiro dell'effetto (es. 1d6)</label><input name="fxX" value="${esc(old.fxX || "")}"></div>
+          <div class="field"><label>Cosa misura quel tiro</label><input name="fxL" value="${esc(old.fxL || "")}" placeholder="es. round bloccato"></div>
+          ${n("cost", "Costo (E$)", old.cost ?? "", 0, 100000)}` : `
+          ${n("rez", "REZ", old.rez ?? 20, 1, 999)}${n("iface", "Interface", old.iface ?? 4, 0, 10)}${n("actions", "Azioni NET", old.actions ?? 3, 1, 6)}${n("combat", "Combattimento", old.combat ?? 14, 0, 30)}`}
+          <div class="field full"><label>Effetto / descrizione</label><textarea name="eff" rows="3">${esc(old.eff || "")}</textarea></div>
+        </div></div>
+        <div class="modal-foot">
+          ${old.id ? `<button type="button" class="btn ghost small left danger" data-hb-del>Elimina</button>` : `<button type="button" class="btn ghost small left" data-action="close">Annulla</button>`}
+          <button type="submit" class="btn">Salva</button>
+        </div>
+      </form>`, true);
+    const form = $("#hb-form");
+    const save = async next => {
+      const rec = { ...hbRec(), id: "nethb", [kind === "ice" ? "ice" : "demons"]: next };
+      try {
+        const saved = await Store.save("meta", rec);
+        state.nethb = saved; NET.setHomebrew(saved); liveSend("meta", saved);
+        netOpen.add("hb"); closeModal(); route(); toast("Homebrew salvato", "ok");
+      } catch (err) { fail(err); }
+    };
+    $("[data-hb-del]", form) && $("[data-hb-del]", form).addEventListener("click", async () => {
+      const used = state.netarch.some(A => NET.archFloors(A).some(x => (x.f.ice || []).some(i => i.ref === old.id)) || (A.demons || []).some(d => d.ref === old.id));
+      if (!(await askConfirm(`Eliminare «${old.name}»?${used ? " È usato in almeno un'architettura: lì non comparirà più." : ""}`))) return;
+      save(list.filter(x => x.id !== old.id));
+    });
+    form.addEventListener("submit", ev => {
+      ev.preventDefault();
+      const f = form.elements, v = k => f[k] ? f[k].value.trim() : "";
+      if (kind === "ice") for (const k of ["dmgX", "fxX"]) if (v(k) && !CPR.parse(v(k))) return toast(`Tiro non valido: "${v(k)}" (es. 2d6)`, "err");
+      const item = kind === "ice"
+        ? { id: old.id || "hb-" + NET.uid(), name: v("name"), cls: v("cls"), per: num(v("per")), spd: num(v("spd")), atk: num(v("atk")), def: num(v("def")), rez: Math.max(1, num(v("rez"))), dmgX: v("dmgX"), dmgU: v("dmgU"), fxX: v("fxX"), fxL: v("fxL"), cost: num(v("cost")), eff: v("eff") }
+        : { id: old.id || "hd-" + NET.uid(), name: v("name"), rez: Math.max(1, num(v("rez"))), iface: num(v("iface")), actions: Math.max(1, num(v("actions"))), combat: num(v("combat")), eff: v("eff") };
+      save(old.id ? list.map(x => x.id === old.id ? item : x) : [...list, item]);
+    });
+  }
+
   // ---------- TAVOLO DI GIOCO: mappa, token, iniziativa ----------
   // maps   = { name, image, cols, rows, grid, init[{tokenId, v}], turn, round }
   // tokens = { mapId, entryId?, name, color, image, x, y (caselle), size, hp, hpMax }
   const CELL = 64;                              // pixel per casella a zoom 100% · 1 casella = 2 m
   // view = mappa che sto guardando io (null = seguo quella condivisa) · remote = frecce degli spostamenti altrui
   const tt = { zoom: ls.get("nc-zoom", 1), sel: null, drag: null, view: null, remote: {} };
-  const onTable = () => /^#\/tavolo/.test(location.hash);
+  const onTable = () => /^#\/(mappa|tavolo)/.test(location.hash);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const safeColor = c => /^#[0-9a-f]{6}$/i.test(c || "") ? c : "#00f0ff";
   const initials = n => String(n || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
@@ -3716,7 +4305,7 @@
     const m = curMap(), edit = gmTools();
     return `
       <div class="page-head tt-head">
-        <div><div class="kicker">// TACTICAL_GRID</div><h1>Tavolo</h1><p>Mappa, token e tiri di dado condivisi in tempo reale · 1 casella = 2 m.</p></div>
+        <div><div class="kicker">// TACTICAL_GRID</div><h1>Mappa</h1><p>Mappa, token e iniziativa condivisi in tempo reale · 1 casella = 2 m · i tiri compaiono qui sopra e restano nel Dice log ⬢.</p></div>
         <div class="tt-tools" id="tt-tools">${toolsHtml()}</div>
       </div>
       ${m ? `
@@ -3735,7 +4324,7 @@
         <aside class="tt-side">
           <section class="tt-panel" id="tt-sel"></section>
           <section class="tt-panel" id="tt-init"></section>
-          <section class="tt-panel tt-log"><h4>Dice log</h4>${logWidget()}</section>
+          <button type="button" class="btn ghost small cyan tt-logbtn" data-action="dice-open">⬢ Apri il Dice log</button>
         </aside>
       </div>` : `
       <div class="empty"><div class="big">// NESSUNA MAPPA</div>${edit ? `Crea la prima mappa per iniziare: carica un'immagine e scegli quante caselle ha.<br><button class="btn" data-action="tt-new-map">+ Nuova mappa</button>` : sharedMapId() ? "Il master sta preparando la mappa: compare qui da sola appena la mostra." : "Il master non ha ancora mostrato una mappa. Appena lo fa, compare qui da sola."}</div>
@@ -3748,7 +4337,7 @@
     return `
       ${state.maps.length ? `<select id="tt-map" aria-label="Mappa">${mapsSorted().map(x => `<option value="${esc(x.id)}" ${m && x.id === m.id ? "selected" : ""}>${x.id === shared ? "● " : ""}${x.hidden ? "🔒 " : ""}${esc(x.name || "Mappa")}</option>`).join("")}</select>` : ""}
       ${m && m.hidden ? `<span class="tt-hidden-pill" title="I giocatori non vedono questa mappa">🔒 NASCOSTA AI GIOCATORI</span>` : ""}
-      ${m ? (live ? `<span class="tt-live" title="Tutti quelli che aprono il tavolo vedono questa mappa">● VISIBILE A TUTTI</span>`
+      ${m ? (live ? `<span class="tt-live" title="Tutti quelli che aprono la pagina Mappa vedono questa mappa">● VISIBILE A TUTTI</span>`
         : edit ? `<button type="button" class="btn small yellow" data-action="tt-share-map" title="Porta tutti i giocatori su questa mappa">◉ Mostra a tutti</button>`
         : shared && state.maps.some(x => x.id === shared) ? `<button type="button" class="btn ghost small yellow" data-action="tt-follow">Torna alla mappa del master</button>` : "") : ""}
       ${edit ? `<button type="button" class="btn ghost small cyan" data-action="tt-new-map">+ Mappa</button>
@@ -3844,7 +4433,8 @@
       cls: ["tt-token", tt.sel === t.id && "sel", dead && "dead", turnToken(m) === t.id && "turn", canMove(t) && "mov", t.hidden && "hid"].filter(Boolean).join(" "),
       inner: `<div class="tt-face">${img ? `<img data-ref="${esc(img)}" alt="" draggable="false">` : `<span>${esc(initials(tokName(t)))}</span>`}</div>
         ${hp ? `<div class="tt-hp"><i style="width:${clamp(hp.hp / hp.max * 100, 0, 100)}%"></i></div>` : ""}
-        <div class="tt-name">${esc(tokName(t))}</div>`,
+        <div class="tt-name">${esc(tokName(t))}</div>
+        ${tokStatusIds(t).length ? `<div class="tt-stb" title="${esc(tokStatusIds(t).map(id => (statusOf2(id) || {}).name || "").join(", "))}">${tokStatusIds(t).length}</div>` : ""}`,
     };
   }
   // aggiorno i token uno per uno senza ricrearli: così un trascinamento in corso non si interrompe
@@ -3867,6 +4457,13 @@
     drawArrows();
   }
   function renderSide() { renderSel(); renderInit(); }
+  // stati del token: quelli della scheda per PG e NPC con scheda, altrimenti i suoi
+  const tokStatusIds = t => { const e = tokSheet(t); return (e ? sheetOf(e).status : t.status) || []; };
+  const tokStatusApply = t => {
+    const e = tokSheet(t); if (e) return sheetStatusApply(e);
+    return { set: fn => saveToken({ ...t, status: fn(t.status) }),
+      roll: (st, r) => postRoll({ kind: "damage", who: tokName(t), label: `${st.name} · danno del round`, ...r, note: st.eff || "", gmOnly: tokHidden(t) }) };
+  };
 
   function renderSel() {
     const box = $("#tt-sel"); if (!box) return;
@@ -3887,6 +4484,7 @@
         ${edit ? `<span class="sh-adj">${[-5, -1, 1, 5].map(d => `<button type="button" class="gp-btn" data-action="tt-hp" data-d="${d}">${d > 0 ? "+" : "−"}${Math.abs(d) === 1 ? "" : Math.abs(d)}</button>`).join("")}</span>` : ""}
       </div>` : ""}
       ${sp("head")}${sp("body")}
+      <div class="tt-st"><span class="sh-k">Stati</span>${statusChips(tokStatusIds(t), edit ? (op, st) => `${op === "add" ? "" : `data-action="tok-status" `}data-st-tok="${esc(t.id)}" data-st-op="${op}" data-st="${esc(st)}"` : null)}</div>
       ${enemy && isGm() ? enemyQuickRolls(e, t) : ""}
       <div class="row-btns" style="margin-top:8px">
         ${e && isPerson(e) ? `<button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="sheet">Scheda</button>` : ""}
@@ -4124,7 +4722,7 @@
       if (!out.length) return toast("Scegli almeno un personaggio o scrivi un nome", "err");
       closeModal();
       for (const t of out) await saveRec("tokens", t);
-      renderTokens(); renderSide(); toast(`${out.length} token sul tavolo`, "ok");
+      renderTokens(); renderSide(); toast(`${out.length} token sulla mappa`, "ok");
     });
   }
 
@@ -4285,7 +4883,15 @@
       return;
     }
     const col = msg.col;
-    if (col === "meta") { if (msg.rec && msg.rec.id === "site") applySharedMap(msg.rec.tableMap); return; }
+    if (col === "meta") {
+      const r = msg.rec; if (!r) return;
+      if (r.id === "site") applySharedMap(r.tableMap);
+      if (r.id === "rules" || r.id === "nethb") {
+        if (r.id === "rules") state.rules = r; else { state.nethb = r; NET.setHomebrew(r); }
+        if (!$("#modal form")) { if (/^#\/(gm|net|party)/.test(location.hash) && !$("#modal").open) route(); }
+      }
+      return;
+    }
     // riga diventata segreta: i giocatori la tolgono, i GM la rileggono dal database (sul canale non viaggia)
     if (msg.t === "gm") {
       if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes", "netarch"].includes(col) || !msg.id) return;
@@ -4301,6 +4907,8 @@
   function applyLive(col, rec, trusted) {
     if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes", "netarch", "netview"].includes(col)) return;
     if (!trusted && (rec.gmOnly || ["notes", "gmnotes", "netarch"].includes(col))) return;
+    // tiro nuovo di qualcun altro: pop-up se il log è chiuso (sempre sulla mappa)
+    if (col === "rolls" && !state.rolls.some(x => x.id === rec.id) && (onTable() || !drawer || drawer.hidden)) setTimeout(() => popRoll(rec));
     let oldTurn = null;
     if (col === "entries" && !trusted) {
       // dal canale accetto solo la parte "sheet" di schede già esistenti
@@ -4542,7 +5150,7 @@
       $("#note-q").addEventListener("input", ev => { state.noteQ = ev.target.value; $("#notes-results").innerHTML = notesHtml(); });
     }
     if (page === "gm") loadGmList();
-    if (page === "tavolo") {
+    if (page === "mappa") {
       bindTable(); renderLogs();
     }
     const cm = $("#cal-m"), cy = $("#cal-y");
@@ -4663,7 +5271,7 @@
         try { await Store.removeGm(email); toast("Fatto"); if (me) location.reload(); else loadGmList(); } catch (err) { fail(err); }
         break;
       }
-      case "gm-open-map": tt.view = id; tt.sel = null; location.hash = "#/tavolo"; break;
+      case "gm-open-map": tt.view = id; tt.sel = null; location.hash = "#/mappa"; break;
       case "party-as": {
         const e = state.entries.find(x => x.id === id); if (!e) break;
         ls.set("nc-as", id); $$("[data-roll-as]").forEach(s => { s.value = id; });
@@ -4728,7 +5336,22 @@
       case "cf-del": el.closest(".cf-row").remove(); break;
       // scheda personaggio
       case "edit-sheet": editSheet(id); break;
+      case "edit-decks": editDecks(id); break;
       case "sheet-roll": { const e = state.entries.find(x => x.id === id); if (e) sheetRoll(e, el.dataset.roll); break; }
+      case "cb-roll": { const e = state.entries.find(x => x.id === id); if (e) cbRoll(e, num(el.dataset.i), el.dataset.mode || "single"); break; }
+      case "cb-dmg": { const e = state.entries.find(x => x.id === id); if (e) cbDamage(e, num(el.dataset.i), num(el.dataset.mult)); break; }
+      case "sheet-status": { const e = state.entries.find(x => x.id === el.dataset.stSheet); if (e && Store.canEdit()) statusOp(el, sheetStatusApply(e)); break; }
+      case "tok-status": { const t = state.tokens.find(x => x.id === el.dataset.stTok); if (t && Store.canEdit()) statusOp(el, tokStatusApply(t)); break; }
+      case "sheet-crit": { const e = state.entries.find(x => x.id === id); if (!e) break; lastCrit[id] = critRoll(e.name, el.dataset.loc, r => postRoll({ ...r, who: e.name, entryId: e.id })); refreshSheetView(id); break; }
+      case "sheet-crit-add": {
+        const L = lastCrit[id]; if (!L || !Store.canEdit()) break;
+        delete lastCrit[id];
+        sheetPatch(id, s => { s.crit = [s.crit, `${L.name} (${L.loc === "head" ? "testa" : "corpo"}): ${L.eff}`].filter(Boolean).join("\n"); if (L.dsp) s.dsp = num(s.dsp) + L.dsp; return s; });
+        toast(`${L.name} aggiunta${L.dsp ? " · penalità del Death Save +1" : ""}`, "ok");
+        break;
+      }
+      case "gm-rules": editRules(); break;
+      case "hb-edit": editHomebrew(el.dataset.kind, id); break;
       case "deck-adj": { const e = state.entries.find(x => x.id === id), op = rezOp(el, el.dataset.op); if (e && op && Store.canEdit()) deckAdj(e, num(el.dataset.i), op); break; }
       case "sheet-adj": {
         const e = state.entries.find(x => x.id === id); if (!e || !Store.canEdit()) break;
@@ -4768,6 +5391,23 @@
   });
   document.addEventListener("change", ev => {
     const t = ev.target;
+    // tab Combattimento: mirato (solo su questo dispositivo), munizioni e tabelle (nella scheda)
+    if (t.matches("[data-cb-aim], [data-cb-loc]")) {
+      const [eid, i] = (t.dataset.cbAim || t.dataset.cbLoc).split(":"), M = cbMem[eid + ":" + i] = cbMem[eid + ":" + i] || {};
+      if (t.matches("[data-cb-aim]")) M.aim = t.checked; else M.loc = t.value;
+      refreshSheetView(eid); return;
+    }
+    if (t.matches("[data-cb-ammo], [data-cb-table], [data-cb-atable]")) {
+      const [eid, i] = t.dataset.cbAmmo ? t.dataset.cbAmmo.split(":") : [t.dataset.id, t.dataset.i];
+      const f = t.dataset.cbAmmo ? "ammo" : t.matches("[data-cb-table]") ? "range" : "autoRange";
+      if (Store.canEdit()) { const M = cbMem[eid + ":" + i]; if (M && f !== "ammo") delete M.last; sheetPatch(eid, x => { if (x.weapons && x.weapons[+i]) x.weapons[+i][f] = t.value; return x; }); }
+      return;
+    }
+    if (t.matches("select[data-st-op=add]")) {
+      if (t.dataset.stSheet) { const e = state.entries.find(x => x.id === t.dataset.stSheet); if (e && Store.canEdit()) statusOp(t, sheetStatusApply(e)); }
+      if (t.dataset.stTok) { const k = state.tokens.find(x => x.id === t.dataset.stTok); if (k && Store.canEdit()) statusOp(t, tokStatusApply(k)); }
+      return;
+    }
     if (t.matches("[data-roll-as]")) { ls.set("nc-as", t.value || null); $$("[data-roll-as]").forEach(s => { s.value = t.value; }); }
     // cambio mappa: solo per me; il GM poi può premere "Mostra a tutti"
     if (t.matches("[data-secret]")) { secretRoll = t.checked; ls.set("nc-secret", secretRoll); $$("[data-secret]").forEach(c => { c.checked = secretRoll; }); $$(".roll-form").forEach(f => f.classList.toggle("is-secret", secretRoll)); return; }

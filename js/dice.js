@@ -101,19 +101,19 @@ window.CPR = (() => {
     return { dice, mods, total, crit };
   }
 
-  // Espressioni libere: "2d6+3", "d10 - 2", "3d6 + 1d10 + 4"
-  const TERM = /([+-]?)\s*(?:(\d*)d(\d+)|(\d+))/gi;
+  // Espressioni libere: "2d6+3", "d10 - 2", "3d6 + 1d10 + 4", "3d6kh2" (tieni i 2 più alti), "4d6kl3" (i 3 più bassi)
+  const TERM = /([+-]?)\s*(?:(\d*)d(\d+)(?:k([hl])(\d+))?|(\d+))/gi;
   function parse(expr) {
-    const src = String(expr || "").replace(/\s+/g, "");
-    if (!src || !/^[+-]?(\d*d\d+|\d+)([+-](\d*d\d+|\d+))*$/i.test(src)) return null;
+    const src = String(expr || "").replace(/\s+/g, "").toLowerCase();
+    if (!src || !/^[+-]?(\d*d\d+(k[hl]\d+)?|\d+)([+-](\d*d\d+(k[hl]\d+)?|\d+))*$/.test(src)) return null;
     const terms = [];
     for (const m of src.matchAll(TERM)) {
       const sign = m[1] === "-" ? -1 : 1;
       if (m[3]) {
-        const n = m[2] === "" ? 1 : +m[2], s = +m[3];
-        if (n < 1 || n > 100 || s < 2 || s > 1000) return null;
-        terms.push({ sign, n, s });
-      } else terms.push({ sign, k: +m[4] });
+        const n = m[2] === "" ? 1 : +m[2], s = +m[3], keep = m[4] ? { hl: m[4], k: +m[5] } : null;
+        if (n < 1 || n > 100 || s < 2 || s > 1000 || (keep && (keep.k < 1 || keep.k > n))) return null;
+        terms.push({ sign, n, s, keep });
+      } else terms.push({ sign, k: +m[6] });
     }
     return terms.length ? terms : null;
   }
@@ -123,14 +123,19 @@ window.CPR = (() => {
     let total = 0;
     for (const t of terms) {
       if (t.k != null) { mods.push({ l: "", v: t.sign * t.k }); total += t.sign * t.k; continue; }
-      for (let i = 0; i < t.n; i++) {
-        const v = die(t.s); dice.push({ v, s: t.s, t: t.sign < 0 ? "minus" : (t.s === 6 && v === 6 && damage ? "six" : "") });
-        total += t.sign * v;
-      }
+      const vals = Array.from({ length: t.n }, () => die(t.s));
+      // keep highest / lowest: i dadi scartati restano nel log, barrati
+      let kept = vals.map((v, i) => i);
+      if (t.keep) kept = vals.map((v, i) => ({ v, i })).sort((x, y) => t.keep.hl === "h" ? y.v - x.v : x.v - y.v).slice(0, t.keep.k).map(x => x.i);
+      vals.forEach((v, i) => {
+        const on = kept.includes(i);
+        dice.push({ v, s: t.s, t: !on ? "drop" : t.sign < 0 ? "minus" : (t.s === 6 && v === 6 && damage ? "six" : "") });
+        if (on) total += t.sign * v;
+      });
     }
-    // danni: due o più 6 sui d6 = Critical Injury (+5 danni bonus)
+    // danni: due o più 6 sui d6 tenuti = Critical Injury (+5 danni bonus)
     let crit = "";
-    if (damage && dice.filter(d => d.s === 6 && d.v === 6 && d.t !== "minus").length >= 2) {
+    if (damage && dice.filter(d => d.s === 6 && d.v === 6 && d.t === "six").length >= 2) {
       crit = "injury"; mods.push({ l: "Critical Injury", v: 5 }); total += 5;
     }
     return { dice, mods, total, crit, expr: String(expr).replace(/\s+/g, "") };
@@ -159,6 +164,108 @@ window.CPR = (() => {
     { id: "martial",  label: "Martial Arts Strike", skill: "martialarts", dmg: "BODY", rof: 2 },
   ];
   const weaponType = id => WEAPON_TYPES.find(w => w.id === id);
+  // categoria dal nome (schede vecchie senza categoria)
+  const guessWeapon = (name, skill) => {
+    const n = String(name || "").toLowerCase();
+    const hit = WEAPON_TYPES.find(w => n.includes(w.label.toLowerCase()));
+    if (hit) return hit.id;
+    const kw = [["very heavy pistol", "vhpistol"], ["heavy pistol", "hpistol"], ["pistol", "mpistol"], ["heavy smg", "hsmg"], ["smg", "smg"], ["shotgun", "shotgun"], ["assault", "ar"], ["sniper", "sniper"],
+      ["bow", "bow"], ["crossbow", "bow"], ["grenade", "gl"], ["rocket", "rl"], ["flame", "flamer"], ["katana", "hmelee"], ["knife", "lmelee"], ["coltello", "lmelee"], ["fucile d'assalto", "ar"], ["pistola", "mpistol"]];
+    const k = kw.find(([w]) => n.includes(w)); if (k) return k[1];
+    return { brawling: "brawl", martialarts: "martial" }[skill] || "";
+  };
+
+  // ---------- tiro per colpire: VD per distanza (manuale base) ----------
+  const RANGE_BANDS = ["0–6 m", "7–12 m", "13–25 m", "26–50 m", "51–100 m", "101–200 m", "201–400 m", "401–800 m"];
+  // tabelle estese: VD del colpo singolo per tipo di arma e distanza (null = fuori portata)
+  const N = null;
+  const RT = (id, label, dv) => ({ id, label, dv });
+  const RANGE_TABLES = [
+    RT("snub", "Snubnose Pistol", [12, 14, 20, 26, 35, N, N, N]),
+    RT("pistol", "Pistol", [13, 15, 20, 25, 30, 35, N, N]),
+    RT("lbpistol", "Long Barrel Pistol", [15, 13, 14, 19, 20, 22, 30, N]),
+    RT("subsmg", "Subcompact SMG", [15, 13, 14, 21, 27, 30, N, N]),
+    RT("smg", "SMG", [15, 13, 15, 20, 25, 25, 30, N]),
+    RT("sbshotgun", "Short Barrel Shotgun", [12, 14, 23, 27, 32, N, N, N]),
+    RT("shotgun", "Shotgun", [13, 15, 20, 25, 30, 35, N, N]),
+    RT("lbshotgun", "Long Barrel Shotgun", [14, 16, 15, 18, 25, 28, N, N]),
+    RT("carbine", "Carbine", [16, 15, 13, 15, 20, 25, 30, N]),
+    RT("ar", "Assault Rifle", [17, 16, 15, 13, 15, 20, 25, 30]),
+    RT("battle", "Battle Rifle", [18, 16, 16, 14, 14, 19, 24, 29]),
+    RT("marksman", "Marksman Rifle", [20, 18, 17, 15, 14, 18, 21, 27]),
+    RT("scout", "Scout Rifle", [21, 20, 19, 18, 17, 17, 19, 24]),
+    RT("sniper", "Sniper Rifle", [30, 25, 25, 20, 15, 16, 17, 20]),
+    RT("antimat", "Anti-materiel Rifle", [30, 30, 28, 22, 15, 15, 16, 17]),
+    RT("shortbow", "Shortbow", [13, 14, 16, 21, 22, N, N, N]),
+    RT("bow", "Bow", [15, 13, 15, 17, 20, 22, N, N]),
+    RT("longbow", "Longbow", [17, 15, 13, 15, 17, 20, 22, N]),
+    RT("gl", "Grenade Launcher", [16, 15, 15, 17, 20, 22, 25, N]),
+    RT("rl", "Rocket Launcher", [17, 16, 15, 15, 20, 20, 25, 30]),
+    RT("ml", "Missile Launcher", [30, 25, 25, 20, 17, 20, 20, 20]),
+  ];
+  // Autofire: solo fino a 100 m, danno 2d6 × (quanto superi la VD), al massimo ×3 (SMG) o ×4 (fucile d'assalto); 10 colpi
+  const AUTO_TABLES = [
+    RT("mpistol", "Machine Pistol", [17, 20, 22, 27, 30]),
+    RT("smg", "SMGs", [20, 17, 20, 25, 30]),
+    RT("ar", "Assault Rifle", [22, 20, 17, 20, 25]),
+    RT("mg", "Machine Gun", [21, 18, 18, 19, 25]),
+  ];
+  const RANGE_OF = { mpistol: "pistol", hpistol: "pistol", vhpistol: "pistol", smg: "smg", hsmg: "smg", shotgun: "shotgun", ar: "ar", sniper: "sniper", bow: "bow", gl: "gl", rl: "rl" };
+  const rangeDefault = cat => RANGE_OF[cat] || "";
+  const autoDefault = cat => { const w = weaponType(cat); return w && w.auto ? (cat === "ar" ? "ar" : "smg") : ""; };
+  const rangeById = id => RANGE_TABLES.find(t => t.id === id) || null;
+  const autoById = id => AUTO_TABLES.find(t => t.id === id) || null;
+  const rangeTable = cat => (rangeById(rangeDefault(cat)) || {}).dv || null;
+  const autoTable = cat => (autoById(autoDefault(cat)) || {}).dv || null;
+  const isMelee = cat => ["lmelee", "mmelee", "hmelee", "vhmelee", "brawl", "martial"].includes(cat);
+  // colpi mirati: −8 al tiro, un solo colpo
+  const AIMED = [
+    { id: "head", label: "Testa", eff: "Il danno che supera la SP della testa raddoppia." },
+    { id: "hand", label: "Oggetto in mano", eff: "Se il colpo fa danni, il bersaglio lascia cadere l'oggetto." },
+    { id: "leg", label: "Gamba", eff: "Se il danno supera l'armatura, il bersaglio subisce la Critical Injury Gamba Rotta." },
+  ];
+
+  // ---------- Critical Injury (2d6) · effetti riassunti, dsp = +1 alla penalità del Death Save ----------
+  const CI = (n, name, eff, dsp = 0) => ({ n, name, eff, dsp });
+  const CRIT_BODY = [
+    CI(2, "Dismembered Arm", "Braccio perso: lasci cadere ciò che tieni in quella mano.", 1),
+    CI(3, "Dismembered Hand", "Mano persa: lasci cadere ciò che tieni.", 1),
+    CI(4, "Collapsed Lung", "−2 MOVE (minimo 1).", 1),
+    CI(5, "Broken Ribs", "A fine turno, se ti sei mosso a piedi più di 4 m, subisci di nuovo il danno bonus."),
+    CI(6, "Broken Arm", "Il braccio non si usa: lasci cadere ciò che tieni."),
+    CI(7, "Foreign Object", "A fine turno, se ti sei mosso a piedi più di 4 m, subisci di nuovo il danno bonus."),
+    CI(8, "Broken Leg", "−4 MOVE (minimo 1)."),
+    CI(9, "Torn Muscle", "−2 agli attacchi in mischia."),
+    CI(10, "Spinal Injury", "Nel prossimo turno non puoi fare Azioni, solo muoverti.", 1),
+    CI(11, "Crushed Fingers", "−4 alle Azioni con quella mano."),
+    CI(12, "Dismembered Leg", "Gamba persa: −6 MOVE (minimo 1), non puoi schivare.", 1),
+  ];
+  const CRIT_HEAD = [
+    CI(2, "Lost Eye", "−4 agli attacchi a distanza e alla Perception con la vista.", 1),
+    CI(3, "Brain Injury", "−2 a tutte le Azioni.", 1),
+    CI(4, "Damaged Eye", "−2 agli attacchi a distanza e alla Perception con la vista."),
+    CI(5, "Concussion", "−2 a tutte le Azioni."),
+    CI(6, "Broken Jaw", "−4 alle Azioni che richiedono di parlare."),
+    CI(7, "Foreign Object", "A fine turno, se ti sei mosso a piedi più di 4 m, subisci di nuovo il danno bonus."),
+    CI(8, "Whiplash", "Nessun malus oltre al Death Save.", 1),
+    CI(9, "Cracked Skull", "I colpi mirati alla testa ti fanno danno ×3 invece di ×2.", 1),
+    CI(10, "Damaged Ear", "−2 alla Perception con l'udito; ogni volta che ti muovi più di 4 m in un turno, −2 alle Azioni nel turno dopo."),
+    CI(11, "Crushed Windpipe", "Non puoi parlare.", 1),
+    CI(12, "Lost Ear", "−4 alla Perception con l'udito; ogni volta che ti muovi più di 4 m in un turno, −2 alle Azioni nel turno dopo.", 1),
+  ];
+  function rollCrit(loc) {
+    const a = die(6), b = die(6), T = loc === "head" ? CRIT_HEAD : CRIT_BODY;
+    return { dice: [{ v: a, s: 6 }, { v: b, s: 6 }], total: a + b, injury: T.find(x => x.n === a + b) };
+  }
+
+  // ---------- modificatori speciali della scheda (cyberware, talenti, situazioni) ----------
+  const MOD_TARGETS = [
+    ["attack", "Tutti gli attacchi"], ["ranged", "Attacchi a distanza"], ["melee", "Attacchi in mischia"], ["aimed", "Colpi mirati"],
+    ["autofire", "Autofire"], ["damage", "Danni delle armi"], ["init", "Iniziativa"], ["all", "Tutte le prove"],
+  ];
+  // stati di partenza (effetti da completare nelle Regole della campagna)
+  const DEFAULT_STATUS = ["In fiamme", "Avvelenato", "Stordito", "Accecato", "Assordato", "A terra", "Afferrato", "Svenuto"]
+    .map((name, i) => ({ id: "st" + i, name, atk: 0, dmg: "", eff: "" }));
   // pugni e arti marziali: il danno dipende dal BODY
   const brawlDmg = body => body <= 4 ? "1d6" : body <= 6 ? "2d6" : body <= 10 ? "3d6" : "4d6";
   // pen = malus a REF, DEX e MOVE (Medium/Heavy Armorjack −2, Flak/Metalgear −4)
@@ -610,7 +717,7 @@ window.CPR = (() => {
   }
 
   return { STATS, SKILL_GROUPS, SKILLS, skill, WEAPON_SKILLS, ROLE_ABILITIES, hpMax, seriousAt, wound, die, check, parse, rollExpr,
-    WEAPON_TYPES, weaponType, brawlDmg, ARMOR_TYPES, armorType, PEN_STATS, armorPen, BODY_IMPLANTS, bodyImplant, FIREARMS,
+    WEAPON_TYPES, weaponType, guessWeapon, brawlDmg, RANGE_BANDS, RANGE_TABLES, AUTO_TABLES, rangeDefault, autoDefault, rangeById, autoById, rangeTable, autoTable, isMelee, AIMED, CRIT_BODY, CRIT_HEAD, rollCrit, MOD_TARGETS, DEFAULT_STATUS, ARMOR_TYPES, armorType, PEN_STATS, armorPen, BODY_IMPLANTS, bodyImplant, FIREARMS,
     TIERS, tierOf, levelOf, effMax, LEVEL_IDS, LEVEL_LABELS, ROLES, roleOf, roleRank, netActions, CA_USES, caCost, autoCA, autoMed, GARAGE_VEHICLES,
     eliteCatalog, canPick, rollElite, rollWeapons, budgetOf, apexLimit, deriveEnemy, validateEnemy, generateEnemy, normalizeEnemy };
 })();
