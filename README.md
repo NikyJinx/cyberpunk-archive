@@ -32,6 +32,23 @@ Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del perso
 
 La scheda **Equipaggiamento** raccoglie eddies, armi, armature, oggetti e veicoli.
 
+#### ⬢ Scheda del personaggio
+Ogni PG e NPC ha una **Scheda** con le regole di *Cyberpunk RED* (nomi in inglese, come sul manuale):
+- le 10 **STAT**, tutte le **abilità** divise per categoria (quelle base partono da 2, quelle a costo doppio sono segnate ×2) e abilità personalizzate come *Language (Japanese)* o *Science (Chemistry)*;
+- **Role Ability** con il rank, **Hit Points** calcolati da BODY e WILL, stato delle ferite, **armatura** di testa e corpo con l'ablazione, **Luck**, **Death Save**, **iniziativa**, movimento, reputazione e IP;
+- l'**EMP** scende da sola con l'umanità calcolata nella scheda Cyberware;
+- il campo **Giocatore** collega il PG all'email con cui il giocatore fa login.
+
+Basta un clic su una STAT, un'abilità o un'arma per **tirare i dadi**: base + 1d10 con il successo critico sul 10 e il fallimento critico sull'1, malus delle ferite applicato da solo, campo **MOD** per i modificatori di situazione. I danni delle armi segnalano la **Critical Injury** quando escono due 6.
+
+### 🎲 Tavolo — `// TACTICAL_GRID`
+Il tavolo di gioco per i combattimenti, condiviso **in tempo reale** tra tutti quelli che hanno il sito aperto.
+- **Mappe** con immagine di sfondo e griglia (1 casella = 2 m), zoom con la rotella e spostamento della vista trascinando lo sfondo.
+- **Mappa condivisa**: il GM prepara le mappe in privato e con «Mostra a tutti» porta tutti i giocatori su quella giusta. Chi sta guardando un'altra mappa ci viene spostato con un avviso.
+- **Token** trascinabili per PG, NPC e nemici generici, con la barra degli HP presa dalla scheda. Durante lo spostamento una **freccia** va dalla casella di partenza a quella d'arrivo, con la distanza in metri, e la vedono anche gli altri giocatori. Le frecce della tastiera muovono il token selezionato di una casella.
+- **Iniziativa**: un pulsante tira REF + 1d10 per tutti, poi «Turno ▶» passa al prossimo e conta i round.
+- **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto: `2d6+3` per un tiro libero, `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
+
 ### 📖 Diario e Quest — `// BRAINDANCE_LOG`
 La cronaca della campagna, scritta come un racconto.
 - Il diario è diviso in **capitoli** e ogni capitolo in **scene**, con riassunto, luoghi e personaggi coinvolti (collegati al database).
@@ -90,6 +107,11 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 | `notes` | appunti |
 | `songs` | tracce, con disco, album, testo e link Suno |
 | `meta` | titolo del sito, introduzione, data in gioco |
+| `maps` | mappe del tavolo: immagine, griglia, iniziativa e turno |
+| `tokens` | token sulle mappe, collegati alle schede del database |
+| `rolls` | tiri di dado e messaggi del dice log |
+
+Le schede dei personaggi stanno dentro `entries` (campo `sheet`). Il tavolo usa i canali *broadcast* di Supabase Realtime per gli aggiornamenti istantanei: non serve configurare niente nel database. Se il canale non è disponibile, il tavolo si aggiorna da solo ogni pochi secondi. Anche con il canale attivo, ogni 30 secondi (e quando si torna sulla pagina) il tavolo si riallinea con il database, così un messaggio perso non lascia nessuno indietro. La mappa mostrata a tutti è salvata in `meta` (campo `tableMap`).
 
 ## Design
 
@@ -104,7 +126,8 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 index.html              pagina unica
 css/style.css           tema grafico
 js/config.js            collegamento a Supabase (chiave pubblica "anon")
-js/store.js             livello dati: Supabase o IndexedDB
+js/store.js             livello dati: Supabase o IndexedDB, canale in tempo reale
+js/dice.js              STAT e abilità di Cyberpunk RED, motore dei dadi
 js/app.js               interfaccia, routing e logica delle sezioni
 supabase/schema.sql     tabella, regole di accesso e storage
 tools/suno-import.js    importa le playlist Suno come tracce
