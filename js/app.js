@@ -2499,94 +2499,137 @@
   }
 
   // ---------- NEMICI (solo GM) ----------
-  // Scheda semplificata come i PNG del manuale: STAT, HP, Seriously Wounded, Death Save, armatura,
-  // armi con la base già sommata, basi delle abilità (STAT + abilità), cyberware ed equipaggiamento.
-  // e.enemy = { type, level, stats, hpMax, armor{head,body:{type,name,sp}}, weapons[], skills[{label,stat,base}], ability, cyber, gear, notes }
-  const LVL_STARS = n => "★".repeat(n) + "☆".repeat(5 - n);
-  const enemyOf = e => (e && e.enemy) || {};
-  const enemyHp = E => hasVal(E.hpMax) ? num(E.hpMax) : CPR.hpMax(num((E.stats || {}).BODY), num((E.stats || {}).WILL));
-  const enemySp = (E, loc) => num(((E.armor || {})[loc] || {}).sp);
-  // malus dell'armatura (−2 Medium/Heavy Armorjack, −4 Flak/Metalgear) su REF, DEX, MOVE e sulle abilità che li usano
-  const enemyPen = E => CPR.armorPen(E.armor, E.noPen);
-  const penOn = stat => CPR.PEN_STATS.includes(stat);
-  const enemyStat = (E, id) => num((E.stats || {})[id]) + (penOn(id) ? enemyPen(E) : 0);
-  const skillStat = k => k.stat || ((CPR.SKILLS.find(s => norm(s.label) === norm(k.label)) || {}).stat) || "INT";
-  const enemySkill = (E, k) => num(k.base) + (penOn(skillStat(k)) ? enemyPen(E) : 0);
-  const enemyWpn = (E, w) => num(w.base) + (penOn((CPR.skill(w.skill) || {}).stat) ? enemyPen(E) : 0);
-  // come nel manuale: "12 (10)" = valore senza e con il malus dell'armatura
-  const withPen = (base, eff) => base === eff ? `${base}` : `${base} <span class="pen">(${eff})</span>`;
+  // Fascia (1–4) × Livello (Base / Hardened / Elite), Ruolo facoltativo (Solo, Tech, Medtech, Nomade).
+  // Le regole stanno in js/dice.js: CPR.generateEnemy crea i valori di partenza, CPR.deriveEnemy applica impianti,
+  // potenziamenti, Capacità di Ruolo, regola del 20 e malus dell'armatura restituendo OGNI addendo.
+  // e.enemy (v3) = { v, tier, level, role, name, stats (naturali), bodyImplant, moveImplant, armor, noPen,
+  //                  weapons[{cat,name,quality,skill,dmg,rof,mag}], skills[{id,label,stat,lvl}], roleRank, ca, med,
+  //                  hpOverride, extreme, extraPoints, frameBody, comp, picks[chiavi del catalogo], cyber, gear, notes }
+  // Le schede v1 (livelli 1–5) e v2 (con il Tipo) si convertono alla lettura (CPR.normalizeEnemy).
+  const enemyOf = e => CPR.normalizeEnemy((e && e.enemy) || {});
+  const enemyD = e => CPR.deriveEnemy(enemyOf(e));
+  const tierBadge = E => `F${E.tier} · ${CPR.LEVEL_LABELS[E.level] || "Base"}${E.extreme ? " · ☢ Estremo" : ""}`;
+  const fmtBonus = list => list.map(b => `${b.v < 0 ? "−" : "+"}${Math.abs(b.v)} ${esc(b.l)}`).join(" ");
+  // "REF 8 + Handgun 6 = 14 · +1 HQ +1 Attacco Preciso = 16 · armatura −2 → 14"
+  function formula(x, pen) {
+    const bon = x.bonus || [];
+    let s = `${esc(x.stat)} ${x.statV} + ${esc(x.skillLabel || x.label)} ${x.lvl} = <b>${x.nat}</b>`;
+    if (bon.length) s += ` · ${fmtBonus(bon)} = <b>${x.eff}</b>`;
+    if (pen && CPR.PEN_STATS.includes(x.stat)) s += ` · armatura ${pen} → <b class="pen">${x.effArmor}</b>`;
+    return s;
+  }
+  const finalOf = x => x.effArmor;
+  const armorPenOf = armor => CPR.armorPen(armor, false);
 
-  // token di un nemico: HP e SP propri, presi dal modello
+  // token di un nemico: HP e SP propri, presi dalla scheda derivata
   function enemyToken(e, m, extra = {}) {
-    const E = enemyOf(e), arm = loc => ({ name: ((E.armor || {})[loc] || {}).name || "", sp: enemySp(E, loc) || null });
-    return { mapId: m.id, entryId: e.id, own: true, snapName: e.name, color: "#ff8a3d", size: 1, hpMax: enemyHp(E), armor: { head: arm("head"), body: arm("body") }, ...extra };
+    const D = enemyD(e), arm = loc => ({ name: (D.armor[loc] || {}).name || "", sp: +((D.armor[loc] || {}).sp) || null });
+    return { mapId: m.id, entryId: e.id, own: true, snapName: e.name, color: "#ff8a3d", size: 1, hpMax: D.hp, armor: { head: arm("head"), body: arm("body") }, ...extra };
   }
 
-  // tiri del nemico: valgono il malus dell'armatura e, dal token, le sue ferite.
-  // I tiri fatti dal modello o da un token nascosto sono segreti.
+  // tiri: ogni addendo compare nel Dice log. Dal token valgono le sue ferite (salvo Antidolorifico di Fascia 4);
+  // i tiri dal modello o da un token nascosto sono segreti.
   function rollEnemy(e, what, t) {
-    const E = enemyOf(e), st = E.stats || {}, ap = enemyPen(E);
-    const hp = t && tokHp(t), w = hp ? CPR.wound(hp.hp, hp.max) : null;
-    const pen = w && w.pen ? [{ l: w.label, v: w.pen }] : [];
-    const arm = stat => ap && penOn(stat) ? [{ l: "Armor", v: ap }] : [];
+    const D = enemyD(e), pen = D.pen, ca = D.ability && D.ability.ca;
+    const hp = t && tokHp(t), w = hp && !D.painImmune ? CPR.wound(hp.hp, hp.max) : null;
+    const wound = w && w.pen ? [{ l: w.label, v: w.pen }] : [];
+    const arm = stat => pen && CPR.PEN_STATS.includes(stat) ? [{ l: "Armor", v: pen }] : [];
     const meta = { who: t ? tokName(t) : e.name, enemyId: e.id, gmOnly: !t || tokHidden(t) };
     const [type, a, b] = String(what).split(":");
-    if (type === "stat") return postRoll({ kind: "check", label: `${a} check`, ...meta, ...CPR.check([{ l: a, v: num(st[a]) }, ...arm(a), ...pen]) });
-    if (type === "skill") { const k = (E.skills || [])[+a]; if (!k) return; return postRoll({ kind: "check", label: k.label, ...meta, ...CPR.check([{ l: "base", v: num(k.base) }, ...arm(skillStat(k)), ...pen]) }); }
-    if (type === "ability" && E.ability) return postRoll({ kind: "check", label: E.ability.name, ...meta, ...CPR.check([{ l: "Rank", v: num(E.ability.rank) }, ...pen]) });
-    if (type === "wpn") {
-      const wp = (E.weapons || [])[+a]; if (!wp) return;
-      if (b === "dmg") { const r = CPR.rollExpr(wp.dmg, { damage: true }); if (!r) return toast(`Danno non valido: "${wp.dmg}"`, "err"); return postRoll({ kind: "damage", label: `${wp.name} · damage`, ...meta, ...r }); }
-      return postRoll({ kind: "check", label: `${wp.name} · attack`, ...meta, ...CPR.check([{ l: "base", v: num(wp.base) }, ...arm((CPR.skill(wp.skill) || {}).stat), ...pen]) });
+    if (type === "stat") { const s = D.stats[a]; return postRoll({ kind: "check", label: `${a} check`, ...meta, ...CPR.check([{ l: a, v: s.v }, ...arm(a), ...wound]) }); }
+    if (type === "skill") {
+      const s = D.skills[+a]; if (!s) return;
+      return postRoll({ kind: "check", label: s.label, ...meta, ...CPR.check([{ l: s.stat, v: s.statV }, { l: s.label, v: s.lvl }, ...s.bonus, ...arm(s.stat), ...wound]) });
     }
-    if (type === "init") { const d = CPR.die(10), ref = enemyStat(E, "REF"); return postRoll({ kind: "init", label: "Initiative", ...meta, dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }], total: d + ref }); }
-    if (type === "death") { const d = CPR.die(10); return postRoll({ kind: "death", label: "Death Save", ...meta, dice: [{ v: d, s: 10, t: d === 10 ? "fumble" : "" }], mods: [], total: d, note: d === 10 ? "Natural 10: always a failure" : `vs BODY ${num(st.BODY)}`, crit: d === 10 ? "fail" : "" }); }
+    if (type === "ability" && D.ability) return postRoll({ kind: "check", label: D.ability.nameIt || D.ability.name, ...meta, ...CPR.check([{ l: "Grado", v: D.ability.rank }, ...wound]) });
+    if (type === "wpn") {
+      const wp = D.weapons[+a]; if (!wp) return;
+      if (b === "dmg") {
+        const r = CPR.rollExpr(wp.dmg, { damage: true }); if (!r) return toast(`Danno non valido: "${wp.dmg}"`, "err");
+        const note = ca && ca.weakness ? `Individuare Debolezze: +${ca.weakness} se è il primo colpo a segno del round` : "";
+        return postRoll({ kind: "damage", label: `${wp.name} · damage`, ...meta, ...r, note });
+      }
+      const r = CPR.check([{ l: wp.stat, v: wp.statV }, { l: wp.skillLabel, v: wp.lvl }, ...wp.bonus, ...arm(wp.stat), ...wound]);
+      // Recuperare da un Disastro: sparando, il fallimento critico non toglie il secondo dado (il tiro resta un 1)
+      if (ca && ca.recover && wp.firearm && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il tiro conta come 1)"; }
+      return postRoll({ kind: "check", label: `${wp.name} · attack`, ...meta, ...r });
+    }
+    if (type === "init") { const d = CPR.die(10), ref = D.stats.REF.armor; return postRoll({ kind: "init", label: "Initiative", ...meta, dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }, ...D.initBonus], total: d + ref + D.initBonus.reduce((x, y) => x + y.v, 0) }); }
+    if (type === "death") { const d = CPR.die(10); return postRoll({ kind: "death", label: "Death Save", ...meta, dice: [{ v: d, s: 10, t: d === 10 ? "fumble" : "" }], mods: [], total: d, note: d === 10 ? "Natural 10: always a failure" : `vs BODY ${D.body}`, crit: d === 10 ? "fail" : "" }); }
   }
-  const enemyBtn = (e, what, label, cls = "chip", t = null) =>
-    `<button type="button" class="${cls}" data-action="enemy-roll" data-id="${esc(e.id)}" data-roll="${what}" ${t ? `data-tok="${esc(t.id)}"` : ""}>${label}</button>`;
-  // tiri veloci nel pannello del token sul tavolo (valori già con il malus dell'armatura)
+  const enemyBtn = (e, what, label, cls = "chip", t = null, title = "") =>
+    `<button type="button" class="${cls}" data-action="enemy-roll" data-id="${esc(e.id)}" data-roll="${what}" ${t ? `data-tok="${esc(t.id)}"` : ""} ${title ? `title="${title}"` : ""}>${label}</button>`;
+  const initTotal = D => D.stats.REF.armor + D.initBonus.reduce((x, y) => x + y.v, 0);
+  // tiri veloci nel pannello del token (valori finali, con il malus dell'armatura)
   function enemyQuickRolls(e, t) {
-    const E = enemyOf(e);
-    const wpnSkills = (E.weapons || []).map(w => (CPR.skill(w.skill) || {}).label);
-    const top = (E.skills || []).map((k, i) => ({ k, i, v: enemySkill(E, k) })).filter(x => !wpnSkills.includes(x.k.label)).sort((a, b) => b.v - a.v).slice(0, 4);
+    const D = enemyD(e), wl = D.weapons.map(w => w.skillLabel), ca = D.ability && D.ability.ca;
+    const top = D.skills.map((s, i) => ({ s, i })).filter(x => !wl.includes(x.s.label)).sort((a, b) => finalOf(b.s) - finalOf(a.s)).slice(0, 4);
     return `<div class="pc-rolls tt-quick">
-      ${enemyBtn(e, "init", `Initiative <b>${enemyStat(E, "REF")}</b>`, "chip y", t)}
-      ${(E.weapons || []).map((w, i) => enemyBtn(e, `wpn:${i}:atk`, `⌖ ${esc(w.name)} <b>${enemyWpn(E, w)}</b>`, "chip", t) + enemyBtn(e, `wpn:${i}:dmg`, esc(w.dmg), "chip y", t)).join("")}
-      ${top.map(x => enemyBtn(e, `skill:${x.i}`, `${esc(x.k.label)} <b>${x.v}</b>`, "chip", t)).join("")}
+      ${enemyBtn(e, "init", `Initiative <b>${initTotal(D)}</b>`, "chip y", t)}
+      ${D.weapons.map((w, i) => enemyBtn(e, `wpn:${i}:atk`, `⌖ ${esc(w.name)} <b>${finalOf(w)}</b>`, "chip", t, formula(w, D.pen).replace(/<[^>]+>/g, "")) + enemyBtn(e, `wpn:${i}:dmg`, esc(w.dmg), "chip y", t)).join("")}
+      ${top.map(x => enemyBtn(e, `skill:${x.i}`, `${esc(x.s.label)} <b>${finalOf(x.s)}</b>`, "chip", t)).join("")}
+      ${ca && ca.deflect ? `<span class="hint">Deflettere Danni: −${ca.deflect} al primo danno del round</span>` : ""}
     </div>`;
   }
 
+  // riquadro della Capacità di Ruolo con gli effetti in gioco
+  function roleBlock(D) {
+    const A = D.ability; if (!A) return "";
+    let body = "";
+    if (A.ca) body = `<div class="en-ca">${CPR.CA_USES.map(u => { const n = +A.ca[u.id] || 0; return n ? `<span><b>${esc(u.label)}${u.id === "recover" ? "" : ` ${n}`}</b> <small>${u.cost(n)} pt · ${esc(u.id === "recover" ? u.unit : u.unit.replace("+1", "+" + n).replace("−1", "−" + n))}</small></span>` : ""; }).join("")}</div>
+      <div class="hint">Punti di ruolo usati ${A.caUsed} / ${A.rank}. Attacco Preciso e Reazione sono già nei tiri; Individuare Minacce è nella Perception.</div>`;
+    if (A.maker) body = `<div class="hint">Esperienza sul Campo ${A.maker.field} (sommata a Basic Tech, Cybertech, Electronics/Security, Weaponstech e tecnologie dei veicoli) · Upgrade ${A.maker.upgrade}.</div>`;
+    if (A.med) body = `<div class="hint">Chirurgia ${A.med.surgery} (Surgery ${Math.min(10, 2 * A.med.surgery)}) · Farmaceutica ${A.med.pharma} · Criosistemi ${A.med.cryo} (Medical Tech ${Math.min(10, (+A.med.pharma || 0) + (+A.med.cryo || 0))}).</div>`;
+    if (A.vehicles !== undefined) body = `<div class="hint">Garage ${A.rank} sommato a Drive, Pilot e tecnologie dei veicoli · Scuderia di Famiglia: ${esc(A.vehicles)}.</div>`;
+    return `<div class="en-role"><span class="en-role-h">${esc(A.nameIt)} <small>(${esc(A.name)})</small> · grado <b>${A.rank}</b>${A.src ? " ⚡" : ""}</span>${body}</div>`;
+  }
+
   function enemyHtml(e) {
-    const E = enemyOf(e), st = E.stats || {}, T = CPR.enemyType(E.type), max = enemyHp(E), ap = enemyPen(E);
-    const L = CPR.LEVELS[(num(E.level) || 1) - 1] || {};
-    const arm = loc => { const a = (E.armor || {})[loc] || {}; return `<span><small class="sh-k">${loc === "head" ? "HEAD SP" : "BODY SP"}</small> <b>${num(a.sp) || "—"}</b>${a.name && num(a.sp) ? ` <em>${esc(a.name)}</em>` : ""}</span>`; };
+    const E = enemyOf(e), D = CPR.deriveEnemy(E), pen = D.pen;
+    const arm = loc => { const a = D.armor[loc] || {}; return `<span><small class="sh-k">${loc === "head" ? "HEAD SP" : "BODY SP"}</small> <b>${+a.sp || "—"}</b>${a.name && +a.sp ? ` <em>${esc(a.name)}${a.forced ? " (regola del 20)" : ""}</em>` : ""}</span>`; };
     return `
       <div class="en">
         <div class="en-head">
-          <span class="en-type">${esc(T.label)}</span>
-          <span class="en-lvl" title="Difficoltà ${num(E.level) || 1} su 5 · ${esc(L.hint || "")}">${LVL_STARS(num(E.level) || 1)} ${esc(L.label || "")}</span>
-          ${ap ? `<span class="en-pen">Armatura: ${ap} a REF, DEX, MOVE (tra parentesi)</span>` : E.noPen ? `<span class="en-pen ok">Armatura migliorata: niente malus</span>` : ""}
-          <span class="hint">I tiri dalla scheda sono segreti. Sul tavolo valgono le ferite di ogni token.</span>
+          <span class="en-type">${esc(D.role.id === "none" ? D.T.label : D.role.label)}</span>
+          <span class="en-lvl" title="${esc(D.T.label)} · ${esc(D.T.ratio)}">${tierBadge(E)}</span>
+          <span class="hint">${esc(D.T.label)} · ${esc(D.T.ratio)}</span>
+          ${pen ? `<span class="en-pen">Armatura: ${pen} a REF, DEX, MOVE${D.penReduce ? ` (${D.penRaw} ridotto di ${D.penReduce}: Boss Elite)` : ""}</span>` : D.penReduce ? `<span class="en-pen ok">Armatura: malus ${D.penRaw} annullato (Boss Elite: −2 di serie)</span>` : D.noPen && armorPenOf(D.armor) ? `<span class="en-pen ok">Armatura senza malus (Tech Upgrade)</span>` : ""}
+          ${D.painImmune ? `<span class="en-pen ok">Antidolorifico: ignora i malus delle ferite</span>` : ""}
+          ${E.migrated ? `<span class="en-pen">Scheda convertita: controllala e salvala</span>` : ""}
         </div>
-        <div class="en-stats">${CPR.STATS.map(s => s.id === "LUCK" && !num(st.LUCK)
-          ? `<span class="sh-stat off"><span class="k">LUCK</span><span class="v">—</span></span>`
-          : enemyBtn(e, "stat:" + s.id, `<span class="k">${s.id}</span><span class="v">${withPen(num(st[s.id]), enemyStat(E, s.id))}</span>`, "sh-stat")).join("")}</div>
+        <div class="en-stats">${CPR.STATS.map(s => {
+          const v = D.stats[s.id];
+          if (s.id === "LUCK" && !v.v) return `<span class="sh-stat off"><span class="k">LUCK</span><span class="v">—</span></span>`;
+          const shown = v.v !== v.nat ? `${v.nat}→${v.v}` : `${v.v}`;
+          return enemyBtn(e, "stat:" + s.id, `<span class="k">${s.id}</span><span class="v">${shown}${v.armor !== v.v ? ` <span class="pen">(${v.armor})</span>` : ""}</span>${v.src ? `<small>${esc(v.src)}</small>` : ""}`, "sh-stat", null, esc(v.src || ""));
+        }).join("")}</div>
         <div class="en-vitals">
-          <span><small class="sh-k">HP</small> <b>${max}</b></span>
-          <span><small class="sh-k">Seriously Wounded</small> <b>${CPR.seriousAt(max)}</b></span>
-          <span><small class="sh-k">Death Save</small> <b>${num(st.BODY)}</b></span>
+          <span><small class="sh-k">HP</small> <b>${D.hp}</b></span>
+          <span><small class="sh-k">Seriously Wounded</small> <b>${CPR.seriousAt(D.hp)}</b></span>
+          <span><small class="sh-k">Death Save</small> <b>${D.body}</b></span>
           ${arm("head")}${arm("body")}
-          ${E.ability ? `<span><small class="sh-k">${esc(E.ability.name)}</small> <b>${num(E.ability.rank)}</b></span>` : ""}
-          ${enemyBtn(e, "init", "Initiative", "chip y")}${enemyBtn(e, "death", "Death Save", "chip r")}
+          ${enemyBtn(e, "init", `Initiative ${initTotal(D)}`, "chip y", null, esc(`REF ${D.stats.REF.armor}${D.initBonus.map(b => ` + ${b.l} ${b.v}`).join("")}`))}${enemyBtn(e, "death", "Death Save", "chip r")}
+          ${D.ability ? enemyBtn(e, "ability", `${esc(D.ability.nameIt)} ${D.ability.rank}`, "chip y") : ""}
         </div>
-        ${(E.buffs || []).length ? `<div class="en-buffs">${E.buffs.map(b => `<span>⚡ ${esc(b)}</span>`).join("")}</div>` : ""}
-        ${(E.weapons || []).length ? `<div class="sh-sec-head"><h4>Weapons</h4></div><div class="sh-weapons">${E.weapons.map((w, i) => `
-          <div class="wpn"><span class="wpn-n">${esc(w.name)}<small>${esc((CPR.skill(w.skill) || {}).label || "")} · base ${withPen(num(w.base), enemyWpn(E, w))} · ${esc(w.dmg)} · ROF ${esc(w.rof)}${w.mag ? ` · Mag ${esc(w.mag)}` : ""}${w.quality === "poor" ? " · si inceppa con un 1" : w.quality === "excellent" ? " · +1 già nella base" : ""}</small></span>
-            ${enemyBtn(e, `wpn:${i}:atk`, "Attack", "btn small")}${enemyBtn(e, `wpn:${i}:dmg`, `Damage ${esc(w.dmg)}`, "btn small yellow")}</div>`).join("")}</div>` : ""}
-        <div class="sh-sec-head"><h4>Skill Bases</h4><span class="hint">STAT + abilità già sommate · le altre abilità valgono la STAT</span></div>
-        <div class="en-skills">${(E.skills || []).map((k, i) => enemyBtn(e, `skill:${i}`, `${esc(k.label)} <b>${withPen(num(k.base), enemySkill(E, k))}</b>`, "chip")).join("")}
-          ${E.ability ? enemyBtn(e, "ability", `${esc(E.ability.name)} <b>${num(E.ability.rank)}</b>`, "chip y") : ""}</div>
-        ${E.cyber ? `<div class="block"><h4>Cyberware</h4><div class="prewrap">${esc(E.cyber)}</div></div>` : ""}
+        <div class="en-hp hint">HP: ${D.hpParts.map((p, i) => i ? `${p.v >= 0 ? "+" : "−"}${Math.abs(p.v)} (${esc(p.l)})` : `${esc(p.l)} = ${p.v}`).join(" ")} → <b>${D.hp}</b></div>
+        ${roleBlock(D)}
+        ${D.budget || D.picks.length ? `<div class="en-elite">
+          <span class="en-budget">Punti <b>${D.spent}</b> / ${D.budget}${E.extraPoints ? ` (di cui ${E.extraPoints} extra)` : ""} · tratti apice ${D.apexUsed} / ${D.apexLimit}</span>
+          ${D.picks.map(o => `<span class="${o.apex ? "apex" : ""}">⚡ ${esc(o.label)} <small>${o.cost} pt${o.apex ? " · apice" : ""}</small></span>`).join("") || `<span class="hint">Nessun potenziamento acquistato.</span>`}
+        </div>` : ""}
+        ${D.twenty.length ? `<div class="en-pen">Regola del 20: ${D.twenty.map(s => esc(s.label)).join(", ")} a 20 naturale → ${D.comp === "hp" ? "HP ridotti" : "SP portata a 11"}</div>` : ""}
+        ${D.weapons.length ? `<div class="sh-sec-head"><h4>Weapons</h4><span class="hint">base_naturale = STAT + skill · base_effettiva = + HQ + Smartgun (entro il tetto di fascia) + ruolo</span></div><div class="sh-weapons">${D.weapons.map((w, i) => `
+          <div class="wpn"><span class="wpn-n">${esc(w.name)} ${w.hq ? `<span class="q hq">HQ</span>` : w.poor ? `<span class="q poor">Poor</span>` : ""}
+            <small>${formula(w, pen)} · ${esc(w.dmg)} · ROF ${esc(w.rof)}${w.mag ? ` · Mag ${esc(w.mag)}` : ""}${w.poor ? " · si inceppa con un 1" : ""}</small></span>
+            ${enemyBtn(e, `wpn:${i}:atk`, `Attack ${finalOf(w)}`, "btn small")}${enemyBtn(e, `wpn:${i}:dmg`, `Damage ${esc(w.dmg)}`, "btn small yellow")}</div>`).join("")}</div>` : ""}
+        <div class="sh-sec-head"><h4>Skill Bases</h4><span class="hint">clicca una riga per tirare · le abilità non elencate valgono la sola STAT</span></div>
+        <div class="en-table">
+          <div class="en-tr en-th"><span>Skill</span><span>STAT</span><span>Lvl</span><span>Naturale</span><span>Bonus</span><span>Effettiva</span></div>
+          ${D.skills.map((s, i) => `<button type="button" class="en-tr ${s.nat >= 20 ? "twenty" : ""}" data-action="enemy-roll" data-id="${esc(e.id)}" data-roll="skill:${i}">
+            <span>${esc(s.label)}${s.elite10 ? " ⚡" : ""}${s.fromRole ? " ◈" : ""}</span><span>${esc(s.stat)} ${s.statV}</span><span>${s.lvl}</span><span>${s.nat}</span><span>${fmtBonus(s.bonus) || "—"}</span>
+            <span><b>${s.eff}</b>${s.effArmor !== s.eff ? ` <span class="pen">(${s.effArmor})</span>` : ""}</span></button>`).join("")}
+        </div>
+        ${E.cyber || D.extraCyber.length || E.bodyImplant ? `<div class="block"><h4>Cyberware</h4><div class="prewrap">${esc([E.cyber, ...D.extraCyber, E.bodyImplant ? CPR.bodyImplant(E.bodyImplant).label : ""].filter(Boolean).join(", "))}</div></div>` : ""}
         ${E.gear ? `<div class="block"><h4>Gear</h4><div class="prewrap">${esc(E.gear)}</div></div>` : ""}
         ${E.notes ? `<div class="block"><h4>Note</h4><div class="prewrap">${esc(E.notes)}</div></div>` : ""}
       </div>`;
@@ -2608,72 +2651,71 @@
       </div>`);
   }
 
-  // modulo del nemico, con il generatore in cima (tipo + difficoltà 1–5)
+  // ---------- modulo: Fascia, Livello e Ruolo, poi valori, Capacità di Ruolo e potenziamenti ----------
   function editEnemy(id, preset = null) {
     if (!isGm() && Store.gmReady) return;
     const old = state.entries.find(x => x.id === id);
-    const base = old ? { name: old.name, ...enemyOf(old), notes: enemyOf(old).notes } : null;
-    const E = preset || base || CPR.generateEnemy("booster", 1);
-    const st = E.stats || {};
-    // HP: vuoto se coincide con la formula (così segue BODY e WILL); un valore diverso (es. +10 del livello 5) resta
-    const autoHp = CPR.hpMax(num(st.BODY), num(st.WILL));
-    const hpField = hasVal(E.hpMax) && num(E.hpMax) !== autoHp ? E.hpMax : "";
-    const lvl = CPR.LEVELS[(num(E.level) || 1) - 1] || CPR.LEVELS[0];
-    const armorSel = (loc) => { const a = (E.armor || {})[loc] || {}; return `
+    const E0 = preset ? CPR.normalizeEnemy(preset) : old ? { ...enemyOf(old), name: old.name } : CPR.generateEnemy(1, "base");
+    const armorSel = (loc, a = {}) => `
       <div class="field"><label>Armatura ${loc === "head" ? "testa" : "corpo"}</label><div class="sh-pair">
-        <select data-arm-type="${loc}">${CPR.ARMOR_TYPES.map(t => `<option value="${t.id}" ${t.id === (a.type || "none") ? "selected" : ""}>${t.label}${t.sp ? ` (SP ${t.sp})` : ""}</option>`).join("")}<option value="custom" ${a.type === "custom" ? "selected" : ""}>Altro…</option></select>
+        <select data-arm-type="${loc}">${CPR.ARMOR_TYPES.map(t => `<option value="${t.id}" ${t.id === (a.type || "none") ? "selected" : ""}>${t.label}${t.sp ? ` (SP ${t.sp}${t.pen ? `, ${t.pen}` : ""})` : ""}</option>`).join("")}<option value="custom" ${a.type === "custom" ? "selected" : ""}>Altro…</option></select>
         <input name="sp-${loc}" type="number" min="0" value="${esc(a.sp ?? 0)}" title="SP"></div>
-        <input name="arm-${loc}" value="${esc(a.name || "")}" placeholder="Nome (es. Subdermal Armor)" style="margin-top:4px"></div>`; };
+        <input name="arm-${loc}" value="${esc(a.name || "")}" placeholder="Nome" style="margin-top:4px"></div>`;
     const wRow = (w = {}) => `<div class="sh-row en-wpn">
       <select data-f="cat">${CPR.WEAPON_TYPES.map(t => `<option value="${t.id}" ${t.id === w.cat ? "selected" : ""}>${t.label}</option>`).join("")}<option value="" ${!w.cat ? "selected" : ""}>Altro…</option></select>
       <input data-f="name" placeholder="Nome" value="${esc(w.name)}">
+      <select data-f="quality" title="Qualità">${[["poor", "Poor"], ["standard", "Standard"], ["hq", "High Quality +1"]].map(([v, l]) => `<option value="${v}" ${(w.quality || "standard") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
       <input data-f="dmg" placeholder="Danno" value="${esc(w.dmg)}">
       <input data-f="rof" placeholder="ROF" value="${esc(w.rof ?? "")}">
-      <input data-f="base" type="number" placeholder="Base" title="Base d'attacco (STAT + abilità)" value="${esc(w.base ?? "")}">
       <input data-f="skill" type="hidden" value="${esc(w.skill || "")}"><input data-f="mag" type="hidden" value="${esc(w.mag ?? "")}">
+      <button type="button" class="gp-btn" data-wpn-reroll title="Ripesca quest'arma" aria-label="Ripesca quest'arma">⚄</button>
       <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
-    const sRow = (k = {}) => `<div class="sh-row en-sk">
-      <input data-f="label" placeholder="Abilità (es. Handgun)" list="dl-skills" value="${esc(k.label)}">
-      <select data-f="stat">${CPR.STATS.map(s => `<option ${s.id === (k.stat || "REF") ? "selected" : ""}>${s.id}</option>`).join("")}</select>
-      <input data-f="base" type="number" placeholder="Base" value="${esc(k.base ?? "")}">
+    const sRow = (s = {}) => `<div class="sh-row en-sk">
+      <select data-f="id">${CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === s.id ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
+      <select data-f="stat">${CPR.STATS.map(st => `<option ${st.id === (s.stat || "REF") ? "selected" : ""}>${st.id}</option>`).join("")}</select>
+      <input data-f="lvl" type="number" min="0" max="10" placeholder="Lvl" value="${esc(s.lvl ?? 0)}" title="Livello della skill">
+      <span class="en-nat" title="base_naturale = STAT + livello">= ?</span>
       <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
     openModal(`
       <form class="form" id="enemy-form">
         <div class="modal-head"><h2>// 🔒 ${old ? "MODIFICA NEMICO" : "NUOVO NEMICO"}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
         <div class="modal-body">
-          <div class="en-gen">
-            <div class="field"><label for="en-type">Tipo</label><select id="en-type" name="type">${CPR.ENEMY_TYPES.map(t => `<option value="${t.id}" ${t.id === E.type ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</select></div>
-            <div class="field"><label for="en-lvl">Difficoltà</label><select id="en-lvl" name="level">${CPR.LEVELS.map(l => `<option value="${l.n}" ${l.n === num(E.level) ? "selected" : ""}>${l.n} · ${LVL_STARS(l.n)} ${l.label}</option>`).join("")}</select></div>
+          <div class="en-gen en-steps">
+            <div class="field"><label for="en-tier">Fascia</label><select id="en-tier" name="tier">${CPR.TIERS.map(t => `<option value="${t.n}" ${t.n === +E0.tier ? "selected" : ""}>${t.n} · ${esc(t.label)} (${esc(t.ratio)})</option>`).join("")}</select></div>
+            <div class="field"><label for="en-lvl">Livello</label><select id="en-lvl" name="level">${CPR.LEVEL_IDS.map(l => `<option value="${l}" ${l === E0.level ? "selected" : ""}>${CPR.LEVEL_LABELS[l]}</option>`).join("")}</select></div>
+            <div class="field"><label for="en-role">Ruolo (facoltativo)</label><select id="en-role" name="role">${CPR.ROLES.map(r => `<option value="${r.id}" ${r.id === (E0.role || "none") ? "selected" : ""}>${esc(r.label)}${r.abilityIt ? ` · ${esc(r.abilityIt)}` : ""}</option>`).join("")}</select></div>
+            <div class="field en-extra"><label for="en-xp">Punti extra</label><input id="en-xp" name="extraPoints" type="number" min="0" max="20" value="${esc(E0.extraPoints || 0)}" title="Si aggiungono al budget dei potenziamenti, anche in Base e Hardened"></div>
+            <label class="check" id="en-extreme-box"><input type="checkbox" name="extreme" ${E0.extreme ? "checked" : ""}> ☢ Nemico Estremo</label>
             <button type="button" class="btn yellow" data-en-gen>⚄ Genera</button>
-            <span class="hint">Livello ${lvl.n}: ${esc(lvl.hint)}. 1 = Scagnozzi del manuale · 3 = Hardened · 5 = Hardened Mini-Boss con un potenziamento.
-              Genera STAT, basi delle abilità, armi per categoria e armatura; poi puoi ritoccare tutto.</span>
+            <span class="hint" id="en-caps"></span>
           </div>
-          ${(E.buffs || []).length ? `<div class="en-buffs" style="margin-top:10px">${E.buffs.map(b => `<span>⚡ ${esc(b)}</span>`).join("")}</div>` : ""}
           <div class="fields" style="margin-top:14px">
-            <div class="field full"><label class="req" for="en-name">Nome</label><input id="en-name" name="name" required value="${esc(E.name || "")}"></div>
+            <div class="field full"><label class="req" for="en-name">Nome</label><input id="en-name" name="name" required value="${esc(E0.name || "")}"></div>
           </div>
-          <h3 class="sh-h">STATs</h3>
-          <div class="sh-stat-in">${CPR.STATS.map(s => `<label><span>${s.id}</span><input name="st-${s.id}" type="number" min="0" max="20" value="${esc(st[s.id] ?? "")}"></label>`).join("")}</div>
+          <h3 class="sh-h">STAT naturali <small id="en-statcap"></small></h3>
+          <div class="sh-stat-in">${CPR.STATS.map(s => `<label><span>${s.id}</span><input name="st-${s.id}" type="number" min="0" max="10" value="${esc((E0.stats || {})[s.id] ?? 0)}"></label>`).join("")}</div>
           <div class="fields">
-            <div class="field"><label for="en-hp">HP (vuoto = da BODY e WILL)</label><input id="en-hp" name="hpMax" type="number" min="1" value="${esc(hpField)}" placeholder="${autoHp}"></div>
-            <div class="field"><label for="en-ab">Role Ability · rank (facoltativa)</label><div class="sh-pair"><input id="en-ab" name="ability" value="${esc(E.ability ? E.ability.name : "")}" placeholder="es. Interface"><input name="rank" type="number" min="0" max="10" value="${esc(E.ability ? E.ability.rank : "")}"></div></div>
-            ${armorSel("head")}${armorSel("body")}
-            <div class="field full">
-              <label class="check"><input type="checkbox" name="noPen" ${E.noPen ? "checked" : ""}> Armatura migliorata dal Tech: niente malus</label>
-              <span class="hint" id="en-pen-hint"></span>
-            </div>
+            <div class="field"><label for="en-bimp">Impianto per il BODY</label><select id="en-bimp" name="bodyImplant">${CPR.BODY_IMPLANTS.map(b => `<option value="${b.id}" ${b.id === (E0.bodyImplant || "") ? "selected" : ""}>${esc(b.label)}${b.body ? ` (BODY ${b.body})` : ""}</option>`).join("")}</select></div>
+            <div class="field"><label for="en-move">MOVE con cybergambe (vuoto = nessuno)</label><input id="en-move" name="moveImplant" type="number" min="0" max="10" value="${esc(E0.moveImplant ?? "")}"></div>
+            <div class="field"><label for="en-hp">HP a mano (vuoto = formula e fascia)</label><input id="en-hp" name="hpOverride" type="number" min="1" value="${esc(E0.hpOverride ?? "")}"></div>
+            <div class="field"><label for="en-rank">Grado della Capacità di Ruolo</label><input id="en-rank" name="roleRank" type="number" min="0" max="10" value="${esc(E0.roleRank ?? 0)}"></div>
+            ${armorSel("head", (E0.armor || {}).head)}${armorSel("body", (E0.armor || {}).body)}
+            <div class="field full"><label class="check"><input type="checkbox" name="noPen" ${E0.noPen ? "checked" : ""}> Armatura già migliorata (niente malus, fuori dal budget)</label></div>
           </div>
-          <h3 class="sh-h">Weapons <small>categoria del manuale · base = STAT + abilità, senza il malus dell'armatura (lo aggiunge il sito)</small></h3>
-          <div class="sh-rows" id="en-wpns">${(E.weapons || []).map(wRow).join("")}</div>
+          <div id="en-role-box"></div>
+          <h3 class="sh-h">Weapons <small>la base d'attacco si calcola dalla skill dell'arma · ⚄ ripesca la singola arma</small>
+            <button type="button" class="btn ghost small yellow" data-wpn-reroll-all>⚄ Ripesca armi</button></h3>
+          <div class="sh-rows" id="en-wpns">${(E0.weapons || []).map(wRow).join("")}</div>
           <button type="button" class="btn ghost small cyan" data-en-add="wpn">+ Arma</button>
-          <h3 class="sh-h">Skill Bases <small>STAT + abilità già sommate</small></h3>
-          <div class="sh-rows" id="en-skills">${(E.skills || []).map(sRow).join("")}</div>
-          <button type="button" class="btn ghost small cyan" data-en-add="skill">+ Abilità</button>
-          <datalist id="dl-skills">${CPR.SKILLS.map(k => `<option value="${esc(k.label)}">`).join("")}</datalist>
+          <h3 class="sh-h">Skill <small>livello della skill: la base_naturale = STAT + livello si calcola da sola</small></h3>
+          <div class="sh-rows" id="en-skills">${(E0.skills || []).map(sRow).join("")}</div>
+          <button type="button" class="btn ghost small cyan" data-en-add="skill">+ Skill</button>
+          <div id="en-elite"></div>
+          <div id="en-check" class="en-check" aria-live="polite"></div>
           <div class="fields" style="margin-top:16px">
-            <div class="field full"><label for="en-cy">Cyberware</label><textarea id="en-cy" name="cyber" rows="2">${esc(E.cyber || "")}</textarea></div>
-            <div class="field full"><label for="en-gear">Gear</label><textarea id="en-gear" name="gear" rows="2">${esc(E.gear || "")}</textarea></div>
-            <div class="field full"><label for="en-notes">Note (tattiche, comportamento)</label><textarea id="en-notes" name="notes" rows="2">${esc(E.notes || "")}</textarea></div>
+            <div class="field full"><label for="en-cy">Cyberware</label><textarea id="en-cy" name="cyber" rows="2">${esc(E0.cyber || "")}</textarea></div>
+            <div class="field full"><label for="en-gear">Gear</label><textarea id="en-gear" name="gear" rows="2">${esc(E0.gear || "")}</textarea></div>
+            <div class="field full"><label for="en-notes">Note (tattiche, comportamento)</label><textarea id="en-notes" name="notes" rows="2">${esc(E0.notes || "")}</textarea></div>
           </div>
         </div>
         <div class="modal-foot">
@@ -2682,61 +2724,142 @@
         </div>
       </form>`);
     const form = $("#enemy-form");
+    let picks = [...(E0.picks || [])], comp = E0.comp || "sp", frameBody = E0.frameBody || 16;
+    let ca = E0.ca ? { ...E0.ca } : null, med = E0.med ? { ...E0.med } : null;
+    const readForm = () => {
+      const v = n => (form.elements[n] ? form.elements[n].value.trim() : ""), nv = n => v(n) === "" ? null : num(v(n));
+      const armor = {};
+      for (const loc of ["head", "body"]) armor[loc] = { type: $(`[data-arm-type=${loc}]`, form).value, name: v("arm-" + loc), sp: num(v("sp-" + loc)) };
+      const role = v("role") || "none";
+      return {
+        v: 3, tier: num(v("tier")) || 1, level: v("level") || "base", role, name: v("name"),
+        stats: Object.fromEntries(CPR.STATS.map(s => [s.id, num(v("st-" + s.id))])),
+        bodyImplant: v("bodyImplant"), moveImplant: nv("moveImplant"), hpOverride: nv("hpOverride"),
+        roleRank: CPR.roleOf(role).ability ? num(v("roleRank")) : 0,
+        ca: role === "solo" ? (ca || CPR.autoCA(num(v("roleRank")))) : null, med: role === "medtech" ? (med || CPR.autoMed(num(v("roleRank")))) : null,
+        armor, noPen: form.elements["noPen"].checked,
+        weapons: readRows(form, "#en-wpns .sh-row").filter(w => w.name).map(w => ({ ...w, skill: w.skill || ((CPR.weaponType(w.cat) || {}).skill) || "handgun", rof: w.rof === "" ? 1 : (num(w.rof) || w.rof) })),
+        skills: readRows(form, "#en-skills .sh-row").map(s => ({ id: s.id, label: (CPR.skill(s.id) || {}).label || s.id, stat: s.stat, lvl: num(s.lvl) })),
+        extreme: form.elements["extreme"].checked && num(v("tier")) >= 3 && v("level") === "elite",
+        extraPoints: Math.max(0, num(v("extraPoints"))), frameBody, comp, picks,
+        cyber: v("cyber"), gear: v("gear"), notes: v("notes"),
+      };
+    };
+    // Capacità di Ruolo: Sensi da Combattimento (punti per uso) o Medicina (punti per specializzazione)
+    const renderRole = E => {
+      const box = $("#en-role-box", form), R = CPR.roleOf(E.role), D = CPR.deriveEnemy(E), A = D.ability;
+      if (!A) { box.innerHTML = ""; return; }
+      if (A.ca) {
+        box.innerHTML = `<h3 class="sh-h">${esc(R.abilityIt)} <small>grado ${A.rank}: distribuisci i punti tra gli usi (manuale pag. 146)</small>
+          <button type="button" class="btn ghost small" data-ca-auto>Distribuisci da solo</button></h3>
+          <div class="en-ca-in">${CPR.CA_USES.map(u => `<label><span>${esc(u.label)} <small>${esc(u.unit)} · ${u.id === "precise" ? "3 pt per +1" : u.id === "deflect" ? "2 pt per −1" : u.id === "recover" ? "4 pt" : "1 pt per +1"}</small></span>
+            <input type="number" min="0" max="${u.max}" data-ca="${u.id}" value="${+A.ca[u.id] || 0}"></label>`).join("")}</div>
+          <div class="en-budget ${A.caUsed > A.rank ? "over" : ""}">Punti di ruolo <b>${A.caUsed}</b> / ${A.rank}</div>`;
+      } else if (A.med) {
+        box.innerHTML = `<h3 class="sh-h">${esc(R.abilityIt)} <small>grado ${A.rank}: ogni grado = 1 punto in una specializzazione</small></h3>
+          <div class="en-ca-in">${[["surgery", "Chirurgia (2 livelli di Surgery per punto)"], ["pharma", "Farmaceutica (max 5)"], ["cryo", "Criosistemi (max 5)"]].map(([k, l]) => `<label><span>${l}</span><input type="number" min="0" max="${k === "surgery" ? 5 : 5}" data-med="${k}" value="${+A.med[k] || 0}"></label>`).join("")}</div>
+          <div class="en-budget">Punti usati <b>${(+A.med.surgery || 0) + (+A.med.pharma || 0) + (+A.med.cryo || 0)}</b> / ${A.rank}</div>`;
+      } else box.innerHTML = `<h3 class="sh-h">${esc(R.abilityIt)} <small>grado ${A.rank}</small></h3>${roleBlock(D)}`;
+    };
+    // pannello potenziamenti: contatore e opzioni acquistabili (quelle che sforano il budget sono disattivate)
+    const renderElite = E => {
+      const box = $("#en-elite", form), cat = CPR.eliteCatalog(E), budget = CPR.budgetOf(E);
+      picks = picks.filter(k => cat.some(o => o.key === k));
+      const spent = picks.reduce((t, k) => t + ((cat.find(o => o.key === k) || {}).cost || 0), 0);
+      const apexUsed = picks.filter(k => (cat.find(o => o.key === k) || {}).apex).length;
+      const groups = [...new Set(cat.map(o => o.group))];
+      box.innerHTML = `
+        <h3 class="sh-h">Potenziamenti <small>${E.level === "elite" ? `budget Elite ${budget - (E.extraPoints || 0)}` : "in Base e Hardened si usano solo i Punti extra"}${E.extraPoints ? ` + ${E.extraPoints} extra` : ""} · peso nella pesca casuale = 1 / costo</small></h3>
+        <div class="en-budget big">Punti <b>${spent}</b> / ${budget} · tratti apice <b>${apexUsed}</b> / ${CPR.apexLimit(E)}
+          <button type="button" class="btn ghost small yellow" data-en-reroll ${budget ? "" : "disabled"}>⚄ Ripesca</button><button type="button" class="btn ghost small" data-en-clear>Azzera</button></div>
+        ${budget ? "" : `<p class="hint">Nessun punto da spendere: aumenta i Punti extra o passa al livello Elite.</p>`}
+        <div class="en-cat">${groups.map(g => `<fieldset><legend>${esc(g)}</legend>${cat.filter(o => o.group === g).map(o => {
+          const on = picks.includes(o.key), ok = on || CPR.canPick({ ...E, picks }, o, picks);
+          return `<label class="check ${o.apex ? "apex" : ""} ${ok ? "" : "off"}"><input type="checkbox" data-pick="${esc(o.key)}" ${on ? "checked" : ""} ${ok ? "" : "disabled"}> ${esc(o.label)} <small>${o.cost} pt${o.apex ? " · apice" : ""}</small></label>`;
+        }).join("")}</fieldset>`).join("")}</div>
+        ${picks.includes("frame") ? `<div class="field"><label>BODY con il Linear Frame superiore</label><select data-en-frame>${[16, 17, 18].map(b => `<option ${b === frameBody ? "selected" : ""}>${b}</option>`).join("")}</select></div>` : ""}`;
+    };
+    const refresh = () => {
+      const tier = num(form.elements["tier"].value) || 1, level = form.elements["level"].value, L = CPR.levelOf(tier, level), T = CPR.tierOf(tier);
+      $("#en-extreme-box", form).hidden = !(tier >= 3 && level === "elite");
+      $("#en-caps", form).textContent = `Fascia ${tier} ${CPR.LEVEL_LABELS[level]}: STAT max ${L.statMax}, skill max ${L.skillMax}, base di combattimento ${L.combat.join("–")}, SP ${L.sp.join("–")}, HP ${L.hp.join("–")}, grado di Ruolo ${CPR.roleRank(tier, level)}${level === "elite" ? `, ${T.budget} Punti Elite${T.extreme ? ` (+${T.extreme} se Estremo)` : ""}` : ""}.`;
+      $("#en-statcap", form).textContent = `· tetto ${L.statMax} (BODY oltre 8 solo con impianto${tier >= 3 ? "; 9–10 solo con i potenziamenti" : ""})`;
+      const E = readForm();
+      renderElite(E);
+      const res = CPR.validateEnemy({ ...E, picks });
+      renderRole({ ...E, picks });
+      const D = res.D;
+      $$("#en-skills .sh-row", form).forEach((row, i) => { const s = D.skills[i]; if (s) $(".en-nat", row).innerHTML = `= <b>${s.nat}</b>${s.nat >= 20 ? " ⚠" : ""}`; });
+      $("#en-check", form).innerHTML = `
+        <div class="en-sum">HP <b>${D.hp}</b> · SP ${+((D.armor.body || {}).sp) || 0} · Initiative ${initTotal(D)} · ${D.weapons.map(w => `${esc(w.name)} <b>${w.effArmor}</b>`).join(" · ") || "nessuna arma"}</div>
+        ${D.twenty.length && Math.max(...["head", "body"].map(l => +(((E.armor || {})[l] || {}).sp) || 0)) > 11 ? `<div class="field"><label>Regola del 20: compensazione obbligatoria</label><select data-en-comp><option value="sp" ${comp === "sp" ? "selected" : ""}>SP massimo 11 (armatura leggera)</option><option value="hp" ${comp === "hp" ? "selected" : ""}>HP ridotti</option></select></div>` : ""}
+        ${res.errors.map(x => `<div class="err">✕ ${esc(x)}</div>`).join("")}${res.warns.map(x => `<div class="warn">⚠ ${esc(x)}</div>`).join("")}
+        ${!res.errors.length && !res.warns.length ? `<div class="ok">✓ Scheda dentro i tetti di Fascia ${tier} ${CPR.LEVEL_LABELS[level]}</div>` : ""}`;
+      return res;
+    };
     form.addEventListener("click", ev => {
       if (ev.target.closest("[data-en-gen]")) {
-        const g = CPR.generateEnemy(form.elements["type"].value, num(form.elements["level"].value));
-        // il nome scritto a mano resta; quello inventato dal generatore si rinnova
+        const g = CPR.generateEnemy(num(form.elements["tier"].value), form.elements["level"].value, { role: form.elements["role"].value, extreme: form.elements["extreme"].checked, extraPoints: num(form.elements["extraPoints"].value) });
         const typed = form.elements["name"].value.trim();
-        if (typed && typed !== E.name) g.name = typed;
-        else if (old && !preset) g.name = old.name;
+        if (typed && typed !== E0.name) g.name = typed; else if (old && !preset) g.name = old.name;
         return editEnemy(id, g);
       }
+      // armi: ripesca tutte o una sola, per la Fascia, il Livello e il Ruolo scelti
+      if (ev.target.closest("[data-wpn-reroll-all]")) {
+        const ws = CPR.rollWeapons(form.elements["role"].value, num(form.elements["tier"].value), form.elements["level"].value);
+        $("#en-wpns", form).innerHTML = ws.map(wRow).join(""); refresh(); return;
+      }
+      const one = ev.target.closest("[data-wpn-reroll]");
+      if (one) {
+        const row = one.closest(".sh-row"), i = $$("#en-wpns .sh-row", form).indexOf(row);
+        const ws = CPR.rollWeapons(form.elements["role"].value, num(form.elements["tier"].value), form.elements["level"].value);
+        const w = ws[Math.min(i, ws.length - 1)] || ws[0];
+        if (w) { row.outerHTML = wRow(w); refresh(); }
+        return;
+      }
+      if (ev.target.closest("[data-ca-auto]")) { ca = CPR.autoCA(CPR.deriveEnemy({ ...readForm(), picks }).ability.rank); refresh(); return; }
+      if (ev.target.closest("[data-en-reroll]")) { const E = readForm(); picks = CPR.rollElite({ ...E, picks: [] }); refresh(); return; }
+      if (ev.target.closest("[data-en-clear]")) { picks = []; refresh(); return; }
       const add = ev.target.closest("[data-en-add]");
-      if (add) { const box = $(add.dataset.enAdd === "wpn" ? "#en-wpns" : "#en-skills", form); box.insertAdjacentHTML("beforeend", add.dataset.enAdd === "wpn" ? wRow() : sRow()); $(".sh-row:last-child input", box).focus(); }
-      const del = ev.target.closest("[data-row-del]"); if (del) del.closest(".sh-row").remove();
+      if (add) { const box = $(add.dataset.enAdd === "wpn" ? "#en-wpns" : "#en-skills", form); box.insertAdjacentHTML("beforeend", add.dataset.enAdd === "wpn" ? wRow() : sRow()); refresh(); }
+      const del = ev.target.closest("[data-row-del]"); if (del) { del.closest(".sh-row").remove(); refresh(); }
     });
     form.addEventListener("change", ev => {
       const t = ev.target;
-      // categoria d'arma scelta: compilo danno, ROF e abilità come da manuale
+      if (t.matches("[data-pick]")) { const k = t.dataset.pick; picks = t.checked ? [...picks, k] : picks.filter(x => x !== k); }
+      if (t.matches("[data-en-frame]")) frameBody = num(t.value);
+      if (t.matches("[data-en-comp]")) comp = t.value;
+      if (t.matches("[data-ca]")) { ca = { ...(ca || {}), [t.dataset.ca]: Math.max(0, num(t.value)) }; }
+      if (t.matches("[data-med]")) { med = { ...(med || {}), [t.dataset.med]: Math.max(0, num(t.value)) }; }
+      if (t.name === "role") { const r = CPR.roleOf(t.value); form.elements["roleRank"].value = r.ability ? CPR.roleRank(num(form.elements["tier"].value), form.elements["level"].value) : 0; ca = null; med = null; }
       if (t.matches(".en-wpn [data-f=cat]")) {
-        const w = CPR.weaponType(t.value), row = t.closest(".sh-row"); if (!w) return;
-        const set = (f, v) => { $(`[data-f=${f}]`, row).value = v; };
-        set("dmg", w.dmg); set("rof", w.rof); set("skill", w.skill); set("mag", w.mag || "");
-        // il nome cambia se era vuoto o era il nome di una categoria; un nome proprio ("Malorian 3516") resta
-        const nm = $("[data-f=name]", row).value.trim();
-        if (!nm || CPR.WEAPON_TYPES.some(x => x.label === nm)) set("name", w.label);
-        // base d'attacco = base dell'abilità di quell'arma, se è tra le abilità del nemico
-        const k = CPR.skill(w.skill), sk = $$(".en-sk", form).find(r => norm($("[data-f=label]", r).value) === norm(k.label));
-        if (sk) set("base", $("[data-f=base]", sk).value);
-        else { const st = num(form.elements["st-" + k.stat].value); set("base", st); toast(`${esc(k.label)} non è tra le abilità: base = ${k.stat} (${st}). Aggiungila se serve.`); }
+        const w = CPR.weaponType(t.value), row = t.closest(".sh-row");
+        if (w) {
+          const set = (f, v) => { $(`[data-f=${f}]`, row).value = v; };
+          set("dmg", w.dmg === "BODY" ? CPR.brawlDmg(num(form.elements["st-BODY"].value)) : w.dmg); set("rof", w.rof); set("skill", w.skill); set("mag", w.mag || "");
+          const nm = $("[data-f=name]", row).value.trim();
+          if (!nm || CPR.WEAPON_TYPES.some(x => x.label === nm)) set("name", w.label);
+        }
       }
-      if (t.matches("[data-arm-type]")) { const a = CPR.armorType(t.value); if (a) { form.elements["sp-" + t.dataset.armType].value = a.sp; form.elements["arm-" + t.dataset.armType].value = a.id === "none" ? "" : a.label; } }
-      penHint();
+      if (t.matches(".en-sk [data-f=id]")) { const k = CPR.skill(t.value); if (k) $("[data-f=stat]", t.closest(".sh-row")).value = k.stat; }
+      if (t.matches("[data-arm-type]")) { const a = CPR.armorType(t.value); if (a) { form.elements["sp-" + t.dataset.armType].value = a.sp; form.elements["arm-" + t.dataset.armType].value = a.sp ? a.label : ""; } }
+      refresh();
     });
-    // promemoria del malus dell'armatura scelta
-    const penHint = () => {
-      const p = CPR.armorPen({ head: { type: $("[data-arm-type=head]", form).value }, body: { type: $("[data-arm-type=body]", form).value } }, form.elements["noPen"].checked);
-      $("#en-pen-hint", form).textContent = p ? `Malus dell'armatura: ${p} a REF, DEX, MOVE e alle abilità che li usano (applicato nei tiri, mostrato tra parentesi).` : "Nessun malus dell'armatura.";
-    };
-    penHint();
+    form.addEventListener("input", ev => {
+      if (ev.target.matches("[data-ca]")) ca = { ...(ca || {}), [ev.target.dataset.ca]: Math.max(0, num(ev.target.value)) };
+      if (ev.target.matches("[data-med]")) med = { ...(med || {}), [ev.target.dataset.med]: Math.max(0, num(ev.target.value)) };
+      if (ev.target.matches("input[type=number]") && !ev.target.matches("[data-ca], [data-med]")) refresh();
+    });
+    refresh();
     form.addEventListener("submit", async ev => {
       ev.preventDefault();
-      const v = n => form.elements[n].value.trim(), nv = n => v(n) === "" ? null : num(v(n));
-      const stats = Object.fromEntries(CPR.STATS.map(s => [s.id, num(v("st-" + s.id))]));
-      const armor = {};
-      for (const loc of ["head", "body"]) armor[loc] = { type: $(`[data-arm-type=${loc}]`, form).value, name: v("arm-" + loc), sp: num(v("sp-" + loc)) };
-      const weapons = readRows(form, "#en-wpns .sh-row").filter(w => w.name).map(w => {
-        const t = CPR.weaponType(w.cat);
-        return { ...w, skill: w.skill || (t ? t.skill : "handgun"), rof: w.rof === "" ? 1 : num(w.rof) || w.rof, base: num(w.base) };
-      });
-      const skills = readRows(form, "#en-skills .sh-row").filter(k => k.label).map(k => ({ label: k.label, stat: k.stat, base: num(k.base) })).sort((a, b) => b.base - a.base);
-      const enemy = { type: v("type"), level: num(v("level")) || 1, stats, hpMax: nv("hpMax"), armor, weapons, skills,
-        noPen: form.elements["noPen"].checked, buffs: E.buffs || [],
-        ability: v("ability") ? { name: v("ability"), rank: num(v("rank")) } : null, cyber: v("cyber"), gear: v("gear"), notes: v("notes") };
+      const res = refresh();
+      if (res.errors.length) return toast(`Da sistemare prima di salvare: ${res.errors[0]}`, "err");
+      const enemy = readForm(); delete enemy.migrated;
       try {
-        const saved = await Store.save("entries", { ...(old || { status: "vivo", custom: [] }), kind: "nemico", name: v("name"), gmOnly: true, enemy });
+        const saved = await Store.save("entries", { ...(old || { status: "vivo", custom: [] }), kind: "nemico", name: enemy.name, gmOnly: true, enemy });
         upsert(state.entries, saved); liveSend("entries", saved);
-        if (/^#\/gm/.test(location.hash)) route();   // aggiorno l'elenco dietro la finestra
+        if (/^#\/gm/.test(location.hash)) route();
         toast("Nemico salvato", "ok"); openEnemy(saved.id);
       } catch (err) { fail(err); }
     });
@@ -2747,6 +2870,7 @@
     const e = state.entries.find(x => x.id === id); if (!e) return;
     const m = curMap();
     if (!m) return toast("Prima crea una mappa nel Tavolo", "err");
+    const D = enemyD(e);
     openModal(`
       <form class="form" id="spawn-form">
         <div class="modal-head"><h2>// ⇲ ${esc(e.name)} SUL TAVOLO</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
@@ -2755,7 +2879,7 @@
           <div class="field"><label for="sp-n">Quanti</label><input id="sp-n" name="count" type="number" min="1" max="20" value="1"></div>
           <div class="field"><label for="sp-c">Colore</label><input id="sp-c" name="color" type="color" value="#ff8a3d"></div>
           <label class="check field full gm-check"><input type="checkbox" name="hidden" checked> 🔒 Nascosti ai giocatori (li riveli dal tavolo)</label>
-          <p class="hint field full">Ogni token ha HP (${enemyHp(enemyOf(e))}) e SP propri: si feriscono uno per uno.</p>
+          <p class="hint field full">Ogni token ha HP (${D.hp}) e SP propri: si feriscono uno per uno. ${esc(D.T.ratio)}.</p>
         </div></div>
         <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button type="submit" class="btn">Metti sul tavolo</button></div>
       </form>`, true);
@@ -2771,14 +2895,14 @@
   }
 
   function enemyCard(e) {
-    const E = enemyOf(e), T = CPR.enemyType(E.type);
+    const E = enemyOf(e), D = CPR.deriveEnemy(E);
     return `<article class="en-card">
       <button type="button" class="en-card-main" data-action="enemy-open" data-id="${esc(e.id)}">
-        <span class="en-lvl">${LVL_STARS(num(E.level) || 1)}</span>
+        <span class="en-lvl">${tierBadge(E)}</span>
         <h3>${esc(e.name)}</h3>
-        <span class="en-type">${esc(T.label)}</span>
-        <span class="en-line">HP <b>${enemyHp(E)}</b> · SP <b>${enemySp(E, "head")}/${enemySp(E, "body")}</b> · REF <b>${withPen(num((E.stats || {}).REF), enemyStat(E, "REF"))}</b></span>
-        <span class="en-line">${(E.weapons || []).map(w => `${esc(w.name)} <b>${withPen(num(w.base), enemyWpn(E, w))}</b>`).join(" · ") || "disarmato"}</span>
+        <span class="en-type">${esc(D.role.id === "none" ? D.T.label : `${D.role.label} · ${D.ability ? `${D.ability.nameIt} ${D.ability.rank}` : ""}`)}${E.migrated ? " · da convertire" : ""}</span>
+        <span class="en-line">HP <b>${D.hp}</b> · SP <b>${+((D.armor.head || {}).sp) || 0}/${+((D.armor.body || {}).sp) || 0}</b> · Init <b>${initTotal(D)}</b>${D.budget ? ` · ⚡ ${D.spent}/${D.budget}` : ""}</span>
+        <span class="en-line">${D.weapons.map(w => `${esc(w.name)} <b>${w.effArmor}</b>`).join(" · ") || "disarmato"}</span>
       </button>
       <button type="button" class="btn ghost small yellow" data-action="enemy-spawn" data-id="${esc(e.id)}">⇲ Sul tavolo</button>
     </article>`;
@@ -2787,7 +2911,7 @@
   // ---------- AREA GM ----------
   function viewGm() {
     const enemies = state.entries.filter(e => e.kind === "nemico" && e.enemy)
-      .sort((a, b) => num(enemyOf(a).level) - num(enemyOf(b).level) || (a.name || "").localeCompare(b.name || "", "it"));
+      .sort((a, b) => { const A = enemyOf(a), B = enemyOf(b); return A.tier - B.tier || CPR.LEVEL_IDS.indexOf(A.level) - CPR.LEVEL_IDS.indexOf(B.level) || (a.name || "").localeCompare(b.name || "", "it"); });
     const secretEntries = state.entries.filter(e => e.gmOnly && e.kind !== "nemico").sort((a, b) => (a.name || "").localeCompare(b.name || "", "it"));
     const secretNotes = state.notes.filter(n => n.gmOnly).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
     const notesOn = state.gmnotes.filter(g => g.text && state.entries.some(e => e.id === g.entryId));
@@ -2807,7 +2931,7 @@
         <span class="en-actions"><button type="button" class="btn small yellow" data-action="gm-gen-enemy">⚄ Genera nemico</button>
         <button type="button" class="btn ghost small" data-action="gm-new-enemy">+ Nemico a mano</button></span></div>
       ${enemies.length ? `<div class="en-grid">${enemies.map(enemyCard).join("")}</div>`
-        : `<p class="hint">Nessun nemico. «Genera nemico» crea una scheda semplificata come quelle del manuale: scegli il tipo e la difficoltà da 1 (scarso) a 5 (forte).</p>`}
+        : `<p class="hint">Nessun nemico. «Genera nemico» crea una scheda semplificata come quelle del manuale scegliendo Fascia (1 Scagnozzi → 4 Boss), Livello (Base, Hardened, Elite) e, se vuoi, un Ruolo (Solo, Tech, Medtech, Nomade).</p>`}
 
       <div class="section-title" style="margin-top:28px"><h2>🔒 Dossier segreti <span class="hint">${secretEntries.length}</span></h2></div>
       ${secretEntries.length ? `<div class="grid">${secretEntries.map(cardEntry).join("")}</div>`
@@ -3792,8 +3916,8 @@
       case "edit-gmnote": editGmNote(id); break;
       case "gm-new-entry": editEntry(null, { kind: "npc", gmOnly: true }); break;
       // nemici
-      case "gm-gen-enemy": editEnemy(null, CPR.generateEnemy(CPR.ENEMY_TYPES[CPR.die(CPR.ENEMY_TYPES.length) - 1].id, 1)); break;
-      case "gm-new-enemy": editEnemy(null, { type: "booster", level: 1, name: "", stats: Object.fromEntries(CPR.STATS.map(s => [s.id, 5])), armor: {}, weapons: [], skills: [] }); break;
+      case "gm-gen-enemy": editEnemy(null, CPR.generateEnemy(1, "base")); break;
+      case "gm-new-enemy": editEnemy(null, { v: 3, role: "none", roleRank: 0, extraPoints: 0, tier: 1, level: "base", name: "", stats: Object.fromEntries(CPR.STATS.map(s => [s.id, s.id === "LUCK" ? 0 : 5])), armor: {}, weapons: [], skills: [], picks: [] }); break;
       case "enemy-open": openEnemy(id); break;
       case "enemy-edit": editEnemy(id); break;
       case "enemy-spawn": spawnEnemy(id); break;

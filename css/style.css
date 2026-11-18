@@ -1588,3 +1588,64 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .en-pen.ok { color: var(--green); border-color: rgba(61,255,154,.5); background: rgba(61,255,154,.06); }
 .en-buffs { display: flex; flex-wrap: wrap; gap: 6px; }
 .en-buffs span { font-family: var(--font-mono); font-size: 13px; color: var(--yellow); padding: 4px 9px; border: 1px solid rgba(243,230,0,.5); background: rgba(243,230,0,.07); }
+
+/* v13 — nemici per Fascia × Livello, addendi espliciti, Punti Elite */
+.en-steps .field { min-width: 180px; }
+.en-steps #en-caps { flex-basis: 100%; }
+.en-hp { font-family: var(--font-mono); font-size: 12px; }
+.en-elite { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.en-elite span { font-family: var(--font-mono); font-size: 13px; color: var(--yellow); padding: 4px 9px; border: 1px solid rgba(243,230,0,.45); background: rgba(243,230,0,.06); }
+.en-elite span.apex, .en-cat label.apex { border-color: var(--magenta); color: var(--magenta); }
+.en-elite small, .en-cat small { color: var(--muted); }
+.en-budget { font-family: var(--font-mono); font-size: 13px; color: var(--text); }
+.en-budget b { color: var(--yellow); font-size: 16px; }
+.en-budget.big { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border: 1px dashed rgba(243,230,0,.5); margin-bottom: 8px; }
+.en-cat { columns: 3 220px; column-gap: 12px; }
+.en-cat fieldset { break-inside: avoid; border: 1px solid var(--line); margin: 0 0 10px; padding: 6px 10px; }
+.en-cat legend { font-family: var(--font-head); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--cyan); }
+.en-cat label { display: flex; font-size: 13px; padding: 2px 0; }
+.en-cat label.off { opacity: .4; }
+.en-check { display: grid; gap: 4px; margin-top: 14px; font-family: var(--font-mono); font-size: 13px; }
+.en-check .err { color: var(--red); }
+.en-check .warn { color: var(--yellow); }
+.en-check .ok { color: var(--green); }
+.en-sum { color: var(--text); }
+.en-nat { font-family: var(--font-mono); font-size: 13px; color: var(--muted); white-space: nowrap; }
+.en-nat b { color: var(--green); }
+.sh-row.en-sk { grid-template-columns: 1fr 80px 64px 56px 28px; }
+.sh-row.en-wpn { grid-template-columns: 1.1fr 1.1fr 120px 70px 50px 28px; }
+.q { font-family: var(--font-mono); font-size: 10px; padding: 1px 5px; border: 1px solid currentColor; vertical-align: middle; }
+.q.hq { color: var(--green); }
+.q.poor { color: var(--muted); }
+.en-table { display: grid; border: 1px solid var(--line); }
+.en-tr { display: grid; grid-template-columns: 1.6fr .8fr .5fr .7fr 1fr .8fr; gap: 6px; align-items: center; padding: 5px 10px; background: none; border: 0; border-bottom: 1px solid rgba(42,42,58,.6); color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.en-tr span:not(:first-child) { font-family: var(--font-mono); font-size: 13px; }
+button.en-tr:hover, button.en-tr:focus-visible { background: rgba(243,230,0,.08); outline: none; }
+.en-tr.twenty { background: rgba(255,43,214,.08); }
+.en-th { cursor: default; font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; background: var(--bg-2); }
+.en-th span { font-size: 11px !important; }
+@media (max-width: 680px) {
+  .en-tr { grid-template-columns: 1.4fr .8fr .5fr .7fr; }
+  .en-tr span:nth-child(5) { display: none; }
+  .en-tr span:nth-child(4) { display: none; }
+  .sh-row.en-sk { grid-template-columns: 1fr 70px 56px 28px; }
+  .sh-row.en-sk .en-nat { display: none; }
+  .sh-row.en-wpn { grid-template-columns: 1fr 1fr 28px; }
+}
+
+/* v14 — ruolo dei nemici, punti extra, ripesca armi */
+.en-extra input { width: 90px; }
+.en-role { display: grid; gap: 6px; padding: 10px 12px; border-left: 2px solid var(--cyan); background: rgba(0,240,255,.05); }
+.en-role-h { font-family: var(--font-head); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--cyan); }
+.en-role-h small { color: var(--muted); text-transform: none; letter-spacing: 0; }
+.en-ca { display: flex; flex-wrap: wrap; gap: 6px; }
+.en-ca span { font-size: 13px; padding: 3px 8px; border: 1px solid rgba(0,240,255,.4); }
+.en-ca small { color: var(--muted); }
+.en-ca-in { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 14px; margin-bottom: 6px; }
+.en-ca-in label { display: grid; grid-template-columns: 1fr 64px; gap: 8px; align-items: center; font-size: 14px; }
+.en-ca-in small { display: block; font-size: 11px; color: var(--muted); }
+.en-ca-in input { text-align: center; font-family: var(--font-mono); padding: 4px; }
+.en-budget.over b { color: var(--red); }
+.sh-h .btn { margin-left: 8px; vertical-align: middle; }
+.sh-row.en-wpn { grid-template-columns: 1.1fr 1.1fr 120px 70px 50px 28px 28px; }
+@media (max-width: 860px) { .sh-row.en-wpn { grid-template-columns: 1fr 1fr 28px 28px; } }
