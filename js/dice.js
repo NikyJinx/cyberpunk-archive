@@ -514,6 +514,8 @@ window.CPR = (() => {
       if (R.id === "nomad") ability.vehicles = (GARAGE_VEHICLES.filter(([a]) => a <= Math.max(1, rank)).map(v => v[2])).join(" · ");
     }
     const ca = ability && ability.ca;
+    // cyberware scelto dal catalogo (js/cyberware.js): bonus alle abilità, iniziativa, attacchi
+    const cfx = window.CW && (E.cyberRefs || []).length ? CW.effects(E.cyberRefs.map(x => ({ ...x, installed: true })), 0) : null;
     // skill: base_naturale = STAT + livello; bonus_ruolo (Creatore / Garage / Individuare Minacce)
     const skills = (E.skills || []).map(s => {
       const k = skill(s.id) || {}, stat = s.stat || k.stat || "INT";
@@ -522,6 +524,7 @@ window.CPR = (() => {
       if (ability && R.id === "tech" && MAKER_SKILLS.includes(s.id)) bonus.push({ l: "Esperienza sul Campo", v: ability.rank, role: true });
       if (ability && R.id === "nomad" && GARAGE_SKILLS.includes(s.id)) bonus.push({ l: "Garage", v: ability.rank, role: true });
       if (ca && ca.threat && s.id === "perception") bonus.push({ l: "Individuare Minacce", v: +ca.threat, role: true });
+      if (cfx) bonus.push(...CW.skillBonus(cfx, s.id, has(`skill:${s.id}`) ? 10 : (+s.lvl || 0)));
       return { ...s, label: s.label || k.label || s.id, stat, lvl, statV: +nat[stat] || 0, nat: (+nat[stat] || 0) + lvl, combat: COMBAT_SKILLS.includes(s.id), elite10: has(`skill:${s.id}`), bonus };
     });
     // Medicina: Surgery (2 livelli per punto) e Medical Tech (Farmaceutica + Criosistemi) come abilità TECH
@@ -570,10 +573,10 @@ window.CPR = (() => {
     else if (hp > L.hp[1]) { parts.push({ l: `massimo di fascia (${L.hp[1]})`, v: L.hp[1] - hp }); hp = L.hp[1]; }
     if (has("tough")) { parts.push({ l: "robustezza (Punti Elite)", v: 5 }); hp += 5; }
     if (comp === "hp") { const cap = tier >= 4 ? 65 : tier === 3 ? 45 : 40; if (hp > cap) { parts.push({ l: `regola del 20: HP ridotti a ${cap}`, v: cap - hp }); hp = cap; } }
-    const initBonus = ca && ca.reaction ? [{ l: "Reazione", v: +ca.reaction }] : [];
+    const initBonus = [...(ca && ca.reaction ? [{ l: "Reazione", v: +ca.reaction }] : []), ...(cfx ? cfx.mods.filter(m => m.target === "init").map(m => ({ l: m.name, v: m.value })) : [])];
     return {
       tier, level: E.level, T, L, role: R, stats: eff, pen, penRaw, penReduce: L.penReduce && penRaw ? Math.min(L.penReduce, -penRaw) : 0, noPen, armor, body, skills: skillRows, weapons, ability, initBonus,
-      hp, hpParts: parts, painImmune: tier >= 4,
+      hp, hpParts: parts, painImmune: tier >= 4 || !!(cfx && cfx.pain), cyberMods: cfx ? cfx.mods.filter(m => m.target !== "init") : [],
       picks, spent: picks.reduce((t, o) => t + o.cost, 0), budget: budgetOf(E), apexUsed: picks.filter(o => o.apex).length, apexLimit: apexLimit(E),
       twenty, comp, extraCyber: picks.filter(o => o.key.startsWith("cyber:") || o.key === "smart").map(o => o.label),
     };

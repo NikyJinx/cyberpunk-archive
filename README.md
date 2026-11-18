@@ -32,6 +32,13 @@ Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del perso
 
 La scheda **Equipaggiamento** raccoglie eddies, armi, armature, oggetti e veicoli.
 
+#### ⚡ Catalogo del cyberware
+Nella modifica del cyberware ogni slot ha «+ dal catalogo…»: tutti gli impianti del manuale base (Fashionware, Neuralware e Chipware, Cyberottiche, Cyberudito, Impianti Interni ed Esterni, Cyberbraccio, Cybergamba e coperture, Borgware), con le voci dello slot in cima. La riga si compila da sola con nome, costo, PU media e descrizione; ⚄ tira la PU con i dadi del manuale.
+- Gli effetti vanno da soli nei tiri: Mirino +1 ai colpi mirati, Kerenzikov +2 all'iniziativa, Tecnoscanner e Medscanner, Analizzatore di Stress, Filtro Antitossina, Chip Abilità (abilità scelta a livello 3), Laccio Osseo-Muscolare e Telai Lineari sul BODY (con PF e Death Save), Antidolorifico. Gli effetti «non cumulativi» non si sommano e si può avere un solo Speedware.
+- Quelli a comando (Sandevistan, Definitore d'Immagine con la vista, Udito Amplificato, TeleOttica oltre 51 m, Audiovox mentre canti) hanno un interruttore nelle tab Cyberware e Combattimento. Le armi integrate (Wolvers, Digitolame, Zanne…) si aggiungono alle armi con un clic.
+- Anche i **nemici** prendono cyberware dal catalogo, con gli stessi bonus.
+- **Cyberware custom**: dal Glossario si creano impianti nuovi con costo, PU, descrizione e un effetto nei tiri; compaiono nel catalogo con la ★.
+
 #### ⬢ Scheda del personaggio
 Ogni PG e NPC ha una **Scheda** con le regole di *Cyberpunk RED* (nomi in inglese, come sul manuale):
 - le 10 **STAT**, tutte le **abilità** divise per categoria (quelle base partono da 2, quelle a costo doppio sono segnate ×2) e abilità personalizzate come *Language (Japanese)* o *Science (Chemistry)*;
@@ -79,6 +86,9 @@ La mappa per i combattimenti, condiviso **in tempo reale** tra tutti quelli che 
 - **Iniziativa**: un pulsante tira REF + 1d10 per tutti, poi «Turno ▶» passa al prossimo e conta i round.
 - **Pop-up dei tiri**: sulla mappa ogni tiro (tuo o degli altri) compare per qualche secondo in alto a destra e resta nel Dice log. Ogni token ha i suoi **stati**, segnati da un contatore sul token.
 - **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto (🧹 Pulisci nasconde i tiri vecchi su questo dispositivo; il GM con 🗑 Elimina tutti li cancella per tutti): `2d6+3` per un tiro libero, `3d6kh2` per tirare 3d6 e tenere i 2 più alti (`kl` per i più bassi; vale anche nei danni delle armi), `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
+
+### ❖ Glossario — `// DATA_FORTRESS`
+Tutti i cataloghi del sito in tabelle: il cyberware (con ricerca e filtro per tipo, ⚡ = effetto applicato ai tiri), armi e tabelle delle distanze, armature, munizioni e stati, colpi mirati, Critical Injury e NET (programmi, Black ICE, hardware, Demoni).
 
 ### ⌬ NET — `// NET_ARCHITECTURE`
 Le Architetture di Rete che il GM sta mostrando: compaiono piano per piano mentre il Netrunner scende, con Password, File, Nodi e Black ICE (REZ compresi), aggiornate in tempo reale. I piani non ancora raggiunti e le note del GM non arrivano ai giocatori.
@@ -177,7 +187,7 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 | `netarch` | architetture NET del GM (sempre segrete) |
 | `netview` | copia pubblica di un'architettura: solo i piani rivelati |
 
-In `meta` ci sono anche `rules` (munizioni e stati) e `nethb` (Black ICE e Demoni homebrew).
+In `meta` ci sono anche `rules` (munizioni e stati), `nethb` (Black ICE e Demoni homebrew) e `cyberhb` (cyberware custom).
 
 Le schede dei personaggi stanno dentro `entries` (campo `sheet`). Il tavolo usa i canali *broadcast* di Supabase Realtime per gli aggiornamenti istantanei: non serve configurare niente nel database. Se il canale non è disponibile, il tavolo si aggiorna da solo ogni pochi secondi. Anche con il canale attivo, ogni 30 secondi (e quando si torna sulla pagina) il tavolo si riallinea con il database, così un messaggio perso non lascia nessuno indietro. La mappa mostrata a tutti è salvata in `meta` (campo `tableMap`).
 
@@ -198,6 +208,8 @@ js/config.js            collegamento a Supabase (chiave pubblica "anon")
 js/store.js             livello dati: Supabase o IndexedDB, canale in tempo reale
 js/dice.js              STAT e abilità di Cyberpunk RED, motore dei dadi, generatore dei nemici
 js/net.js               Netrunning: programmi, Black ICE, hardware, Demoni, generatore di architetture
+js/roles.js             Ruoli e Capacità di Ruolo
+js/cyberware.js         catalogo del cyberware base con gli effetti
 js/app.js               interfaccia, routing e logica delle sezioni
 supabase/schema.sql     tabella, regole di accesso e storage
 tools/suno-import.js    importa le playlist Suno come tracce

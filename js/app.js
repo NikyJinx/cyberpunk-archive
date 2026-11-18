@@ -190,6 +190,7 @@
     state.site = meta.find(m => m.id === "site") || null;
     state.rules = meta.find(m => m.id === "rules") || null;
     state.nethb = meta.find(m => m.id === "nethb") || null; NET.setHomebrew(state.nethb);
+    state.cyberhb = meta.find(m => m.id === "cyberhb") || null; CW.setHomebrew(state.cyberhb);
     // tavolo di gioco: se qualcosa va storto qui, il resto del sito funziona lo stesso
     try {
       const [maps, tokens, rolls] = await Promise.all([Store.list("maps"), Store.list("tokens"), Store.list("rolls", { limit: 100 })]);
@@ -223,7 +224,7 @@
   const MENU_INFO = {
     home: ["⌂", "Pagina iniziale"], database: ["▤", "PG, NPC, fazioni, luoghi"], diario: ["✎", "Cronaca e quest"],
     calendario: ["▦", "Eventi e meteo"], appunti: ["✉", "Note della campagna"], tracce: ["♫", "Colonna sonora"],
-    party: ["◈", "Schede dei PG"], mappa: ["⬡", "Mappa, token e iniziativa"], net: ["⌬", "Architetture di Rete"], gm: ["🔒", "Solo per i GM"],
+    party: ["◈", "Schede dei PG"], mappa: ["⬡", "Mappa, token e iniziativa"], net: ["⌬", "Architetture di Rete"], glossario: ["❖", "Cyberware, armi, regole"], gm: ["🔒", "Solo per i GM"],
   };
   function renderSideMenu() {
     const box = $("#side-nav"); if (!box) return;
@@ -294,6 +295,7 @@
     else if (page === "mappa") app.innerHTML = viewTable();
     else if (page === "party") app.innerHTML = viewParty();
     else if (page === "net") app.innerHTML = viewNet();
+    else if (page === "glossario") app.innerHTML = viewGlossary();
     else if (page === "gm") {
       if (!isGm()) { location.replace("#/home"); return; }
       app.innerHTML = viewGm();
@@ -603,9 +605,9 @@
         ${items.length ? `<ul>${items.map(it => {
           const m = itemMax(e, it), changed = hasVal(it.max) && Number(it.max) !== s.max;
           return `
-          <li class="${it.installed === false ? "planned" : ""}" ${it.note ? `title="${esc(it.note)}"` : ""}>
+          <li class="${it.installed === false ? "planned" : ""}" ${it.note || cwOf(it) ? `title="${esc([(cwOf(it) || {}).desc, it.note].filter(Boolean).join(" · "))}"` : ""}>
             <span class="cy-chk" aria-label="${it.installed === false ? "pianificato" : "installato"}">${it.installed === false ? "◇" : "◆"}</span>
-            <span class="cy-name">${esc(it.name)}${it.note ? `<small>${esc(it.note)}</small>` : ""}</span>
+            <span class="cy-name">${esc(it.name)}${cwOf(it) && (cwOf(it).fx || []).length ? ` <i class="gl-fx" title="Effetto applicato ai tiri">⚡</i>` : ""}${it.ref === "skillchip" && it.param ? ` <small>${esc((CPR.skill(it.param) || {}).label || "")}</small>` : ""}${it.note ? `<small>${esc(it.note)}</small>` : ""}</span>
             <span class="cy-cost">${hasVal(it.cost) ? esc(num(it.cost).toLocaleString("it-IT")) : "—"}</span>
             <span class="cy-hl">${hasVal(it.hl) ? esc(it.hl) : "—"}</span>
             <span class="cy-max ${changed ? "changed" : ""}" title="Umanità massima tolta${changed ? " (modificata, standard " + s.max + ")" : ""}">${m ? "−" + m : "0"}</span>
@@ -613,7 +615,8 @@
       </section>`;
   }
 
-  function cyberHtml(e) {
+  function cyberHtml(e) { return `<div class="cy-wrap" data-cyber="${esc(e.id)}">${cyberInner(e)}${cyberFxHtml(e)}</div>`; }
+  function cyberInner(e) {
     const st = cyberStats(e);
     const slots = slotsOf(e);
     const zonesOn = new Set(st.inst.map(it => slotDef(e, it.slot).zone).filter(Boolean));
@@ -677,11 +680,14 @@
 
   const allCyberNames = () => [...new Set(state.entries.flatMap(x => cyberItems(x).map(it => it.name)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it"));
   const cyRow = (it = {}, def = 2) => `
-    <div class="cy-row">
+    <div class="cy-row ${it.ref === "skillchip" ? "chip" : ""}">
       <label class="cy-inst" title="Installato (togli la spunta se è solo pianificato)"><input type="checkbox" data-f="installed" ${it.installed === false ? "" : "checked"}><span></span></label>
       <input data-f="name" placeholder="Nome impianto" list="dl-cyber" value="${esc(it.name)}">
+      <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="on" value="${it.on ? "1" : ""}">
+      <select data-f="param" class="cy-param" title="Abilità del Chip Abilità (livello 3)"><option value="">abilità del chip…</option>${CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === it.param ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
       <input data-f="cost" type="number" min="0" step="1" placeholder="eb" title="Costo in eddies" value="${esc(it.cost ?? "")}">
       <input data-f="hl" type="number" min="0" step="1" placeholder="HL" title="Umanità persa (HL)" value="${esc(it.hl ?? "")}">
+      <button type="button" class="gp-btn" data-cy-pu title="Tira la Perdita d'Umanità con i dadi del catalogo" aria-label="Tira la Perdita d'Umanità">⚄</button>
       <input data-f="max" type="number" min="0" step="1" placeholder="max ${def}" title="Umanità massima tolta — vuoto = ${def} (standard dello slot)" value="${esc(it.max ?? "")}">
       <input data-f="note" placeholder="Nota (opzioni, effetti…)" value="${esc(it.note)}">
       <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button>
@@ -698,7 +704,8 @@
       </div>` : ""}
       <div class="cy-rows">${items.map(it => cyRow(it, s.max)).join("")}</div>
       <div class="cy-edit-actions">
-        <button type="button" class="btn ghost small cyan" data-row-add="cy">+ Aggiungi impianto</button>
+        <select class="cy-pick" data-cy-pick aria-label="Aggiungi dal catalogo">${cwOptions(s.id)}</select>
+        <button type="button" class="btn ghost small cyan" data-row-add="cy">+ Impianto a mano</button>
         ${s.custom ? "" : `<button type="button" class="btn ghost small" data-slot-del>Rimuovi slot</button>`}
       </div>
     </fieldset>`;
@@ -808,6 +815,11 @@
         box.insertAdjacentHTML("beforeend", cyRow({}, def)); $(".cy-row:last-child [data-f=name]", box).focus();
       }
       if (del) del.closest(".cy-row").remove();
+      // PU tirata con i dadi della voce del catalogo
+      const pu = ev.target.closest("[data-cy-pu]");
+      if (pu) { const row = pu.closest(".cy-row"), c = CW.byId($("[data-f=ref]", row).value) || CW.byName($("[data-f=name]", row).value);
+        if (!c) { toast("Prima scegli l'impianto dal catalogo", "err"); return; }
+        const r = CW.rollPu(c); $("[data-f=hl]", row).value = r.total; toast(`${c.name}: PU ${r.dice.length ? `${r.dice.join(" + ")}${/\/2$/.test(c.dice) ? " ÷ 2" : ""} = ` : ""}${r.total}`, "ok"); return; }
       if (ev.target.closest("[data-slot-add]")) {
         const id = "x-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         $("#cy-fieldsets", form).insertAdjacentHTML("beforeend", cyFieldset({ id, label: "", zone: "", max: 2, custom: true }, []));
@@ -819,6 +831,18 @@
         if (!n || await askConfirm(`Rimuovere lo slot e i suoi ${n} impianti? Diventa definitivo quando salvi.`, "Rimuovi slot")) { fs.remove(); refreshRestore(); }
       }
     });
+    // voce scelta dal catalogo: riga compilata (nome, costo, PU media, nota)
+    form.addEventListener("change", ev => {
+      const sel = ev.target.closest("[data-cy-pick]");
+      if (sel && sel.value) {
+        const c = CW.byId(sel.value), fs = sel.closest("fieldset"), box = $(".cy-rows", fs);
+        const def = fs.classList.contains("custom") ? num($("[data-slot-f=max]", fs).value) : num(fs.dataset.max);
+        box.insertAdjacentHTML("beforeend", cyRow({ name: c.name, ref: c.id, cost: c.cost, hl: c.pu, note: shortDesc(c), max: c.g === "fashion" || c.pu === 0 ? 0 : null }, def));
+        sel.value = ""; return;
+      }
+      const nm = ev.target.closest(".cy-row [data-f=name]");
+      if (nm) { const row = nm.closest(".cy-row"), c = CW.byName(nm.value); $("[data-f=ref]", row).value = c ? c.id : ""; row.classList.toggle("chip", !!c && c.id === "skillchip"); }
+    });
     form.addEventListener("submit", async ev => {
       ev.preventDefault();
       const out = {}, extra = [];
@@ -826,6 +850,7 @@
         const items = readRows(fs, ".cy-row").filter(it => it.name).map(it => ({
           name: it.name, installed: it.installed, cost: it.cost === "" ? null : num(it.cost), hl: it.hl === "" ? null : num(it.hl),
           max: it.max === "" ? null : num(it.max), note: it.note,
+          ...(it.ref ? { ref: it.ref } : {}), ...(it.on ? { on: true } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param } : {}),
         }));
         if (fs.classList.contains("custom")) {
           const label = $("[data-slot-f=label]", fs).value.trim();
@@ -883,7 +908,7 @@
   //             weapons[{name, skill, dmg, rof, mag, note}], rep, ip, crit, notes }
   const sheetOf = e => (e && e.sheet) || {};
   const hasSheet = e => !!(e && e.sheet && e.sheet.stats && Object.values(e.sheet.stats).some(hasVal));
-  const statBase = (e, id) => num((sheetOf(e).stats || {})[id]);
+  const statBase = (e, id) => id === "BODY" && cyberItems(e).length ? CW.effects(cyberItems(e), num((sheetOf(e).stats || {}).BODY)).body : num((sheetOf(e).stats || {})[id]);
   // l'EMP segue l'umanità del cyberware: EMP = umanità attuale / 10
   // l'armatura pesante toglie a REF, DEX e MOVE (−2 Medium/Heavy Armorjack, −4 Flak/Metalgear), salvo armatura migliorata
   const sheetArmorType = a => a.type || ((CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(a.name)) || {}).id) || "custom";
@@ -926,7 +951,7 @@
     }
     if (type === "skill" || type === "cskill") {
       const k = skillByKey(e, type + ":" + a); if (!k) return;
-      return sheetCheck(e, k.label, [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...(k.custom ? [] : roleSkillBonus(e, k.id))]);
+      return sheetCheck(e, k.label, [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...skillBonusAll(e, k)]);
     }
     if (type === "ability") {
       const r = rolesOf(e)[0], R = r && RL.roleById(r.id);
@@ -956,7 +981,7 @@
       note: `Penalità ${pen} → ${pen + 1} per il prossimo Death Save` };
   }
   function rollInitiative(e, extra = {}) {
-    const d = CPR.die(10), ref = statEff(e, "REF"), im = modsFor([...(sheetOf(e).mods || []), ...roleMods(e)], ["init"]);
+    const d = CPR.die(10), ref = statEff(e, "REF"), im = modsFor([...(sheetOf(e).mods || []), ...roleMods(e), ...cyberFx(e).mods], ["init"]);
     return postRoll({ kind: "init", who: e.name, entryId: e.id, label: "Initiative", dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }, ...im], total: d + ref + im.reduce((t, m) => t + m.v, 0), ...extra });
   }
 
@@ -980,7 +1005,9 @@
   function refreshSheetView(id) {
     const e = state.entries.find(x => x.id === id); if (!e) return;
     const box = $(`#modal .sh[data-sheet="${CSS.escape(id)}"]`), dt = $(`#modal .nd-tab[data-deck-tab="${CSS.escape(id)}"]`), cb = $(`#modal .cb[data-combat="${CSS.escape(id)}"]`), rt = $(`#modal .rl-tab[data-roles-tab="${CSS.escape(id)}"]`);
-    if (!box && !dt && !cb && !rt) return;
+    const cw = $(`#modal .cy-wrap[data-cyber="${CSS.escape(id)}"]`);
+    if (!box && !dt && !cb && !rt && !cw) return;
+    if (cw) { cw.outerHTML = cyberHtml(e); const fig = $("#modal .cy-figure"); if (fig) fig.dataset.zones.split(" ").filter(Boolean).forEach(z => $$(`.cy-zone[data-zone="${z}"]`, fig).forEach(n => n.classList.add("on"))); }
     if (rt) { const keep = $$("details[open]", rt).map(d => [...rt.querySelectorAll("details")].indexOf(d)); rt.outerHTML = rolesTabHtml(e); const n = $(`#modal .rl-tab[data-roles-tab="${CSS.escape(id)}"]`); keep.forEach(k => { const d = n.querySelectorAll("details")[k]; if (d) d.open = true; }); }
     const y = $("#modal").scrollTop;
     if (box) box.outerHTML = sheetHtml(e);
@@ -1019,7 +1046,7 @@
       const list = skills.filter(k => k.group === g && (showAll || k.lvl > 0));
       if (!list.length) return "";
       return `<section class="sk-group"><header>${esc(g)}</header>${list.map(k => roll(k.key, `
-        <span class="sk-n">${esc(k.label)}${k.x2 ? ` <i title="Costo doppio">×2</i>` : ""}</span><span class="sk-s">${k.stat}</span><span class="sk-l">${k.lvl}</span><span class="sk-b">${(() => { const rb = k.custom ? 0 : roleSkillBonus(e, k.id).reduce((t, b) => t + b.v, 0); return statEff(e, k.stat) + k.lvl + rb + (rb ? `<i class="sk-rb" title="Bonus di Ruolo">+${rb}</i>` : ""); })()}</span>`,
+        <span class="sk-n">${esc(k.label)}${k.x2 ? ` <i title="Costo doppio">×2</i>` : ""}</span><span class="sk-s">${k.stat}</span><span class="sk-l">${k.lvl}</span><span class="sk-b">${(() => { const rb = skillBonusAll(e, k).reduce((t, b) => t + b.v, 0); return statEff(e, k.stat) + k.lvl + rb + (rb ? `<i class="sk-rb" title="Bonus di Ruolo e cyberware">+${rb}</i>` : ""); })()}</span>`,
         "sk " + (k.lvl ? "" : "zero"), `Tira ${k.label}: ${k.stat} + livello + 1d10`)).join("")}</section>`;
     }).join("");
     const weapons = s.weapons || [];
@@ -1320,6 +1347,170 @@
     if (r.id === "fixer" && kind === "haggle") return sheetCheck(e, "Contrattare", [{ l: "COOL", v: statEff(e, "COOL") }, { l: "Trading", v: skillLvl(e, "trading") }, { l: "Operatore", v: rank }], { note: (RL.band(RL.FIXER, rank) || {}).haggle || "" });
   }
 
+
+  // ---------- CYBERWARE DAL CATALOGO: effetti, attivazioni, armi ----------
+  // ogni impianto può avere ref (voce del catalogo), on (effetto a comando attivo), param (abilità del Chip Abilità)
+  const rawBody = e => num((sheetOf(e).stats || {}).BODY);
+  const cyberFx = e => CW.effects(cyberItems(e), rawBody(e));
+  const skillBonusAll = (e, k) => k.custom ? [] : [...roleSkillBonus(e, k.id), ...CW.skillBonus(cyberFx(e), k.id, k.lvl)];
+  const cwOf = it => CW.byId(it.ref) || CW.byName(it.name);
+  // lista degli effetti del cyberware (tab Cyberware e Combattimento)
+  function cyberFxHtml(e, compact = false) {
+    const fx = cyberFx(e), edit = Store.canEdit(), id = esc(e.id), s = sheetOf(e);
+    const items = Object.entries((e.cyber && e.cyber.slots) || {}).flatMap(([slot, list]) => (list || []).map((it, i) => ({ it, slot, i, c: cwOf(it) }))).filter(x => x.c && x.it.installed !== false);
+    const conds = items.filter(x => (x.c.fx || []).some(f => f.cond));
+    const lines = [];
+    // abilità raggruppate per impianto (in Combattimento non servono)
+    if (!compact) { const by = {}; Object.entries(fx.skill).forEach(([sk, list]) => { const k = CPR.skill(sk); list.forEach(b => { (by[b.l] = by[b.l] || []).push(b.chip ? `${k ? k.label : sk} a livello 3` : `+${b.v} ${k ? k.label : sk}`); }); });
+      Object.entries(by).forEach(([n, l]) => lines.push(`${esc(n)}: ${esc(l.join(", "))}`)); }
+    fx.mods.forEach(m => lines.push(`${esc(m.name)}: ${m.value > 0 ? "+" : ""}${m.value} ${esc((CPR.MOD_TARGETS.find(t => t[0] === m.target) || [, m.target])[1])}`));
+    if (fx.body !== rawBody(e)) lines.push(`BODY ${rawBody(e)} → <b>${fx.body}</b> (PF, soglie delle ferite e Death Save aggiornati)`);
+    if (fx.pain) lines.push("Antidolorifico: ignori i malus di Seriously Wounded");
+    fx.armor.forEach(a => lines.push(`${esc(a.name)}: SP ${a.sp} a testa e corpo (imposta l'armatura «${esc(a.type === "subdermal" ? "Subdermal Armor" : "SP " + a.sp)}» nella scheda; vale la più alta)`));
+    const have = new Set((s.weapons || []).map(w => norm(w.name)));
+    const wpn = fx.weapons.map(w => `${esc(w.name)} (${esc(w.dmg)})${have.has(norm(w.name)) ? " ✓ nelle armi" : edit ? ` <button type="button" class="btn ghost small" data-action="cy-weapon" data-id="${id}" data-name="${esc(w.name)}">+ alle armi</button>` : ""}`);
+    if (!lines.length && !conds.length && !wpn.length) return compact ? "" : `<p class="hint">Gli impianti scelti dal catalogo con un effetto (bonus alle abilità, iniziativa, BODY…) lo applicano da soli ai tiri.</p>`;
+    return `<div class="cy-fx ${compact ? "compact" : ""}">
+      ${compact ? `<span class="sh-k">Cyberware</span>` : `<h4>Effetti del cyberware</h4>`}
+      ${conds.length ? `<div class="st-chips">${conds.map(x => { const f = x.c.fx.find(z => z.cond); return `<button type="button" class="chip ${x.it.on ? "active" : ""}" ${edit ? `data-action="cy-on" data-id="${id}" data-slot="${esc(x.slot)}" data-i="${x.i}"` : "disabled"} title="${esc(f.cond)}">${x.it.on ? "◉" : "○"} ${esc(x.c.name)} <small>${esc(f.cond)}</small></button>`; }).join("")}</div>` : ""}
+      ${!compact && lines.length ? `<ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul>` : compact && lines.length ? `<span class="hint">${lines.join(" · ")}</span>` : ""}
+      ${wpn.length && !compact ? `<div class="cy-wpn"><span class="sh-k">Armi integrate</span> ${wpn.join(" · ")}</div>` : ""}
+    </div>`;
+  }
+  const norm2 = s => String(s || "").toLowerCase().trim();
+  async function cyberPatch(id, fn) {
+    const e = state.entries.find(x => x.id === id); if (!e) return;
+    const rec = { ...e, cyber: fn(JSON.parse(JSON.stringify(e.cyber || {}))) };
+    upsert(state.entries, rec); refreshSheetView(id); refreshParty();
+    try { const saved = await Store.save("entries", rec); upsert(state.entries, saved); liveSend("entries", saved); } catch (err) { fail(err); }
+  }
+  // scelta dal catalogo nel modulo del cyberware: le voci del gruppo dello slot in cima
+  const slotGroup = slotId => (CW.GROUPS.find(g => g.slot === slotId.replace(/_sx$/, "_dx")) || {}).id || "";
+  const cwOptions = slotId => {
+    const g0 = slotGroup(slotId), groups = [...CW.GROUPS].sort((a, b) => (b.id === g0) - (a.id === g0) || (g0 === "arm" && b.id === "limbcover") - (g0 === "arm" && a.id === "limbcover"));
+    return `<option value="">+ dal catalogo…</option>` + groups.map(g => {
+      const list = CW.all().filter(c => c.g === g.id); if (!list.length) return "";
+      return `<optgroup label="${esc(g.label)}">${list.map(c => `<option value="${esc(c.id)}">${c.custom ? "★ " : ""}${esc(c.name)} · ${c.cost.toLocaleString("it-IT")} E$ · PU ${c.pu}${c.dice && c.dice !== "N/A" ? ` (${c.dice})` : ""}</option>`).join("")}</optgroup>`;
+    }).join("");
+  };
+  const shortDesc = c => { const d = String(c.desc || ""); const cut = d.indexOf(". "); return (cut > 0 && cut < 110 ? d.slice(0, cut + 1) : d.slice(0, 110)).trim(); };
+
+  // ---------- cyberware custom (meta "cyberhb") ----------
+  const cyberHbRec = () => state.cyberhb || { id: "cyberhb", items: [] };
+  function editCyberHb(cid) {
+    if (!Store.canEdit()) return;
+    const R = cyberHbRec(), old = (R.items || []).find(x => x.id === cid) || {};
+    const f0 = (old.fx || [])[0] || {};
+    const skOpts = v => `<option value="">—</option>` + CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === v ? "selected" : ""}>${esc(k.label)}</option>`).join("");
+    openModal(`
+      <form class="form" id="cyhb-form">
+        <div class="modal-head"><h2>// ★ CYBERWARE CUSTOM</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+        <div class="modal-body"><div class="fields">
+          <div class="field full"><label class="req">Nome</label><input name="name" required value="${esc(old.name || "")}"></div>
+          <div class="field"><label>Tipo</label><select name="g">${CW.GROUPS.map(g => `<option value="${g.id}" ${g.id === (old.g || "internal") ? "selected" : ""}>${esc(g.label)}</option>`).join("")}</select></div>
+          <div class="field"><label>Installazione</label><select name="inst">${["Centro Commerciale", "Clinica", "Ospedale", "N/A"].map(x => `<option ${x === (old.inst || "Clinica") ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+          <div class="field"><label>Costo (E$)</label><input name="cost" type="number" min="0" value="${esc(old.cost ?? 500)}"></div>
+          <div class="field"><label>Categoria di prezzo</label><input name="cat" value="${esc(old.cat || "Oneroso")}"></div>
+          <div class="field"><label>PU media</label><input name="pu" type="number" min="0" value="${esc(old.pu ?? 7)}"></div>
+          <div class="field"><label>PU (dadi)</label><input name="dice" value="${esc(old.dice || "2d6")}" placeholder="2d6, 1d6/2, N/A"></div>
+          <div class="field"><label>Slot occupati</label><input name="slots" type="number" min="0" max="7" value="${esc(old.slots ?? 1)}"></div>
+          <div class="field"><label>Richiede</label><input name="req" value="${esc(old.req || "")}" placeholder="es. Cyberbraccio, 2 Slot"></div>
+          <div class="field full"><label>Descrizione</label><textarea name="desc" rows="3">${esc(old.desc || "")}</textarea></div>
+          <h3 class="sh-h field full">Effetto nei tiri <small>facoltativo</small></h3>
+          <div class="field"><label>Tipo di effetto</label><select name="ft">${[["", "Nessuno"], ["skill", "Bonus a un'abilità"], ["mod", "Bonus a un tipo di tiro"], ["body", "+ BODY"], ["weapon", "Arma integrata"], ["pain", "Ignora Seriously Wounded"]].map(([v, l]) => `<option value="${v}" ${v === (f0.t || "") ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+          <div class="field"><label>Valore (±)</label><input name="fv" type="number" min="-10" max="10" value="${esc(f0.v ?? 2)}"></div>
+          <div class="field"><label>Abilità (bonus a un'abilità)</label><select name="fs">${skOpts((f0.skills || [])[0] || "")}</select></div>
+          <div class="field"><label>Seconda abilità</label><select name="fs2">${skOpts((f0.skills || [])[1] || "")}</select></div>
+          <div class="field"><label>Tipo di tiro (bonus a un tipo)</label><select name="fm">${CPR.MOD_TARGETS.map(([v, l]) => `<option value="${v}" ${v === (f0.target || "attack") ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+          <div class="field"><label>Solo a comando (es. «Attivato»)</label><input name="fc" value="${esc(f0.cond || "")}" placeholder="vuoto = sempre attivo"></div>
+          <div class="field"><label>Arma: categoria</label><select name="fwc">${CPR.WEAPON_TYPES.map(t => `<option value="${t.id}" ${t.id === (f0.cat || "mmelee") ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</select></div>
+          <div class="field"><label>Arma: danno</label><input name="fwd" value="${esc(f0.dmg || "2d6")}"></div>
+        </div></div>
+        <div class="modal-foot">
+          ${old.id ? `<button type="button" class="btn ghost small left danger" data-cyhb-del>Elimina</button>` : `<button type="button" class="btn ghost small left" data-action="close">Annulla</button>`}
+          <button type="submit" class="btn">Salva</button>
+        </div>
+      </form>`);
+    const form = $("#cyhb-form");
+    const save = async items => {
+      try {
+        const saved = await Store.save("meta", { ...cyberHbRec(), id: "cyberhb", items });
+        state.cyberhb = saved; CW.setHomebrew(saved); liveSend("meta", saved);
+        closeModal(); route(); toast("Cyberware custom salvato", "ok");
+      } catch (err) { fail(err); }
+    };
+    $("[data-cyhb-del]", form) && $("[data-cyhb-del]", form).addEventListener("click", async () => {
+      if (await askConfirm(`Eliminare «${old.name}» dal catalogo? Gli impianti già nelle schede restano, ma senza effetti.`)) save((R.items || []).filter(x => x.id !== old.id));
+    });
+    form.addEventListener("submit", ev => {
+      ev.preventDefault();
+      const v = k => form.elements[k].value.trim(), ft = v("ft");
+      if (ft === "weapon" && !CPR.parse(v("fwd"))) return toast("Danno dell'arma non valido (es. 2d6)", "err");
+      const fx = !ft ? [] : [{ t: ft, v: num(v("fv")), ...(ft === "skill" ? { skills: [v("fs"), v("fs2")].filter(Boolean) } : {}), ...(ft === "mod" ? { target: v("fm") } : {}),
+        ...(ft === "body" ? { max: 10 } : {}), ...(ft === "weapon" ? { name: v("name"), cat: v("fwc"), dmg: v("fwd"), rof: (CPR.weaponType(v("fwc")) || {}).rof || 1 } : {}), ...(v("fc") ? { cond: v("fc") } : {}) }];
+      if (ft === "skill" && !fx[0].skills.length) return toast("Scegli almeno un'abilità", "err");
+      const item = { id: old.id || "cw-" + NET.uid(), name: v("name"), g: v("g"), inst: v("inst"), cost: num(v("cost")), cat: v("cat"), pu: num(v("pu")), dice: v("dice") || "N/A", slots: num(v("slots")), req: v("req"), desc: v("desc"), fx };
+      save(old.id ? R.items.map(x => x.id === old.id ? item : x) : [...(R.items || []), item]);
+    });
+  }
+
+  // ---------- GLOSSARIO: tutti i cataloghi del sito ----------
+  const GLOSS_TABS = [["cyber", "Cyberware"], ["weapons", "Armi e armature"], ["rules", "Munizioni e stati"], ["crit", "Critical Injury"], ["net", "NET"]];
+  let glossQ = "", glossG = "";
+  function viewGlossary() {
+    const tab = ls.get("nc-gloss", "cyber");
+    return `
+      <div class="page-head">
+        <div><div class="kicker">// DATA_FORTRESS</div><h1>Glossario</h1><p>Tutti i cataloghi del sito: cyberware, armi, munizioni, stati, Critical Injury e NET. Le voci ★ sono custom.</p></div>
+        <div class="row-btns">${tab === "cyber" && Store.canEdit() ? `<button type="button" class="btn small yellow" data-action="cyhb-edit">★ + Cyberware custom</button>` : ""}</div>
+      </div>
+      <div class="chips gl-tabs">${GLOSS_TABS.map(([id, l]) => `<button type="button" class="chip ${id === tab ? "active" : ""}" data-action="gloss-tab" data-tab="${id}">${l}</button>`).join("")}</div>
+      <div id="gloss-body">${glossBody(tab)}</div>`;
+  }
+  function glossBody(tab) {
+    if (tab === "cyber") {
+      const q = norm2(glossQ), list = CW.all().filter(c => (!glossG || c.g === glossG) && (!q || norm2(`${c.name} ${c.desc} ${c.req || ""}`).includes(q)));
+      return `<div class="gl-filters"><input type="search" data-gloss-q placeholder="cerca: nome, effetto, requisito…" value="${esc(glossQ)}">
+          <select data-gloss-g><option value="">Tutti i tipi</option>${CW.GROUPS.map(g => `<option value="${g.id}" ${g.id === glossG ? "selected" : ""}>${esc(g.label)}</option>`).join("")}</select>
+          <span class="hint">${list.length} voci · un impianto occupa 1 Slot salvo indicazione</span></div>
+        <div class="gl-wrap"><table class="gl-t">
+          <thead><tr><th>Nome</th><th>Tipo</th><th>Installazione</th><th>Descrizione</th><th>Costo</th><th>PU</th></tr></thead>
+          <tbody>${CW.GROUPS.filter(g => list.some(c => c.g === g.id)).map(g => `<tr class="gl-grp"><th colspan="6">${esc(g.label)}${g.note ? ` <small>${esc(g.note)}</small>` : ""}</th></tr>` +
+            list.filter(c => c.g === g.id).map(c => `<tr class="${c.base ? "gl-base" : ""}">
+              <td><b>${c.custom ? "★ " : ""}${esc(c.name)}</b>${c.custom && Store.canEdit() ? ` <button type="button" class="gp-btn" data-action="cyhb-edit" data-id="${esc(c.id)}" aria-label="Modifica">✎</button>` : ""}${(c.fx || []).length ? ` <span class="gl-fx" title="Effetto applicato ai tiri">⚡</span>` : ""}</td>
+              <td>${esc(g.label)}</td><td>${esc(c.inst)}</td>
+              <td>${esc(c.desc)}${c.req ? `<small>Richiede: ${esc(c.req)}${c.slots > 1 ? ` · ${c.slots} Slot` : ""}</small>` : c.slots === 0 ? `<small>Nessuno Slot</small>` : ""}</td>
+              <td class="gl-n">${c.cost.toLocaleString("it-IT")} E$<small>${esc(c.cat || "")}</small></td><td class="gl-n">${c.pu}<small>${esc(c.dice || "")}</small></td></tr>`).join("")).join("")}</tbody></table></div>
+        <p class="hint">⚡ = effetto già applicato ai tiri quando l'impianto è nella scheda (alcuni solo a comando, con l'interruttore nella tab Cyberware).</p>`;
+    }
+    if (tab === "weapons") return `<div class="gl-wrap"><table class="gl-t"><thead><tr><th>Arma</th><th>Abilità</th><th>Danno</th><th>ROF</th><th>Caricatore</th><th>Autofire</th><th>Munizioni</th><th>VD per distanza</th></tr></thead>
+        <tbody>${CPR.WEAPON_TYPES.map(w => { const T = CPR.rangeById(CPR.rangeDefault(w.id)); return `<tr><td><b>${esc(w.label)}</b></td><td>${esc((CPR.skill(w.skill) || {}).label || w.skill)}</td><td>${esc(w.dmg === "BODY" ? "secondo il BODY" : w.dmg)}</td><td>${w.rof}</td><td>${w.mag || "—"}</td><td>${w.auto ? "×" + w.auto : "—"}</td><td>${esc(w.ammo || "—")}</td><td>${T ? T.dv.map(x => x == null ? "–" : x).join(" / ") : "—"}</td></tr>`; }).join("")}</tbody></table></div>
+      <h3 class="sh-h">Tabelle delle distanze <small>${CPR.RANGE_BANDS.join(" · ")}</small></h3>
+      <div class="gl-wrap"><table class="gl-t"><tbody>${CPR.RANGE_TABLES.map(t => `<tr><th>${esc(t.label)}</th>${t.dv.map(x => `<td class="gl-n">${x == null ? "N/A" : x}</td>`).join("")}</tr>`).join("")}
+        <tr class="gl-grp"><th colspan="9">Autofire (fino a 100 m)</th></tr>${CPR.AUTO_TABLES.map(t => `<tr><th>${esc(t.label)}</th>${t.dv.map(x => `<td class="gl-n">${x}</td>`).join("")}<td colspan="3"></td></tr>`).join("")}</tbody></table></div>
+      <h3 class="sh-h">Armature</h3>
+      <div class="gl-wrap"><table class="gl-t"><thead><tr><th>Armatura</th><th>SP</th><th>Malus a REF, DEX, MOVE</th></tr></thead><tbody>${CPR.ARMOR_TYPES.filter(a => a.sp).map(a => `<tr><td><b>${esc(a.label)}</b></td><td class="gl-n">${a.sp}</td><td class="gl-n">${a.pen || "—"}</td></tr>`).join("")}</tbody></table></div>`;
+    if (tab === "rules") return `<h3 class="sh-h">Munizioni ${isGm() ? `<button type="button" class="btn ghost small" data-action="gm-rules">Modifica</button>` : ""}</h3>
+      <div class="gl-wrap"><table class="gl-t"><thead><tr><th>Munizione</th><th>Per</th><th>Colpire</th><th>Danno</th><th>Effetto</th></tr></thead><tbody>
+        <tr><td><b>Standard</b></td><td>tutte</td><td>—</td><td>quello dell'arma</td><td></td></tr>
+        ${(rules().ammo || []).map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.fam || "tutte")}</td><td class="gl-n">${num(a.atk) || "—"}</td><td>${esc(a.dmg || "quello dell'arma")}${num(a.dmgMod) ? ` ${a.dmgMod > 0 ? "+" : ""}${a.dmgMod}` : ""}</td><td>${esc(a.eff || "")}</td></tr>`).join("")}</tbody></table></div>
+      <h3 class="sh-h">Stati</h3>
+      <div class="gl-wrap"><table class="gl-t"><thead><tr><th>Stato</th><th>Prove</th><th>Danno per round</th><th>Effetto</th></tr></thead><tbody>${statusList().map(s => `<tr><td><b>${esc(s.name)}</b></td><td class="gl-n">${num(s.atk) || "—"}</td><td>${esc(s.dmg || "—")}</td><td>${esc(s.eff || "")}</td></tr>`).join("")}</tbody></table></div>
+      <h3 class="sh-h">Colpi mirati <small>−8 al tiro</small></h3>
+      <ul class="rl-list">${CPR.AIMED.map(a => `<li><b>${esc(a.label)}</b>: ${esc(a.eff)}</li>`).join("")}</ul>`;
+    if (tab === "crit") return ["body", "head"].map(loc => `<h3 class="sh-h">Critical Injury · ${loc === "head" ? "testa" : "corpo"} <small>2d6 · +5 danni diretti</small></h3>
+      <div class="gl-wrap"><table class="gl-t"><thead><tr><th>2d6</th><th>Ferita</th><th>Effetto</th><th>Death Save</th></tr></thead><tbody>${(loc === "head" ? CPR.CRIT_HEAD : CPR.CRIT_BODY).map(c => `<tr><td class="gl-n">${c.n}</td><td><b>${esc(c.name)}</b></td><td>${esc(c.eff)}</td><td class="gl-n">${c.dsp ? "+1" : "—"}</td></tr>`).join("")}</tbody></table></div>`).join("");
+    if (tab === "net") return `<h3 class="sh-h">Programmi</h3>
+      <div class="gl-wrap"><table class="gl-t"><thead><tr><th>Programma</th><th>Classe</th><th>ATK</th><th>DEF</th><th>REZ</th><th>Effetto</th><th>Costo</th></tr></thead><tbody>${NET.PROGRAMS.map(p => `<tr><td><b>${esc(p.name)}</b></td><td>${esc(NET.CLASSES[p.cls].label)}</td><td class="gl-n">${p.atk}</td><td class="gl-n">${p.def}</td><td class="gl-n">${p.rez}</td><td>${esc(p.eff)}</td><td class="gl-n">${p.cost} E$</td></tr>`).join("")}</tbody></table></div>
+      <h3 class="sh-h">Black ICE</h3>
+      <div class="gl-wrap"><table class="gl-t"><thead><tr><th>Black ICE</th><th>Classe</th><th>PER</th><th>VEL</th><th>ATT</th><th>DIF</th><th>REZ</th><th>Effetto</th></tr></thead><tbody>${NET.allIce().map(c => `<tr><td><b>${c.homebrew ? "★ " : ""}${esc(NET.iceLabel(c))}</b></td><td>${esc(NET.CLASSES[c.cls].short)}</td><td class="gl-n">${c.per}</td><td class="gl-n">${c.spd}</td><td class="gl-n">${c.atk}</td><td class="gl-n">${c.def}</td><td class="gl-n">${c.rez}</td><td>${esc(c.eff)}</td></tr>`).join("")}</tbody></table></div>
+      <h3 class="sh-h">Hardware del Cyberdeck</h3>
+      <div class="gl-wrap"><table class="gl-t"><tbody>${NET.HARDWARE.map(h => `<tr><td><b>${esc(h.name)}</b></td><td class="gl-n">${h.slots} slot</td><td>${esc(h.eff)}</td></tr>`).join("")}</tbody></table></div>
+      <h3 class="sh-h">Demoni</h3>
+      <div class="gl-wrap"><table class="gl-t"><thead><tr><th>Demone</th><th>REZ</th><th>Interface</th><th>Azioni NET</th><th>Combattimento</th></tr></thead><tbody>${NET.allDemons().map(d => `<tr><td><b>${d.homebrew ? "★ " : ""}${esc(d.name)}</b></td><td class="gl-n">${d.rez}</td><td class="gl-n">${d.iface}</td><td class="gl-n">${d.actions}</td><td class="gl-n">${d.combat}</td></tr>`).join("")}</tbody></table></div>`;
+    return "";
+  }
+
   // ---------- tab COMBATTIMENTO: HP, armatura, iniziativa, stati, modificatori, armi, Critical Injury ----------
   // ---------- ARMI: la stessa scheda per PG/NPC con scheda e per i nemici del GM ----------
   // X = sorgente dell'arma: addendi del colpo singolo e dell'autofire, danno, tabelle delle VD, come salvare e ridisegnare.
@@ -1344,7 +1535,7 @@
     const s = sheetOf(e), w = (s.weapons || [])[i]; if (!w) return null;
     const k = skillByKey(e, weaponSkillKey(w.skill)) || skillByKey(e, "skill:handgun"), af = skillByKey(e, "skill:autofire");
     return finishSrc({
-      kind: "pc", id: e.id, i, key: `pc:${e.id}:${i}`, w, cat: sheetWeaponCat(w), mods: [...(s.mods || []), ...roleMods(e)], skillLabel: k.label,
+      kind: "pc", id: e.id, i, key: `pc:${e.id}:${i}`, w, cat: sheetWeaponCat(w), mods: [...(s.mods || []), ...roleMods(e), ...cyberFx(e).mods], skillLabel: k.label,
       weakness: num((caOf(e) || {}).weakness),
       fix: r => { const ca = caOf(e); if (ca && num(ca.recover) && CPR.FIREARMS.includes(sheetWeaponCat(w)) && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il dado conta come 1)"; } },
       single: [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }],
@@ -1366,7 +1557,7 @@
     const af = D.skills.find(s => s.id === "autofire"), ca = D.ability && D.ability.ca;
     const raw = (enemyOf(e).weapons || [])[i] || {};
     return finishSrc({
-      kind: "en", id: e.id, i, tok: t ? t.id : "", key: `en:${e.id}:${t ? t.id : "m"}:${i}`, w: { ...raw, name: wp.name }, cat: wp.cat, baseDmg: wp.dmg, mods: [], skillLabel: wp.skillLabel,
+      kind: "en", id: e.id, i, tok: t ? t.id : "", key: `en:${e.id}:${t ? t.id : "m"}:${i}`, w: { ...raw, name: wp.name }, cat: wp.cat, baseDmg: wp.dmg, mods: D.cyberMods || [], skillLabel: wp.skillLabel,
       sub: `${formula(wp, pen)}${wp.hq ? " · HQ" : wp.poor ? " · Poor: si inceppa con un 1" : ""}`,
       single: [{ l: wp.stat, v: wp.statV }, { l: wp.skillLabel, v: wp.lvl }, ...wp.bonus, ...arm(wp.stat)],
       auto: [{ l: "REF", v: D.stats.REF.v }, { l: "Autofire", v: af ? af.lvl : 0 }, ...(af ? af.bonus : []), ...wp.bonus.filter(b => b.role), ...arm("REF")], afLvl: af ? af.lvl : 0,
@@ -1490,7 +1681,7 @@
     const arm = loc => spBar(loc === "head" ? "Head" : "Body", armorOf(e, loc), edit && (d => `data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="${d}"`));
     const weapons = s.weapons || [];
     const mods = (s.mods || []).filter(m => m.on !== false && num(m.value));
-    const im = modsFor([...(s.mods || []), ...roleMods(e)], ["init"]).reduce((t, m) => t + m.v, 0);
+    const im = modsFor([...(s.mods || []), ...roleMods(e), ...cyberFx(e).mods], ["init"]).reduce((t, m) => t + m.v, 0);
     const ca = caOf(e);
     return `
       <div class="cb sh" data-combat="${id}">
@@ -1524,6 +1715,7 @@
         ${pcPen(e) ? `<div class="en-pen">Armatura pesante: ${pcPen(e)} a REF, DEX e MOVE (già calcolato nei valori e nei tiri)</div>` : ""}
         <div class="sh-status"><span class="sh-k">Stati</span>${statusChips(s.status, edit ? sheetStatusAttrs(e) : null)}</div>
         ${mods.length ? `<div class="sh-mods"><span class="sh-k">Modificatori speciali</span>${mods.map(m => `<span class="st-chip" title="${esc(m.note || "")}">${esc(m.name || "Modificatore")} <b>${num(m.value) > 0 ? "+" : ""}${num(m.value)}</b> <small>${esc((CPR.MOD_TARGETS.find(t => t[0] === m.target) || [, ""])[1])}</small></span>`).join("")}</div>` : ""}
+        ${cyberFxHtml(e, true)}
         <div class="sh-sec-head"><h4>Weapons</h4></div>
         ${weapons.length ? `<div class="sh-weapons">${weapons.map((_, i) => cbCard(pcSrc(e, i))).join("")}</div>` : `<p class="hint">Nessuna arma: aggiungile da «Modifica scheda».</p>`}
         ${critBlock(e, edit)}
@@ -1685,7 +1877,7 @@
   const sheetWeaponCat = w => w.cat || CPR.guessWeapon(w.name, w.skill);
   function sheetExtra(e) {
     const s = sheetOf(e), w = woundOf(e), out = [];
-    if (w.pen) out.push({ l: w.label, v: w.pen });
+    if (w.pen && !(w.id === "serious" && cyberItems(e).length && cyberFx(e).pain)) out.push({ l: w.label, v: w.pen });
     out.push(...statusParts(s.status), ...modsFor(s.mods, ["all"]));
     if (sheetMod) out.push({ l: "MOD", v: sheetMod });
     return out;
@@ -3525,7 +3717,8 @@
             <span>${esc(s.label)}${s.elite10 ? " ⚡" : ""}${s.fromRole ? " ◈" : ""}</span><span>${esc(s.stat)} ${s.statV}</span><span>${s.lvl}</span><span>${s.nat}</span><span>${fmtBonus(s.bonus) || "—"}</span>
             <span><b>${s.eff}</b>${s.effArmor !== s.eff ? ` <span class="pen">(${s.effArmor})</span>` : ""}</span></button>`).join("")}
         </div>
-        ${E.cyber || D.extraCyber.length || E.bodyImplant ? `<div class="block"><h4>Cyberware</h4><div class="prewrap">${esc([E.cyber, ...D.extraCyber, E.bodyImplant ? CPR.bodyImplant(E.bodyImplant).label : ""].filter(Boolean).join(", "))}</div></div>` : ""}
+        ${(E.cyberRefs || []).length ? `<div class="block"><h4>Cyberware</h4><div class="st-chips">${E.cyberRefs.map(x => { const c = CW.byId(x.ref) || { name: x.ref }; return `<span class="st-chip" title="${esc(c.desc || "")}">${esc(c.name)}${(c.fx || []).length ? " ⚡" : ""}${x.param ? ` <small>${esc((CPR.skill(x.param) || {}).label || "")}</small>` : ""}${(c.fx || []).some(f => f.cond) ? ` <small>${x.on ? "attivo" : "spento"}</small>` : ""}</span>`; }).join("")}</div></div>` : ""}
+        ${E.cyber || D.extraCyber.length || E.bodyImplant ? `<div class="block"><h4>${(E.cyberRefs || []).length ? "Altro cyberware" : "Cyberware"}</h4><div class="prewrap">${esc([E.cyber, ...D.extraCyber, E.bodyImplant ? CPR.bodyImplant(E.bodyImplant).label : ""].filter(Boolean).join(", "))}</div></div>` : ""}
         ${E.gear ? `<div class="block"><h4>Gear</h4><div class="prewrap">${esc(E.gear)}</div></div>` : ""}
         ${E.notes ? `<div class="block"><h4>Note</h4><div class="prewrap">${esc(E.notes)}</div></div>` : ""}
       </div>`;
@@ -3613,7 +3806,8 @@
           <div id="en-elite"></div>
           <div id="en-check" class="en-check" aria-live="polite"></div>
           <div class="fields" style="margin-top:16px">
-            <div class="field full"><label for="en-cy">Cyberware</label><textarea id="en-cy" name="cyber" rows="2">${esc(E0.cyber || "")}</textarea></div>
+            <div class="field full"><span class="lbl">Cyberware dal catalogo <small>i bonus valgono nei tiri</small></span><div id="en-cw"></div></div>
+            <div class="field full"><label for="en-cy">Altro cyberware (testo libero)</label><textarea id="en-cy" name="cyber" rows="2">${esc(E0.cyber || "")}</textarea></div>
             <div class="field full"><label for="en-gear">Gear</label><textarea id="en-gear" name="gear" rows="2">${esc(E0.gear || "")}</textarea></div>
             <div class="field full"><label for="en-notes">Note (tattiche, comportamento)</label><textarea id="en-notes" name="notes" rows="2">${esc(E0.notes || "")}</textarea></div>
           </div>
@@ -3626,6 +3820,12 @@
     const form = $("#enemy-form");
     let picks = [...(E0.picks || [])], comp = E0.comp || "sp", frameBody = E0.frameBody || 16;
     let ca = E0.ca ? { ...E0.ca } : null, med = E0.med ? { ...E0.med } : null;
+    let cwRefs = JSON.parse(JSON.stringify(E0.cyberRefs || []));
+    const renderCw = () => {
+      $("#en-cw", form).innerHTML = `<div class="st-chips">${cwRefs.map((x, k) => { const c = CW.byId(x.ref) || { name: x.ref }; const cond = (c.fx || []).find(f => f.cond);
+        return `<span class="st-chip" title="${esc(c.desc || "")}">${esc(c.name)}${c.id === "skillchip" ? ` <select data-cw-param="${k}" class="st-add">${CPR.SKILLS.map(s => `<option value="${s.id}" ${s.id === x.param ? "selected" : ""}>${esc(s.label)}</option>`).join("")}</select>` : ""}${cond ? ` <label class="check" title="${esc(cond.cond)}"><input type="checkbox" data-cw-on="${k}" ${x.on ? "checked" : ""}> attivo</label>` : ""} <button type="button" class="gp-btn del" data-cw-del="${k}" aria-label="Togli">✕</button></span>`; }).join("")}
+        <select class="st-add" data-cw-add aria-label="Aggiungi cyberware">${cwOptions("")}</select></div>`;
+    };
     const readForm = () => {
       const v = n => (form.elements[n] ? form.elements[n].value.trim() : ""), nv = n => v(n) === "" ? null : num(v(n));
       const armor = {};
@@ -3644,6 +3844,7 @@
         extraPoints: Math.max(0, num(v("extraPoints"))), frameBody, comp, picks,
         cyber: v("cyber"), gear: v("gear"), notes: v("notes"),
         deck: role === "netrunner" ? readDeck($("#en-deck-box", form), E0.deck || null) : null,
+        cyberRefs: cwRefs,
       };
     };
     // Netrunner: Cyberdeck modificabile (resta com'è mentre cambi il resto della scheda)
@@ -3655,6 +3856,15 @@
     };
     const ndCount = () => { const ev = new Event("input", { bubbles: true }); const el = $("#en-deck-box [data-nd=name]", form); if (el) el.dispatchEvent(ev); };
     bindDeckEditor($("#en-deck-box", form));
+    renderCw();
+    $("#en-cw", form).addEventListener("change", ev => {
+      const t = ev.target;
+      if (t.matches("[data-cw-add]") && t.value) { cwRefs.push({ ref: t.value, ...(t.value === "skillchip" ? { param: "perception" } : {}) }); renderCw(); refresh(); }
+      if (t.matches("[data-cw-param]")) { cwRefs[num(t.dataset.cwParam)].param = t.value; refresh(); }
+      if (t.matches("[data-cw-on]")) { cwRefs[num(t.dataset.cwOn)].on = t.checked; refresh(); }
+      ev.stopPropagation();
+    });
+    $("#en-cw", form).addEventListener("click", ev => { const d = ev.target.closest("[data-cw-del]"); if (d) { cwRefs.splice(num(d.dataset.cwDel), 1); renderCw(); refresh(); } });
     renderDeck(E0.role, E0.deck || (E0.role === "netrunner" ? NET.autoDeck(E0.tier, E0.level) : null));
     // Capacità di Ruolo: Sensi da Combattimento (punti per uso) o Medicina (punti per specializzazione)
     const renderRole = E => {
@@ -5048,9 +5258,9 @@
     if (col === "meta") {
       const r = msg.rec; if (!r) return;
       if (r.id === "site") applySharedMap(r.tableMap);
-      if (r.id === "rules" || r.id === "nethb") {
-        if (r.id === "rules") state.rules = r; else { state.nethb = r; NET.setHomebrew(r); }
-        if (!$("#modal form")) { if (/^#\/(gm|net|party)/.test(location.hash) && !$("#modal").open) route(); }
+      if (r.id === "rules" || r.id === "nethb" || r.id === "cyberhb") {
+        if (r.id === "rules") state.rules = r; else if (r.id === "cyberhb") { state.cyberhb = r; CW.setHomebrew(r); } else { state.nethb = r; NET.setHomebrew(r); }
+        if (!$("#modal form")) { if (/^#\/(gm|net|party|glossario)/.test(location.hash) && !$("#modal").open) route(); }
       }
       return;
     }
@@ -5506,6 +5716,15 @@
       case "log-clear": ls.set("nc-log-cleared", new Date().toISOString()); renderLogs(); toast("Dice log pulito su questo dispositivo: i tiri restano salvati"); break;
       case "log-wipe": wipeLog(); break;
       case "log-unclear": ls.set("nc-log-cleared", ""); renderLogs(); break;
+      case "cy-on": cyberPatch(id, c => { const it = ((c.slots || {})[el.dataset.slot] || [])[num(el.dataset.i)]; if (it) it.on = !it.on; return c; }); break;
+      case "cy-weapon": {
+        const e = state.entries.find(x => x.id === id), w = e && cyberFx(e).weapons.find(x => x.name === el.dataset.name); if (!w || !Store.canEdit()) break;
+        const T = CPR.weaponType(w.cat) || {};
+        sheetPatch(id, s => { s.weapons = [...(s.weapons || []), { name: w.name, cat: w.cat, skill: T.skill || "melee", dmg: w.dmg, rof: w.rof || T.rof || 1, mag: "", note: [w.note, "cyberware"].filter(Boolean).join(" · ") }]; return s; });
+        toast(`${w.name} aggiunta alle armi`, "ok"); break;
+      }
+      case "cyhb-edit": editCyberHb(id); break;
+      case "gloss-tab": ls.set("nc-gloss", el.dataset.tab); route(); break;
       case "cb-roll": cbRoll(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), el.dataset.mode || "single"); break;
       case "cb-dmg": cbDamage(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.mult)); break;
       case "sheet-status": { const e = state.entries.find(x => x.id === el.dataset.stSheet); if (e && Store.canEdit()) statusOp(el, sheetStatusApply(e)); break; }
@@ -5585,6 +5804,7 @@
       if (t.dataset.stTok) { const k = state.tokens.find(x => x.id === t.dataset.stTok); if (k && Store.canEdit()) statusOp(t, tokStatusApply(k)); }
       return;
     }
+    if (t.matches("[data-gloss-g]")) { glossG = t.value; const b = $("#gloss-body"); if (b) b.innerHTML = glossBody("cyber"); return; }
     if (t.matches("[data-roll-as]")) { ls.set("nc-as", t.value || null); $$("[data-roll-as]").forEach(s => { s.value = t.value; }); }
     // cambio mappa: solo per me; il GM poi può premere "Mostra a tutti"
     if (t.matches("[data-secret]")) { secretRoll = t.checked; ls.set("nc-secret", secretRoll); $$("[data-secret]").forEach(c => { c.checked = secretRoll; }); $$(".roll-form").forEach(f => f.classList.toggle("is-secret", secretRoll)); return; }
@@ -5596,6 +5816,7 @@
     }
   });
   document.addEventListener("input", ev => {
+    if (ev.target.matches("[data-gloss-q]")) { glossQ = ev.target.value; const b = $("#gloss-body"); if (b) { b.innerHTML = glossBody("cyber"); const i = $("[data-gloss-q]", b); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } return; }
     if (ev.target.matches("[data-sheet-mod]")) sheetMod = Math.trunc(num(ev.target.value));
   });
 

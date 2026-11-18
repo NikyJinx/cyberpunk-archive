@@ -1936,3 +1936,33 @@ button.en-tr:hover, button.en-tr:focus-visible { background: rgba(243,230,0,.08)
 .rl-hint { color: var(--cyan); }
 .sk-rb { font-style: normal; font-family: var(--font-mono); font-size: 10px; color: var(--cyan); margin-left: 3px; }
 .roll-tools { display: flex; gap: 6px; justify-content: flex-end; margin: 4px 0; }
+
+/* ============================================================
+   v20 · catalogo cyberware e Glossario
+   ============================================================ */
+.cy-row .cy-param { display: none; }
+.cy-row.chip .cy-param { display: block; }
+.cy-pick { width: auto; max-width: 340px; padding: 4px 8px; font-size: 14px; }
+.cy-fx { margin-top: 16px; padding: 10px 12px; border: 1px solid rgba(255,43,214,.35); border-left: 3px solid var(--magenta); background: rgba(255,43,214,.04); display: grid; gap: 6px; }
+.cy-fx h4 { margin: 0; color: var(--magenta); font-family: var(--font-head); font-size: 13px; letter-spacing: .14em; text-transform: uppercase; }
+.cy-fx ul { margin: 0; padding-left: 18px; font-size: 14.5px; display: grid; gap: 2px; }
+.cy-fx.compact { margin: 8px 0; padding: 6px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cy-fx .chip small { color: var(--muted); margin-left: 4px; }
+.cy-fx .chip.active small { color: #07070b; }
+.cy-wpn { font-size: 14px; }
+.gl-fx { font-style: normal; color: var(--yellow); }
+.gl-tabs { margin: 6px 0 14px; }
+.gl-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.gl-filters input { flex: 1 1 260px; }
+.gl-filters select { width: auto; }
+.gl-wrap { overflow-x: auto; margin-bottom: 14px; }
+.gl-t { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px; }
+.gl-t th, .gl-t td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+.gl-t thead th { color: var(--muted); font-family: var(--font-mono); font-size: 12px; font-weight: 400; background: rgba(255,255,255,.02); position: sticky; top: 0; }
+.gl-t tbody th { color: var(--cyan); white-space: nowrap; }
+.gl-t td b { color: var(--text); }
+.gl-t td small { display: block; color: #b9b9cf; font-size: 12.5px; margin-top: 2px; }
+.gl-t .gl-n { white-space: nowrap; font-family: var(--font-mono); }
+.gl-t tr.gl-grp th { background: rgba(255,43,214,.08); color: var(--magenta); font-family: var(--font-head); letter-spacing: .1em; text-transform: uppercase; font-size: 12px; }
+.gl-t tr.gl-grp th small { color: var(--muted); text-transform: none; letter-spacing: 0; font-family: var(--font-mono); }
+.gl-t tr.gl-base td:first-child b { color: var(--yellow); }
