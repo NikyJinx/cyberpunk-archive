@@ -1474,3 +1474,117 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
   .party-grid { grid-template-columns: 1fr; }
   .gm-add { flex-direction: column; }
 }
+
+/* =========================================================
+   v10 — armatura come gli HP, nemici del GM
+   ========================================================= */
+/* barra SP con pulsanti */
+.sp-line { display: grid; gap: 3px; }
+.sp-top { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.sp-top b { font-family: var(--font-head); font-size: 17px; color: var(--cyan); }
+.sp-top small { color: var(--muted); }
+.sp-top em { font-size: 12px; color: var(--muted); font-style: normal; }
+.sp-bar { position: relative; height: 6px; background: rgba(255,255,255,.06); border: 1px solid var(--line); }
+.sp-bar i { position: absolute; inset: 0 auto 0 0; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); transition: width .25s; }
+.sp-line.worn .sp-top b { color: var(--yellow); }
+.sp-line.worn .sp-bar i { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+.sp-line.broken .sp-top b { color: var(--red); }
+.sh-box .sp-line + .sp-line { margin-top: 6px; }
+.pc-armor { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tt-panel .sp-line { margin-top: 8px; }
+.tt-hpblock { display: grid; gap: 4px; }
+.tt-hpblock .tt-hpline .hint { font-family: var(--font-body); }
+.tt-hpblock.w-light .tt-hpline b { color: var(--yellow); }
+.tt-hpblock.w-serious .tt-hpline b { color: #ff8a3d; }
+.tt-hpblock.w-mortal .tt-hpline b { color: var(--red); }
+.tt-hpblock.w-light .sh-hpbar i { background: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
+.tt-hpblock.w-serious .sh-hpbar i { background: #ff8a3d; box-shadow: 0 0 10px #ff8a3d; }
+.tt-hpblock.w-mortal .sh-hpbar i { background: var(--red); }
+.tt-quick { margin-top: 10px; }
+
+/* nemici */
+.section-title .en-actions { order: 3; display: flex; gap: 6px; flex-wrap: wrap; }
+.en-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.en-card { display: grid; gap: 8px; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid #ff8a3d; }
+.en-card-main { all: unset; display: grid; gap: 3px; cursor: pointer; }
+.en-card-main:hover h3, .en-card-main:focus-visible h3 { color: #ff8a3d; }
+.en-card h3 { font-size: 16px; text-transform: uppercase; }
+.en-lvl { font-family: var(--font-mono); font-size: 13px; color: #ff8a3d; letter-spacing: .05em; }
+.en-type { font-size: 14px; color: var(--muted); }
+.en-line { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+.en-line b { color: var(--text); font-weight: normal; }
+.en { display: grid; gap: 12px; }
+.en-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.en-head .en-type { font-family: var(--font-head); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: #ff8a3d; }
+.en-head .hint { flex-basis: 100%; }
+.en-stats { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
+.en-vitals { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 10px 12px; background: var(--bg-2); border-left: 2px solid #ff8a3d; font-family: var(--font-mono); font-size: 14px; }
+.en-vitals b { font-family: var(--font-head); color: var(--yellow); }
+.en-vitals em { font-style: normal; font-size: 12px; color: var(--muted); }
+.en-skills { display: flex; flex-wrap: wrap; gap: 5px; }
+.en-skills .chip, .tt-quick .chip { font-size: 13px; padding: 4px 9px; }
+.en-skills .chip b, .tt-quick .chip b { color: var(--green); margin-left: 3px; }
+.en-skills .chip.y, .tt-quick .chip.y { border-color: rgba(243,230,0,.5); color: var(--yellow); }
+.chip.r { border-color: rgba(255,42,61,.5); color: var(--red); }
+.chip.y { border-color: rgba(243,230,0,.5); color: var(--yellow); }
+.en-gen { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; padding: 12px; border: 1px dashed rgba(243,230,0,.5); background: rgba(243,230,0,.04); }
+.en-gen .field { min-width: 200px; }
+.en-gen .hint { flex-basis: 100%; }
+.sh-row.en-wpn { grid-template-columns: 1.2fr 1.2fr 80px 56px 64px 28px; }
+.sh-row.en-sk { grid-template-columns: 1fr 80px 70px 28px; }
+
+@media (max-width: 860px) {
+  .en-stats { grid-template-columns: repeat(5, 1fr); }
+  .sh-row.en-wpn { grid-template-columns: 1fr 1fr 28px; }
+}
+@media (max-width: 680px) {
+  .pc-armor { grid-template-columns: 1fr; }
+}
+/* colonna del tavolo: con i pannelli lunghi (nemici) scorre, e il Dice log resta usabile */
+.tt-side { overflow-y: auto; scrollbar-width: thin; }
+.tt-side .tt-log { min-height: 300px; }
+
+/* =========================================================
+   v11 — menu laterale ☰ con tutte le sezioni
+   ========================================================= */
+.menu-btn { flex: none; font-size: 20px; color: var(--cyan); }
+.menu-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.menu-btn[aria-expanded="true"] { border-color: var(--yellow); color: var(--yellow); }
+/* se le voci non ci stanno nella barra, la barra si nasconde e resta il menu */
+.topbar.nav-collapsed .nav { display: none; }
+.topbar.nav-collapsed .top-actions { margin-left: auto; }
+.side-backdrop { position: fixed; inset: 0; z-index: 59; background: rgba(3,3,6,.6); backdrop-filter: blur(2px); opacity: 0; transition: opacity .2s; }
+.side-backdrop.open { opacity: 1; }
+.side-backdrop[hidden], .side-menu[hidden] { display: none; }
+.side-menu {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 60; width: min(300px, 86vw);
+  display: grid; grid-template-rows: auto 1fr auto; background: var(--panel);
+  border-right: 1px solid var(--red); box-shadow: 0 0 0 1px rgba(255,42,61,.25), 20px 0 60px rgba(0,0,0,.7);
+  transform: translateX(-102%); transition: transform .2s ease-out;
+}
+.side-menu.open { transform: translateX(0); }
+.side-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.side-title { flex: 1; font-family: var(--font-mono); font-size: 13px; letter-spacing: .12em; color: var(--red); }
+.side-head .x { background: none; border: 0; color: var(--muted); font-size: 24px; cursor: pointer; line-height: 1; }
+.side-head .x:hover { color: var(--red); }
+.side-nav { display: grid; align-content: start; gap: 2px; padding: 10px 8px; overflow-y: auto; }
+.side-nav a { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; padding: 9px 10px; color: var(--text); text-decoration: none; border-left: 2px solid transparent; }
+.side-nav a:hover, .side-nav a:focus-visible { background: rgba(0,240,255,.07); border-left-color: var(--cyan); outline: none; }
+.side-nav a.active { background: rgba(243,230,0,.08); border-left-color: var(--yellow); }
+.side-nav a.active .side-l { color: var(--yellow); }
+.side-nav a.gm .side-l { color: var(--yellow); }
+.side-ic { display: grid; place-items: center; width: 34px; height: 34px; font-size: 17px; color: var(--cyan); border: 1px solid var(--line); background: var(--bg-2); }
+.side-nav a.active .side-ic { color: var(--yellow); border-color: rgba(243,230,0,.5); }
+.side-l { display: grid; font-family: var(--font-head); font-size: 13px; letter-spacing: .14em; text-transform: uppercase; }
+.side-l small { font-family: var(--font-body); font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.side-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--line); }
+@media (prefers-reduced-motion: reduce) { .side-menu, .side-backdrop { transition: none; } }
+
+/* v12 — malus dell'armatura e nemici tarati sul manuale */
+.pen { color: var(--red); font-size: .85em; }
+.sh-stat .v .pen { font-size: 14px; }
+.sh-stat.off { cursor: default; opacity: .5; }
+.en-pen { font-family: var(--font-mono); font-size: 12px; color: var(--red); padding: 4px 8px; border: 1px solid rgba(255,42,61,.5); background: rgba(255,42,61,.07); }
+.en-pen.ok { color: var(--green); border-color: rgba(61,255,154,.5); background: rgba(61,255,154,.06); }
+.en-buffs { display: flex; flex-wrap: wrap; gap: 6px; }
+.en-buffs span { font-family: var(--font-mono); font-size: 13px; color: var(--yellow); padding: 4px 9px; border: 1px solid rgba(243,230,0,.5); background: rgba(243,230,0,.07); }

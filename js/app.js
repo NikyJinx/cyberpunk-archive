@@ -15,6 +15,7 @@
     { id: "fazione", label: "Fazione", plural: "Fazioni", color: "var(--red)" },
     { id: "luogo",   label: "Luogo",   plural: "Luoghi",  color: "var(--yellow)" },
     { id: "oggetto", label: "Oggetto", plural: "Oggetti", color: "var(--magenta)" },
+    { id: "nemico",  label: "Nemico",  plural: "Nemici",  color: "#ff8a3d" },   // scheda semplificata, solo GM
   ];
   const ROLES = ["Rockerboy", "Solo", "Netrunner", "Tech", "Medtech", "Media", "Exec", "Lawman", "Fixer", "Nomad", "Civile", "Boostergang", "Corpo"];
   const STATUSES = [
@@ -210,7 +211,52 @@
     else { pill.textContent = "● CLOUD · sola lettura"; pill.className = "mode-pill cloud"; pill.title = "Accedi da ⚙ per modificare"; }
     const navGm = $("#nav-gm"); if (navGm) navGm.hidden = !isGm();
     $("#footer-status").textContent = `${state.entries.length} record · ${state.diary.length} scene · ${state.events.length} eventi · ${state.notes.length} appunti · ${state.songs.length} tracce`;
+    renderSideMenu(); fitNav();
   }
+
+  // ---------- menu laterale ----------
+  // Le voci sono le stesse della barra in alto (GM compresa solo per i GM), con un'icona e una riga di spiegazione.
+  const MENU_INFO = {
+    home: ["⌂", "Pagina iniziale"], database: ["▤", "PG, NPC, fazioni, luoghi"], diario: ["✎", "Cronaca e quest"],
+    calendario: ["▦", "Eventi e meteo"], appunti: ["✉", "Note della campagna"], tracce: ["♫", "Colonna sonora"],
+    party: ["◈", "Schede dei PG"], tavolo: ["⬡", "Mappa, token e dadi"], gm: ["🔒", "Solo per i GM"],
+  };
+  function renderSideMenu() {
+    const box = $("#side-nav"); if (!box) return;
+    const page = location.hash.replace(/^#\/?/, "").split("/")[0] || "home";
+    const cur = page === "quest" ? "diario" : page;
+    box.innerHTML = $$("#nav a").filter(a => !a.hidden).map(a => {
+      const r = a.dataset.route, [ic, sub] = MENU_INFO[r] || ["›", ""];
+      return `<a href="${esc(a.getAttribute("href"))}" class="${r === cur ? "active" : ""} ${r === "gm" ? "gm" : ""}" data-route="${esc(r)}" ${r === cur ? `aria-current="page"` : ""}>
+        <span class="side-ic" aria-hidden="true">${ic}</span><span class="side-l">${esc(a.textContent)}<small>${esc(sub)}</small></span></a>`;
+    }).join("");
+  }
+  function openMenu() {
+    const m = $("#side-menu"); if (!m) return;
+    renderSideMenu();
+    m.hidden = false; $("#side-backdrop").hidden = false;
+    void m.offsetWidth;   // forzo il layout così la transizione parte subito (anche senza animation frame)
+    m.classList.add("open"); $("#side-backdrop").classList.add("open");
+    $("#menu-btn").setAttribute("aria-expanded", "true");
+    const first = $("#side-nav a.active") || $("#side-nav a"); first && first.focus();
+  }
+  function closeMenu() {
+    const m = $("#side-menu"); if (!m || m.hidden) return;
+    m.classList.remove("open"); $("#side-backdrop").classList.remove("open");
+    $("#menu-btn").setAttribute("aria-expanded", "false");
+    setTimeout(() => { if (!m.classList.contains("open")) { m.hidden = true; $("#side-backdrop").hidden = true; } }, 200);
+  }
+  // la barra in alto resta solo se tutte le voci ci stanno; altrimenti si usa il menu ☰
+  function fitNav() {
+    const bar = $(".topbar"), nav = $("#nav"); if (!bar || !nav) return;
+    bar.classList.remove("nav-collapsed");
+    if (nav.scrollWidth > nav.clientWidth + 2) bar.classList.add("nav-collapsed");
+  }
+  window.addEventListener("resize", () => { fitNav(); });
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape" && !$("#side-menu").hidden) { closeMenu(); $("#menu-btn").focus(); } });
+  // scelta una voce (o Dice log / Impostazioni), il menu si chiude
+  $("#side-menu") && $("#side-menu").addEventListener("click", ev => { if (ev.target.closest("#side-nav a, .side-foot [data-action]")) closeMenu(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitNav);   // i font cambiano la larghezza delle voci
 
   // ---------- routing ----------
   let lastView = "";
@@ -336,7 +382,7 @@
       </div>
       <div class="toolbar">
         <div class="chips" id="kind-chips">
-          ${[{ id: "all", plural: "Tutti" }, ...KINDS].map(k => `<button class="chip ${f.kind === k.id ? "active" : ""}" data-kind="${k.id}">${esc(k.plural)}<span class="count">${count(k.id)}</span></button>`).join("")}
+          ${[{ id: "all", plural: "Tutti" }, ...KINDS.filter(k => k.id !== "nemico" || isGm())].map(k => `<button class="chip ${f.kind === k.id ? "active" : ""}" data-kind="${k.id}">${esc(k.plural)}<span class="count">${count(k.id)}</span></button>`).join("")}
         </div>
         <input class="search" id="q" type="search" placeholder="> cerca nome, alias, tag, note…" value="${esc(f.q)}">
         <select id="f-faction" aria-label="Fazione"><option value="">Tutte le fazioni</option>
@@ -832,9 +878,12 @@
   const hasSheet = e => !!(e && e.sheet && e.sheet.stats && Object.values(e.sheet.stats).some(hasVal));
   const statBase = (e, id) => num((sheetOf(e).stats || {})[id]);
   // l'EMP segue l'umanità del cyberware: EMP = umanità attuale / 10
+  // l'armatura pesante toglie a REF, DEX e MOVE (−2 Medium/Heavy Armorjack, −4 Flak/Metalgear), salvo armatura migliorata
+  const sheetArmorType = a => a.type || ((CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(a.name)) || {}).id) || "custom";
+  const pcPen = e => { const s = sheetOf(e), ar = s.armor || {}; return CPR.armorPen({ head: { type: sheetArmorType(ar.head || {}) }, body: { type: sheetArmorType(ar.body || {}) } }, s.armorNoPen); };
   function statEff(e, id) {
     if (id === "EMP") { const cs = cyberStats(e); if (cs.current != null) return Math.max(0, Math.floor(cs.current / 10)); }
-    return statBase(e, id);
+    return CPR.PEN_STATS.includes(id) ? Math.max(0, statBase(e, id) + pcPen(e)) : statBase(e, id);
   }
   const hpMaxOf = e => { const s = sheetOf(e); return hasVal(s.hpMax) ? num(s.hpMax) : CPR.hpMax(statBase(e, "BODY"), statBase(e, "WILL")); };
   const hpOf = e => { const s = sheetOf(e); return hasVal(s.hp) ? num(s.hp) : hpMaxOf(e); };
@@ -928,6 +977,18 @@
     box.outerHTML = sheetHtml(e); $("#modal").scrollTop = y;
   }
 
+  // armatura come gli HP: barra + pulsanti (−1 ablazione, +1 riparazione, ↺ SP piena)
+  // a = { cur, sp, name } · btn(d) = attributi del pulsante, oppure falso se non si può modificare
+  function spBar(label, a, btn) {
+    const pct = a.sp ? Math.max(0, Math.min(100, a.cur / a.sp * 100)) : 0;
+    return `<div class="sp-line ${a.sp && a.cur < a.sp ? "worn" : ""} ${a.sp && a.cur <= 0 ? "broken" : ""}">
+      <span class="sp-top"><span class="sh-k">${label}</span><b>${a.cur}</b><small>/ ${a.sp}</small>${a.name ? `<em>${esc(a.name)}</em>` : ""}</span>
+      <span class="sp-bar" title="SP attuale"><i style="width:${pct}%"></i></span>
+      ${btn ? `<span class="sh-adj">${[[-1, "−1", "Ablazione: −1 SP"], [1, "+1", "Riparazione: +1 SP"], ["reset", "↺", "SP piena"]]
+        .map(([d, l, t]) => `<button type="button" class="gp-btn" ${btn(d)} title="${t}">${l}</button>`).join("")}</span>` : ""}
+    </div>`;
+  }
+
   function adjBtns(id, f, steps) {
     return `<span class="sh-adj">${steps.map(d => `<button type="button" class="gp-btn" data-action="sheet-adj" data-id="${esc(id)}" data-f="${f}" data-d="${d}" aria-label="${d > 0 ? "+" : ""}${d}">${d > 0 ? "+" : "−"}${Math.abs(d) === 1 ? "" : Math.abs(d)}</button>`).join("")}</span>`;
   }
@@ -949,11 +1010,7 @@
         <span class="sk-n">${esc(k.label)}${k.x2 ? ` <i title="Costo doppio">×2</i>` : ""}</span><span class="sk-s">${k.stat}</span><span class="sk-l">${k.lvl}</span><span class="sk-b">${statEff(e, k.stat) + k.lvl}</span>`,
         "sk " + (k.lvl ? "" : "zero"), `Tira ${k.label}: ${k.stat} + livello + 1d10`)).join("")}</section>`;
     }).join("");
-    const arm = loc => { const a = armorOf(e, loc); return `
-      <div class="sh-arm"><span class="sh-k">${loc === "head" ? "Head" : "Body"}</span>
-        <b>${a.cur}</b><small>/ ${a.sp}</small>${a.name ? `<em>${esc(a.name)}</em>` : ""}
-        ${edit ? `<span class="sh-adj"><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="-1" title="Ablazione: −1 SP">−</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="reset" title="Ripristina SP">↺</button></span>` : ""}
-      </div>`; };
+    const arm = loc => spBar(loc === "head" ? "Head" : "Body", armorOf(e, loc), edit && (d => `data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="${d}"`));
     const weapons = s.weapons || [];
     return `
       <div class="sh" data-sheet="${id}">
@@ -991,10 +1048,11 @@
             <span class="l">Initiative</span>
             ${roll("init", `<span class="n">REF ${statEff(e, "REF")}</span><span class="sh-sub">tira REF + 1d10</span>`, "sh-rollbox")}
           </div>
-          <div class="sh-box"><span class="l">Move</span><span class="n">${statBase(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statBase(e, "MOVE")} squares · Run ${statBase(e, "MOVE") * 4} m</span></div>
+          <div class="sh-box"><span class="l">Move</span><span class="n">${statEff(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statEff(e, "MOVE")} squares · Run ${statEff(e, "MOVE") * 4} m</span></div>
         </div>
+        ${pcPen(e) ? `<div class="en-pen">Armatura pesante: ${pcPen(e)} a REF, DEX e MOVE (già calcolato nei valori e nei tiri)</div>` : ""}
 
-        <div class="sh-stats">${CPR.STATS.map(st => roll("stat:" + st.id, `<span class="k">${st.id}</span><span class="v">${statEff(e, st.id)}</span>${st.id === "EMP" && statEff(e, "EMP") !== statBase(e, "EMP") ? `<small>base ${statBase(e, "EMP")}</small>` : ""}`, "sh-stat", `${st.label}: ${st.id} + 1d10`)).join("")}</div>
+        <div class="sh-stats">${CPR.STATS.map(st => roll("stat:" + st.id, `<span class="k">${st.id}</span><span class="v">${statEff(e, st.id)}</span>${statEff(e, st.id) !== statBase(e, st.id) ? `<small>base ${statBase(e, st.id)}</small>` : ""}`, "sh-stat", `${st.label}: ${st.id} + 1d10`)).join("")}</div>
 
         ${weapons.length ? `<div class="sh-sec-head"><h4>Weapons</h4></div>
         <div class="sh-weapons">${weapons.map((wp, i) => {
@@ -1052,8 +1110,13 @@
             <div class="field"><label for="sh-rank">Rank</label><input id="sh-rank" name="rank" type="number" min="0" max="10" value="${esc(s.rank ?? "")}"></div>
             <div class="field"><label for="sh-hpm">HP max (vuoto = automatici)</label><input id="sh-hpm" name="hpMax" type="number" min="1" value="${esc(s.hpMax ?? "")}" placeholder="${autoHp}"></div>
             <div class="field"><label for="sh-hp">HP attuali (vuoto = pieni)</label><input id="sh-hp" name="hp" type="number" value="${esc(s.hp ?? "")}"></div>
-            <div class="field"><label for="sh-ah">Armatura testa · nome / SP</label><div class="sh-pair"><input id="sh-ah" name="ah-name" value="${esc(a("head").name)}" placeholder="es. Light Armorjack"><input name="ah-sp" type="number" min="0" value="${esc(a("head").sp ?? "")}" placeholder="SP"></div></div>
-            <div class="field"><label for="sh-ab2">Armatura corpo · nome / SP</label><div class="sh-pair"><input id="sh-ab2" name="ab-name" value="${esc(a("body").name)}" placeholder="es. Light Armorjack"><input name="ab-sp" type="number" min="0" value="${esc(a("body").sp ?? "")}" placeholder="SP"></div></div>
+            ${[["head", "ah", "testa"], ["body", "ab", "corpo"]].map(([loc, p, l]) => { const ar = a(loc), ty = sheetArmorType(ar); return `
+            <div class="field"><label for="sh-${p}">Armatura ${l} · tipo / SP</label>
+              <div class="sh-pair"><select id="sh-${p}" data-sh-arm="${p}">${CPR.ARMOR_TYPES.map(t => `<option value="${t.id}" ${t.id === ty ? "selected" : ""}>${t.label}${t.sp ? ` (SP ${t.sp}${t.pen ? `, ${t.pen}` : ""})` : ""}</option>`).join("")}<option value="custom" ${ty === "custom" ? "selected" : ""}>Altro…</option></select>
+              <input name="${p}-sp" type="number" min="0" value="${esc(ar.sp ?? "")}" placeholder="SP"></div>
+              <input name="${p}-name" value="${esc(ar.name)}" placeholder="Nome (es. Light Armorjack)" style="margin-top:4px"></div>`; }).join("")}
+            <div class="field full"><label class="check"><input type="checkbox" name="armorNoPen" ${s.armorNoPen ? "checked" : ""}> Armatura migliorata dal Tech: niente malus</label>
+              <span class="hint">Medium e Heavy Armorjack danno −2 a REF, DEX e MOVE; Flak e Metalgear −4. Vale il peggiore tra testa e corpo.</span></div>
             <div class="field"><label for="sh-rep">Reputation</label><input id="sh-rep" name="rep" type="number" min="0" value="${esc(s.rep ?? "")}"></div>
             <div class="field"><label for="sh-ip">Improvement Points</label><input id="sh-ip" name="ip" type="number" min="0" value="${esc(s.ip ?? "")}"></div>
             <div class="field full"><label for="sh-own">Giocatore (email dell'account)</label><input id="sh-own" name="owner" type="email" value="${esc(s.owner || "")}" placeholder="email con cui il giocatore fa login"><span class="hint">Serve per riconoscere il PG di chi ha fatto l'accesso: i tiri partono a suo nome.</span></div>
@@ -1084,6 +1147,13 @@
     form.addEventListener("input", ev => {
       if (/^st-(BODY|WILL)$/.test(ev.target.name)) $("#sh-auto-hp").textContent = CPR.hpMax(num(form["st-BODY"].value), num(form["st-WILL"].value));
     });
+    // tipo di armatura scelto: compilo SP e nome
+    form.addEventListener("change", ev => {
+      const sel = ev.target.closest("[data-sh-arm]"); if (!sel) return;
+      const t = CPR.armorType(sel.value); if (!t) return;
+      form.elements[sel.dataset.shArm + "-sp"].value = t.sp || "";
+      form.elements[sel.dataset.shArm + "-name"].value = t.sp ? t.label : "";
+    });
     form.addEventListener("click", ev => {
       const add = ev.target.closest("[data-sh-add]");
       if (add) {
@@ -1105,10 +1175,10 @@
       const armor = {};
       for (const [loc, p] of [["head", "ah"], ["body", "ab"]]) {
         const sp = nv(p + "-sp"), old = armorOf(e, loc);
-        armor[loc] = { name: v(p + "-name"), sp, cur: sp == null ? null : Math.min(old.cur, sp) };
+        armor[loc] = { type: $(`[data-sh-arm=${p}]`, form).value, name: v(p + "-name"), sp, cur: sp == null ? null : Math.min(old.cur, sp) };
         if (old.sp !== sp) armor[loc].cur = sp;
       }
-      const sheet = { ...s, owner: v("owner"), ability: v("ability"), rank: nv("rank"), stats, skills, custom, weapons, armor,
+      const sheet = { ...s, owner: v("owner"), ability: v("ability"), rank: nv("rank"), stats, skills, custom, weapons, armor, armorNoPen: form.elements["armorNoPen"].checked,
         hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes") };
       try {
         const saved = await Store.save("entries", { ...e, sheet });
@@ -1240,6 +1310,7 @@
   function openEntry(id, tab = "dossier") {
     const e = state.entries.find(x => x.id === id);
     if (!e) return;
+    if (e.kind === "nemico" && e.enemy) return openEnemy(id);
     if (!isPerson(e)) tab = "dossier";
     const edit = Store.canEdit();
     const tabs = isPerson(e) ? `
@@ -2384,8 +2455,7 @@
     const roll = (what, label, cls = "chip") => `<button type="button" class="${cls}" data-action="sheet-roll" data-id="${id}" data-roll="${what}">${label}</button>`;
     // le abilità più alte, da tirare al volo
     const top = skillsOf(e).filter(k => k.lvl > 0).map(k => ({ ...k, base: statEff(e, k.stat) + k.lvl })).sort((a, b) => b.base - a.base).slice(0, 6);
-    const arm = loc => { const a = armorOf(e, loc); return `<span class="pc-sp"><small>${loc === "head" ? "HEAD" : "BODY"}</small> <b>${a.cur}</b>/${a.sp}
-      ${edit ? `<button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="-1" title="Ablazione −1">−</button>` : ""}</span>`; };
+    const arm = loc => spBar(loc === "head" ? "Head SP" : "Body SP", armorOf(e, loc), edit && (d => `data-action="sheet-adj" data-id="${id}" data-f="armor.${loc}" data-d="${d}"`));
     return `
       <article class="pc-card w-${w.id}">
         ${head}
@@ -2394,7 +2464,7 @@
           <span class="sh-hpbar"><i style="width:${pct}%"></i><b style="left:${clamp(CPR.seriousAt(max) / max * 100, 0, 100)}%"></b></span>
           ${edit ? adjBtns(e.id, "hp", [-5, -1, 1, 5]) : ""}
         </div>
-        <div class="pc-row">${arm("head")}${arm("body")}</div>
+        <div class="pc-armor">${arm("head")}${arm("body")}</div>
         <div class="pc-row">
           <span><small class="sh-k">LUCK</small> <b>${luckOf(e)}</b>/${statBase(e, "LUCK")}
             ${edit ? `<button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="-1" title="Spendi 1">−</button>` : ""}</span>
@@ -2428,9 +2498,297 @@
     box.innerHTML = partyPgs().map(partyCard).join(""); hydrate(box);
   }
 
+  // ---------- NEMICI (solo GM) ----------
+  // Scheda semplificata come i PNG del manuale: STAT, HP, Seriously Wounded, Death Save, armatura,
+  // armi con la base già sommata, basi delle abilità (STAT + abilità), cyberware ed equipaggiamento.
+  // e.enemy = { type, level, stats, hpMax, armor{head,body:{type,name,sp}}, weapons[], skills[{label,stat,base}], ability, cyber, gear, notes }
+  const LVL_STARS = n => "★".repeat(n) + "☆".repeat(5 - n);
+  const enemyOf = e => (e && e.enemy) || {};
+  const enemyHp = E => hasVal(E.hpMax) ? num(E.hpMax) : CPR.hpMax(num((E.stats || {}).BODY), num((E.stats || {}).WILL));
+  const enemySp = (E, loc) => num(((E.armor || {})[loc] || {}).sp);
+  // malus dell'armatura (−2 Medium/Heavy Armorjack, −4 Flak/Metalgear) su REF, DEX, MOVE e sulle abilità che li usano
+  const enemyPen = E => CPR.armorPen(E.armor, E.noPen);
+  const penOn = stat => CPR.PEN_STATS.includes(stat);
+  const enemyStat = (E, id) => num((E.stats || {})[id]) + (penOn(id) ? enemyPen(E) : 0);
+  const skillStat = k => k.stat || ((CPR.SKILLS.find(s => norm(s.label) === norm(k.label)) || {}).stat) || "INT";
+  const enemySkill = (E, k) => num(k.base) + (penOn(skillStat(k)) ? enemyPen(E) : 0);
+  const enemyWpn = (E, w) => num(w.base) + (penOn((CPR.skill(w.skill) || {}).stat) ? enemyPen(E) : 0);
+  // come nel manuale: "12 (10)" = valore senza e con il malus dell'armatura
+  const withPen = (base, eff) => base === eff ? `${base}` : `${base} <span class="pen">(${eff})</span>`;
+
+  // token di un nemico: HP e SP propri, presi dal modello
+  function enemyToken(e, m, extra = {}) {
+    const E = enemyOf(e), arm = loc => ({ name: ((E.armor || {})[loc] || {}).name || "", sp: enemySp(E, loc) || null });
+    return { mapId: m.id, entryId: e.id, own: true, snapName: e.name, color: "#ff8a3d", size: 1, hpMax: enemyHp(E), armor: { head: arm("head"), body: arm("body") }, ...extra };
+  }
+
+  // tiri del nemico: valgono il malus dell'armatura e, dal token, le sue ferite.
+  // I tiri fatti dal modello o da un token nascosto sono segreti.
+  function rollEnemy(e, what, t) {
+    const E = enemyOf(e), st = E.stats || {}, ap = enemyPen(E);
+    const hp = t && tokHp(t), w = hp ? CPR.wound(hp.hp, hp.max) : null;
+    const pen = w && w.pen ? [{ l: w.label, v: w.pen }] : [];
+    const arm = stat => ap && penOn(stat) ? [{ l: "Armor", v: ap }] : [];
+    const meta = { who: t ? tokName(t) : e.name, enemyId: e.id, gmOnly: !t || tokHidden(t) };
+    const [type, a, b] = String(what).split(":");
+    if (type === "stat") return postRoll({ kind: "check", label: `${a} check`, ...meta, ...CPR.check([{ l: a, v: num(st[a]) }, ...arm(a), ...pen]) });
+    if (type === "skill") { const k = (E.skills || [])[+a]; if (!k) return; return postRoll({ kind: "check", label: k.label, ...meta, ...CPR.check([{ l: "base", v: num(k.base) }, ...arm(skillStat(k)), ...pen]) }); }
+    if (type === "ability" && E.ability) return postRoll({ kind: "check", label: E.ability.name, ...meta, ...CPR.check([{ l: "Rank", v: num(E.ability.rank) }, ...pen]) });
+    if (type === "wpn") {
+      const wp = (E.weapons || [])[+a]; if (!wp) return;
+      if (b === "dmg") { const r = CPR.rollExpr(wp.dmg, { damage: true }); if (!r) return toast(`Danno non valido: "${wp.dmg}"`, "err"); return postRoll({ kind: "damage", label: `${wp.name} · damage`, ...meta, ...r }); }
+      return postRoll({ kind: "check", label: `${wp.name} · attack`, ...meta, ...CPR.check([{ l: "base", v: num(wp.base) }, ...arm((CPR.skill(wp.skill) || {}).stat), ...pen]) });
+    }
+    if (type === "init") { const d = CPR.die(10), ref = enemyStat(E, "REF"); return postRoll({ kind: "init", label: "Initiative", ...meta, dice: [{ v: d, s: 10 }], mods: [{ l: "REF", v: ref }], total: d + ref }); }
+    if (type === "death") { const d = CPR.die(10); return postRoll({ kind: "death", label: "Death Save", ...meta, dice: [{ v: d, s: 10, t: d === 10 ? "fumble" : "" }], mods: [], total: d, note: d === 10 ? "Natural 10: always a failure" : `vs BODY ${num(st.BODY)}`, crit: d === 10 ? "fail" : "" }); }
+  }
+  const enemyBtn = (e, what, label, cls = "chip", t = null) =>
+    `<button type="button" class="${cls}" data-action="enemy-roll" data-id="${esc(e.id)}" data-roll="${what}" ${t ? `data-tok="${esc(t.id)}"` : ""}>${label}</button>`;
+  // tiri veloci nel pannello del token sul tavolo (valori già con il malus dell'armatura)
+  function enemyQuickRolls(e, t) {
+    const E = enemyOf(e);
+    const wpnSkills = (E.weapons || []).map(w => (CPR.skill(w.skill) || {}).label);
+    const top = (E.skills || []).map((k, i) => ({ k, i, v: enemySkill(E, k) })).filter(x => !wpnSkills.includes(x.k.label)).sort((a, b) => b.v - a.v).slice(0, 4);
+    return `<div class="pc-rolls tt-quick">
+      ${enemyBtn(e, "init", `Initiative <b>${enemyStat(E, "REF")}</b>`, "chip y", t)}
+      ${(E.weapons || []).map((w, i) => enemyBtn(e, `wpn:${i}:atk`, `⌖ ${esc(w.name)} <b>${enemyWpn(E, w)}</b>`, "chip", t) + enemyBtn(e, `wpn:${i}:dmg`, esc(w.dmg), "chip y", t)).join("")}
+      ${top.map(x => enemyBtn(e, `skill:${x.i}`, `${esc(x.k.label)} <b>${x.v}</b>`, "chip", t)).join("")}
+    </div>`;
+  }
+
+  function enemyHtml(e) {
+    const E = enemyOf(e), st = E.stats || {}, T = CPR.enemyType(E.type), max = enemyHp(E), ap = enemyPen(E);
+    const L = CPR.LEVELS[(num(E.level) || 1) - 1] || {};
+    const arm = loc => { const a = (E.armor || {})[loc] || {}; return `<span><small class="sh-k">${loc === "head" ? "HEAD SP" : "BODY SP"}</small> <b>${num(a.sp) || "—"}</b>${a.name && num(a.sp) ? ` <em>${esc(a.name)}</em>` : ""}</span>`; };
+    return `
+      <div class="en">
+        <div class="en-head">
+          <span class="en-type">${esc(T.label)}</span>
+          <span class="en-lvl" title="Difficoltà ${num(E.level) || 1} su 5 · ${esc(L.hint || "")}">${LVL_STARS(num(E.level) || 1)} ${esc(L.label || "")}</span>
+          ${ap ? `<span class="en-pen">Armatura: ${ap} a REF, DEX, MOVE (tra parentesi)</span>` : E.noPen ? `<span class="en-pen ok">Armatura migliorata: niente malus</span>` : ""}
+          <span class="hint">I tiri dalla scheda sono segreti. Sul tavolo valgono le ferite di ogni token.</span>
+        </div>
+        <div class="en-stats">${CPR.STATS.map(s => s.id === "LUCK" && !num(st.LUCK)
+          ? `<span class="sh-stat off"><span class="k">LUCK</span><span class="v">—</span></span>`
+          : enemyBtn(e, "stat:" + s.id, `<span class="k">${s.id}</span><span class="v">${withPen(num(st[s.id]), enemyStat(E, s.id))}</span>`, "sh-stat")).join("")}</div>
+        <div class="en-vitals">
+          <span><small class="sh-k">HP</small> <b>${max}</b></span>
+          <span><small class="sh-k">Seriously Wounded</small> <b>${CPR.seriousAt(max)}</b></span>
+          <span><small class="sh-k">Death Save</small> <b>${num(st.BODY)}</b></span>
+          ${arm("head")}${arm("body")}
+          ${E.ability ? `<span><small class="sh-k">${esc(E.ability.name)}</small> <b>${num(E.ability.rank)}</b></span>` : ""}
+          ${enemyBtn(e, "init", "Initiative", "chip y")}${enemyBtn(e, "death", "Death Save", "chip r")}
+        </div>
+        ${(E.buffs || []).length ? `<div class="en-buffs">${E.buffs.map(b => `<span>⚡ ${esc(b)}</span>`).join("")}</div>` : ""}
+        ${(E.weapons || []).length ? `<div class="sh-sec-head"><h4>Weapons</h4></div><div class="sh-weapons">${E.weapons.map((w, i) => `
+          <div class="wpn"><span class="wpn-n">${esc(w.name)}<small>${esc((CPR.skill(w.skill) || {}).label || "")} · base ${withPen(num(w.base), enemyWpn(E, w))} · ${esc(w.dmg)} · ROF ${esc(w.rof)}${w.mag ? ` · Mag ${esc(w.mag)}` : ""}${w.quality === "poor" ? " · si inceppa con un 1" : w.quality === "excellent" ? " · +1 già nella base" : ""}</small></span>
+            ${enemyBtn(e, `wpn:${i}:atk`, "Attack", "btn small")}${enemyBtn(e, `wpn:${i}:dmg`, `Damage ${esc(w.dmg)}`, "btn small yellow")}</div>`).join("")}</div>` : ""}
+        <div class="sh-sec-head"><h4>Skill Bases</h4><span class="hint">STAT + abilità già sommate · le altre abilità valgono la STAT</span></div>
+        <div class="en-skills">${(E.skills || []).map((k, i) => enemyBtn(e, `skill:${i}`, `${esc(k.label)} <b>${withPen(num(k.base), enemySkill(E, k))}</b>`, "chip")).join("")}
+          ${E.ability ? enemyBtn(e, "ability", `${esc(E.ability.name)} <b>${num(E.ability.rank)}</b>`, "chip y") : ""}</div>
+        ${E.cyber ? `<div class="block"><h4>Cyberware</h4><div class="prewrap">${esc(E.cyber)}</div></div>` : ""}
+        ${E.gear ? `<div class="block"><h4>Gear</h4><div class="prewrap">${esc(E.gear)}</div></div>` : ""}
+        ${E.notes ? `<div class="block"><h4>Note</h4><div class="prewrap">${esc(E.notes)}</div></div>` : ""}
+      </div>`;
+  }
+
+  function openEnemy(id) {
+    const e = state.entries.find(x => x.id === id); if (!e || !isGm()) return;
+    openModal(`
+      <div class="modal-head"><h2>// 🔒 NEMICO</h2><button class="x" data-action="close" aria-label="Chiudi">×</button></div>
+      <div class="modal-body">
+        <div class="tab-title"><h1>${esc(e.name || "Nemico")}</h1>${gmBadge(e)}</div>
+        ${enemyHtml(e)}
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost small left" data-action="delete-entry" data-id="${esc(e.id)}">Elimina</button>
+        <button class="btn ghost small" data-action="enemy-copy" data-id="${esc(e.id)}">Duplica</button>
+        <button class="btn ghost small yellow" data-action="enemy-spawn" data-id="${esc(e.id)}">⇲ Sul tavolo</button>
+        <button class="btn cyan" data-action="enemy-edit" data-id="${esc(e.id)}">Modifica</button>
+      </div>`);
+  }
+
+  // modulo del nemico, con il generatore in cima (tipo + difficoltà 1–5)
+  function editEnemy(id, preset = null) {
+    if (!isGm() && Store.gmReady) return;
+    const old = state.entries.find(x => x.id === id);
+    const base = old ? { name: old.name, ...enemyOf(old), notes: enemyOf(old).notes } : null;
+    const E = preset || base || CPR.generateEnemy("booster", 1);
+    const st = E.stats || {};
+    // HP: vuoto se coincide con la formula (così segue BODY e WILL); un valore diverso (es. +10 del livello 5) resta
+    const autoHp = CPR.hpMax(num(st.BODY), num(st.WILL));
+    const hpField = hasVal(E.hpMax) && num(E.hpMax) !== autoHp ? E.hpMax : "";
+    const lvl = CPR.LEVELS[(num(E.level) || 1) - 1] || CPR.LEVELS[0];
+    const armorSel = (loc) => { const a = (E.armor || {})[loc] || {}; return `
+      <div class="field"><label>Armatura ${loc === "head" ? "testa" : "corpo"}</label><div class="sh-pair">
+        <select data-arm-type="${loc}">${CPR.ARMOR_TYPES.map(t => `<option value="${t.id}" ${t.id === (a.type || "none") ? "selected" : ""}>${t.label}${t.sp ? ` (SP ${t.sp})` : ""}</option>`).join("")}<option value="custom" ${a.type === "custom" ? "selected" : ""}>Altro…</option></select>
+        <input name="sp-${loc}" type="number" min="0" value="${esc(a.sp ?? 0)}" title="SP"></div>
+        <input name="arm-${loc}" value="${esc(a.name || "")}" placeholder="Nome (es. Subdermal Armor)" style="margin-top:4px"></div>`; };
+    const wRow = (w = {}) => `<div class="sh-row en-wpn">
+      <select data-f="cat">${CPR.WEAPON_TYPES.map(t => `<option value="${t.id}" ${t.id === w.cat ? "selected" : ""}>${t.label}</option>`).join("")}<option value="" ${!w.cat ? "selected" : ""}>Altro…</option></select>
+      <input data-f="name" placeholder="Nome" value="${esc(w.name)}">
+      <input data-f="dmg" placeholder="Danno" value="${esc(w.dmg)}">
+      <input data-f="rof" placeholder="ROF" value="${esc(w.rof ?? "")}">
+      <input data-f="base" type="number" placeholder="Base" title="Base d'attacco (STAT + abilità)" value="${esc(w.base ?? "")}">
+      <input data-f="skill" type="hidden" value="${esc(w.skill || "")}"><input data-f="mag" type="hidden" value="${esc(w.mag ?? "")}">
+      <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
+    const sRow = (k = {}) => `<div class="sh-row en-sk">
+      <input data-f="label" placeholder="Abilità (es. Handgun)" list="dl-skills" value="${esc(k.label)}">
+      <select data-f="stat">${CPR.STATS.map(s => `<option ${s.id === (k.stat || "REF") ? "selected" : ""}>${s.id}</option>`).join("")}</select>
+      <input data-f="base" type="number" placeholder="Base" value="${esc(k.base ?? "")}">
+      <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
+    openModal(`
+      <form class="form" id="enemy-form">
+        <div class="modal-head"><h2>// 🔒 ${old ? "MODIFICA NEMICO" : "NUOVO NEMICO"}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+        <div class="modal-body">
+          <div class="en-gen">
+            <div class="field"><label for="en-type">Tipo</label><select id="en-type" name="type">${CPR.ENEMY_TYPES.map(t => `<option value="${t.id}" ${t.id === E.type ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</select></div>
+            <div class="field"><label for="en-lvl">Difficoltà</label><select id="en-lvl" name="level">${CPR.LEVELS.map(l => `<option value="${l.n}" ${l.n === num(E.level) ? "selected" : ""}>${l.n} · ${LVL_STARS(l.n)} ${l.label}</option>`).join("")}</select></div>
+            <button type="button" class="btn yellow" data-en-gen>⚄ Genera</button>
+            <span class="hint">Livello ${lvl.n}: ${esc(lvl.hint)}. 1 = Scagnozzi del manuale · 3 = Hardened · 5 = Hardened Mini-Boss con un potenziamento.
+              Genera STAT, basi delle abilità, armi per categoria e armatura; poi puoi ritoccare tutto.</span>
+          </div>
+          ${(E.buffs || []).length ? `<div class="en-buffs" style="margin-top:10px">${E.buffs.map(b => `<span>⚡ ${esc(b)}</span>`).join("")}</div>` : ""}
+          <div class="fields" style="margin-top:14px">
+            <div class="field full"><label class="req" for="en-name">Nome</label><input id="en-name" name="name" required value="${esc(E.name || "")}"></div>
+          </div>
+          <h3 class="sh-h">STATs</h3>
+          <div class="sh-stat-in">${CPR.STATS.map(s => `<label><span>${s.id}</span><input name="st-${s.id}" type="number" min="0" max="20" value="${esc(st[s.id] ?? "")}"></label>`).join("")}</div>
+          <div class="fields">
+            <div class="field"><label for="en-hp">HP (vuoto = da BODY e WILL)</label><input id="en-hp" name="hpMax" type="number" min="1" value="${esc(hpField)}" placeholder="${autoHp}"></div>
+            <div class="field"><label for="en-ab">Role Ability · rank (facoltativa)</label><div class="sh-pair"><input id="en-ab" name="ability" value="${esc(E.ability ? E.ability.name : "")}" placeholder="es. Interface"><input name="rank" type="number" min="0" max="10" value="${esc(E.ability ? E.ability.rank : "")}"></div></div>
+            ${armorSel("head")}${armorSel("body")}
+            <div class="field full">
+              <label class="check"><input type="checkbox" name="noPen" ${E.noPen ? "checked" : ""}> Armatura migliorata dal Tech: niente malus</label>
+              <span class="hint" id="en-pen-hint"></span>
+            </div>
+          </div>
+          <h3 class="sh-h">Weapons <small>categoria del manuale · base = STAT + abilità, senza il malus dell'armatura (lo aggiunge il sito)</small></h3>
+          <div class="sh-rows" id="en-wpns">${(E.weapons || []).map(wRow).join("")}</div>
+          <button type="button" class="btn ghost small cyan" data-en-add="wpn">+ Arma</button>
+          <h3 class="sh-h">Skill Bases <small>STAT + abilità già sommate</small></h3>
+          <div class="sh-rows" id="en-skills">${(E.skills || []).map(sRow).join("")}</div>
+          <button type="button" class="btn ghost small cyan" data-en-add="skill">+ Abilità</button>
+          <datalist id="dl-skills">${CPR.SKILLS.map(k => `<option value="${esc(k.label)}">`).join("")}</datalist>
+          <div class="fields" style="margin-top:16px">
+            <div class="field full"><label for="en-cy">Cyberware</label><textarea id="en-cy" name="cyber" rows="2">${esc(E.cyber || "")}</textarea></div>
+            <div class="field full"><label for="en-gear">Gear</label><textarea id="en-gear" name="gear" rows="2">${esc(E.gear || "")}</textarea></div>
+            <div class="field full"><label for="en-notes">Note (tattiche, comportamento)</label><textarea id="en-notes" name="notes" rows="2">${esc(E.notes || "")}</textarea></div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost small left" data-action="close">Annulla</button>
+          <button type="submit" class="btn">Salva nemico</button>
+        </div>
+      </form>`);
+    const form = $("#enemy-form");
+    form.addEventListener("click", ev => {
+      if (ev.target.closest("[data-en-gen]")) {
+        const g = CPR.generateEnemy(form.elements["type"].value, num(form.elements["level"].value));
+        // il nome scritto a mano resta; quello inventato dal generatore si rinnova
+        const typed = form.elements["name"].value.trim();
+        if (typed && typed !== E.name) g.name = typed;
+        else if (old && !preset) g.name = old.name;
+        return editEnemy(id, g);
+      }
+      const add = ev.target.closest("[data-en-add]");
+      if (add) { const box = $(add.dataset.enAdd === "wpn" ? "#en-wpns" : "#en-skills", form); box.insertAdjacentHTML("beforeend", add.dataset.enAdd === "wpn" ? wRow() : sRow()); $(".sh-row:last-child input", box).focus(); }
+      const del = ev.target.closest("[data-row-del]"); if (del) del.closest(".sh-row").remove();
+    });
+    form.addEventListener("change", ev => {
+      const t = ev.target;
+      // categoria d'arma scelta: compilo danno, ROF e abilità come da manuale
+      if (t.matches(".en-wpn [data-f=cat]")) {
+        const w = CPR.weaponType(t.value), row = t.closest(".sh-row"); if (!w) return;
+        const set = (f, v) => { $(`[data-f=${f}]`, row).value = v; };
+        set("dmg", w.dmg); set("rof", w.rof); set("skill", w.skill); set("mag", w.mag || "");
+        // il nome cambia se era vuoto o era il nome di una categoria; un nome proprio ("Malorian 3516") resta
+        const nm = $("[data-f=name]", row).value.trim();
+        if (!nm || CPR.WEAPON_TYPES.some(x => x.label === nm)) set("name", w.label);
+        // base d'attacco = base dell'abilità di quell'arma, se è tra le abilità del nemico
+        const k = CPR.skill(w.skill), sk = $$(".en-sk", form).find(r => norm($("[data-f=label]", r).value) === norm(k.label));
+        if (sk) set("base", $("[data-f=base]", sk).value);
+        else { const st = num(form.elements["st-" + k.stat].value); set("base", st); toast(`${esc(k.label)} non è tra le abilità: base = ${k.stat} (${st}). Aggiungila se serve.`); }
+      }
+      if (t.matches("[data-arm-type]")) { const a = CPR.armorType(t.value); if (a) { form.elements["sp-" + t.dataset.armType].value = a.sp; form.elements["arm-" + t.dataset.armType].value = a.id === "none" ? "" : a.label; } }
+      penHint();
+    });
+    // promemoria del malus dell'armatura scelta
+    const penHint = () => {
+      const p = CPR.armorPen({ head: { type: $("[data-arm-type=head]", form).value }, body: { type: $("[data-arm-type=body]", form).value } }, form.elements["noPen"].checked);
+      $("#en-pen-hint", form).textContent = p ? `Malus dell'armatura: ${p} a REF, DEX, MOVE e alle abilità che li usano (applicato nei tiri, mostrato tra parentesi).` : "Nessun malus dell'armatura.";
+    };
+    penHint();
+    form.addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const v = n => form.elements[n].value.trim(), nv = n => v(n) === "" ? null : num(v(n));
+      const stats = Object.fromEntries(CPR.STATS.map(s => [s.id, num(v("st-" + s.id))]));
+      const armor = {};
+      for (const loc of ["head", "body"]) armor[loc] = { type: $(`[data-arm-type=${loc}]`, form).value, name: v("arm-" + loc), sp: num(v("sp-" + loc)) };
+      const weapons = readRows(form, "#en-wpns .sh-row").filter(w => w.name).map(w => {
+        const t = CPR.weaponType(w.cat);
+        return { ...w, skill: w.skill || (t ? t.skill : "handgun"), rof: w.rof === "" ? 1 : num(w.rof) || w.rof, base: num(w.base) };
+      });
+      const skills = readRows(form, "#en-skills .sh-row").filter(k => k.label).map(k => ({ label: k.label, stat: k.stat, base: num(k.base) })).sort((a, b) => b.base - a.base);
+      const enemy = { type: v("type"), level: num(v("level")) || 1, stats, hpMax: nv("hpMax"), armor, weapons, skills,
+        noPen: form.elements["noPen"].checked, buffs: E.buffs || [],
+        ability: v("ability") ? { name: v("ability"), rank: num(v("rank")) } : null, cyber: v("cyber"), gear: v("gear"), notes: v("notes") };
+      try {
+        const saved = await Store.save("entries", { ...(old || { status: "vivo", custom: [] }), kind: "nemico", name: v("name"), gmOnly: true, enemy });
+        upsert(state.entries, saved); liveSend("entries", saved);
+        if (/^#\/gm/.test(location.hash)) route();   // aggiorno l'elenco dietro la finestra
+        toast("Nemico salvato", "ok"); openEnemy(saved.id);
+      } catch (err) { fail(err); }
+    });
+  }
+
+  // mette N copie del nemico sulla mappa che il GM sta guardando (nascoste, se vuole)
+  function spawnEnemy(id) {
+    const e = state.entries.find(x => x.id === id); if (!e) return;
+    const m = curMap();
+    if (!m) return toast("Prima crea una mappa nel Tavolo", "err");
+    openModal(`
+      <form class="form" id="spawn-form">
+        <div class="modal-head"><h2>// ⇲ ${esc(e.name)} SUL TAVOLO</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+        <div class="modal-body"><div class="fields">
+          <div class="field full"><span class="lbl">Mappa</span><b>${esc(m.name || "Mappa")}</b>${m.hidden ? ` <span class="hint">(nascosta ai giocatori)</span>` : ""}</div>
+          <div class="field"><label for="sp-n">Quanti</label><input id="sp-n" name="count" type="number" min="1" max="20" value="1"></div>
+          <div class="field"><label for="sp-c">Colore</label><input id="sp-c" name="color" type="color" value="#ff8a3d"></div>
+          <label class="check field full gm-check"><input type="checkbox" name="hidden" checked> 🔒 Nascosti ai giocatori (li riveli dal tavolo)</label>
+          <p class="hint field full">Ogni token ha HP (${enemyHp(enemyOf(e))}) e SP propri: si feriscono uno per uno.</p>
+        </div></div>
+        <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button type="submit" class="btn">Metti sul tavolo</button></div>
+      </form>`, true);
+    $("#spawn-form").addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const f = ev.target, n = clamp(num(f.count.value) || 1, 1, 20), hidden = f.hidden.checked;
+      const taken = new Set(mapTokens(m).map(t => num(t.x) + "," + num(t.y)));
+      closeModal();
+      for (let i = 0; i < n; i++) await saveRec("tokens", enemyToken(e, m, { name: n > 1 ? `${e.name} ${i + 1}` : "", color: safeColor(f.color.value), hidden, ...freeCell(m, taken) }));
+      toast(`${n} × ${e.name} sul tavolo`, "ok");
+      tt.view = m.id; if (onTable()) { renderTokens(); renderSide(); } else location.hash = "#/tavolo";
+    });
+  }
+
+  function enemyCard(e) {
+    const E = enemyOf(e), T = CPR.enemyType(E.type);
+    return `<article class="en-card">
+      <button type="button" class="en-card-main" data-action="enemy-open" data-id="${esc(e.id)}">
+        <span class="en-lvl">${LVL_STARS(num(E.level) || 1)}</span>
+        <h3>${esc(e.name)}</h3>
+        <span class="en-type">${esc(T.label)}</span>
+        <span class="en-line">HP <b>${enemyHp(E)}</b> · SP <b>${enemySp(E, "head")}/${enemySp(E, "body")}</b> · REF <b>${withPen(num((E.stats || {}).REF), enemyStat(E, "REF"))}</b></span>
+        <span class="en-line">${(E.weapons || []).map(w => `${esc(w.name)} <b>${withPen(num(w.base), enemyWpn(E, w))}</b>`).join(" · ") || "disarmato"}</span>
+      </button>
+      <button type="button" class="btn ghost small yellow" data-action="enemy-spawn" data-id="${esc(e.id)}">⇲ Sul tavolo</button>
+    </article>`;
+  }
+
   // ---------- AREA GM ----------
   function viewGm() {
-    const secretEntries = state.entries.filter(e => e.gmOnly).sort((a, b) => (a.name || "").localeCompare(b.name || "", "it"));
+    const enemies = state.entries.filter(e => e.kind === "nemico" && e.enemy)
+      .sort((a, b) => num(enemyOf(a).level) - num(enemyOf(b).level) || (a.name || "").localeCompare(b.name || "", "it"));
+    const secretEntries = state.entries.filter(e => e.gmOnly && e.kind !== "nemico").sort((a, b) => (a.name || "").localeCompare(b.name || "", "it"));
     const secretNotes = state.notes.filter(n => n.gmOnly).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
     const notesOn = state.gmnotes.filter(g => g.text && state.entries.some(e => e.id === g.entryId));
     const hiddenTok = state.tokens.filter(t => t.hidden);
@@ -2445,7 +2803,13 @@
       </div>
       ${!Store.gmReady ? `<div class="gm-warn">⚠ Il database non ha ancora il ruolo GM: esegui <b>supabase/schema.sql</b> nell'editor SQL di Supabase.</div>` : ""}
 
-      <div class="section-title"><h2>🔒 Dossier segreti <span class="hint">${secretEntries.length}</span></h2></div>
+      <div class="section-title"><h2>☠ Nemici <span class="hint">${enemies.length}</span></h2>
+        <span class="en-actions"><button type="button" class="btn small yellow" data-action="gm-gen-enemy">⚄ Genera nemico</button>
+        <button type="button" class="btn ghost small" data-action="gm-new-enemy">+ Nemico a mano</button></span></div>
+      ${enemies.length ? `<div class="en-grid">${enemies.map(enemyCard).join("")}</div>`
+        : `<p class="hint">Nessun nemico. «Genera nemico» crea una scheda semplificata come quelle del manuale: scegli il tipo e la difficoltà da 1 (scarso) a 5 (forte).</p>`}
+
+      <div class="section-title" style="margin-top:28px"><h2>🔒 Dossier segreti <span class="hint">${secretEntries.length}</span></h2></div>
       ${secretEntries.length ? `<div class="grid">${secretEntries.map(cardEntry).join("")}</div>`
         : `<p class="hint">Nessuno. Crea un «NPC segreto», oppure spunta «Solo GM» nella modifica di un record del database.</p>`}
 
@@ -2526,11 +2890,20 @@
   // nascosto ai giocatori: il token stesso o la sua mappa
   const mapHidden = id => { const m = state.maps.find(x => x.id === id); return !!(m && m.hidden); };
   const tokHidden = t => !!(t.hidden || mapHidden(t.mapId));
+  // HP e SP: i token di PG/NPC con scheda usano quelli della scheda; i nemici (own = true) e i token
+  // generici li hanno propri, così tre ganger dallo stesso modello si feriscono ognuno per conto suo
+  const tokSheet = t => { const e = tokEntry(t); return e && !t.own && hasSheet(e) ? e : null; };
   function tokHp(t) {
-    const e = tokEntry(t);
-    if (e && hasSheet(e)) return { hp: hpOf(e), max: hpMaxOf(e) };
+    const e = tokSheet(t);
+    if (e) return { hp: hpOf(e), max: hpMaxOf(e) };
     if (hasVal(t.hpMax) && num(t.hpMax) > 0) return { hp: hasVal(t.hp) ? num(t.hp) : num(t.hpMax), max: num(t.hpMax) };
     return null;
+  }
+  function tokArmor(t, loc) {
+    const e = tokSheet(t);
+    if (e) return armorOf(e, loc);
+    const a = (t.armor || {})[loc]; if (!a || !num(a.sp)) return null;
+    return { name: a.name || "", sp: num(a.sp), cur: hasVal(a.cur) ? num(a.cur) : num(a.sp) };
   }
   const canMove = () => Store.canEdit();
   const initList = m => (m.init || []).map(it => { const t = state.tokens.find(x => x.id === it.tokenId); return t ? { ...it, name: tokName(t) } : null; })
@@ -2706,13 +3079,21 @@
       return;
     }
     const e = tokEntry(t), hp = tokHp(t), edit = Store.canEdit(), gmt = gmTools();
+    const w = hp && CPR.wound(hp.hp, hp.max), enemy = e && e.kind === "nemico" && e.enemy;
+    const sp = loc => { const a = tokArmor(t, loc); return a ? spBar(loc === "head" ? "Head SP" : "Body SP", a, edit && (d => `data-action="tt-sp" data-loc="${loc}" data-d="${d}"`)) : ""; };
     box.innerHTML = `
       <h4 style="color:${safeColor(t.color)}">${t.hidden ? "🔒 " : ""}${esc(tokName(t))}</h4>
       ${isGm() && tokHidden(t) ? `<p class="hint gm-hint">Nascosto ai giocatori${!t.hidden ? " (perché la mappa è nascosta)" : ""}.</p>` : ""}
-      ${hp ? `<div class="tt-hpline"><span>HP <b>${hp.hp}</b> / ${hp.max}</span>${edit ? `<span class="sh-adj">${[-5, -1, 1, 5].map(d => `<button type="button" class="gp-btn" data-action="tt-hp" data-d="${d}">${d > 0 ? "+" : "−"}${Math.abs(d) === 1 ? "" : Math.abs(d)}</button>`).join("")}</span>` : ""}</div>
-        ${e && hasSheet(e) ? `<div class="hint">${esc(woundOf(e).label)} · SP head ${armorOf(e, "head").cur} · body ${armorOf(e, "body").cur}</div>` : ""}` : ""}
+      ${hp ? `<div class="tt-hpblock w-${w.id}">
+        <div class="tt-hpline"><span>HP <b>${hp.hp}</b> / ${hp.max}</span><span class="hint">${esc(w.label)}${w.pen ? ` · ${w.pen}` : ""}</span></div>
+        <span class="sh-hpbar"><i style="width:${clamp(hp.hp / hp.max * 100, 0, 100)}%"></i><b style="left:${clamp(CPR.seriousAt(hp.max) / hp.max * 100, 0, 100)}%"></b></span>
+        ${edit ? `<span class="sh-adj">${[-5, -1, 1, 5].map(d => `<button type="button" class="gp-btn" data-action="tt-hp" data-d="${d}">${d > 0 ? "+" : "−"}${Math.abs(d) === 1 ? "" : Math.abs(d)}</button>`).join("")}</span>` : ""}
+      </div>` : ""}
+      ${sp("head")}${sp("body")}
+      ${enemy && isGm() ? enemyQuickRolls(e, t) : ""}
       <div class="row-btns" style="margin-top:8px">
         ${e && isPerson(e) ? `<button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="sheet">Scheda</button>` : ""}
+        ${enemy && isGm() ? `<button type="button" class="btn ghost small cyan" data-action="enemy-open" data-id="${esc(e.id)}">Scheda nemico</button>` : ""}
         ${edit ? `<button type="button" class="btn ghost small" data-action="tt-init-one">Iniziativa</button>` : ""}
         ${gmt ? `${isGm() && Store.gmReady ? `<button type="button" class="btn ghost small yellow" data-action="tt-toggle-hidden">${t.hidden ? "👁 Rivela" : "🔒 Nascondi"}</button>` : ""}
           <button type="button" class="btn ghost small" data-action="tt-edit-token">Modifica</button>
@@ -2847,7 +3228,8 @@
     const e = tokEntry(t);
     const d = CPR.die(10);
     const secret = tokHidden(t) ? { gmOnly: true } : {};   // il tiro di un nemico nascosto non lo rivela
-    const r = e && hasSheet(e) ? await rollInitiative(e, { who: tokName(t), ...secret })
+    const r = e && e.kind === "nemico" && e.enemy ? await rollEnemy(e, "init", t)
+      : e && hasSheet(e) ? await rollInitiative(e, { who: tokName(t), ...secret })
       : await postRoll({ kind: "init", who: tokName(t), label: "Initiative", dice: [{ v: d, s: 10 }], mods: [], total: d, ...secret });
     const init = (m.init || []).filter(it => it.tokenId !== t.id);
     init.push({ tokenId: t.id, v: num(r.total) });
@@ -2904,7 +3286,9 @@
   function addTokens() {
     const m = curMap(); if (!m) return;
     const onMap = new Set(mapTokens(m).map(t => t.entryId).filter(Boolean));
-    const people = state.entries.filter(isPerson).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "pg" ? -1 : 1) || (a.name || "").localeCompare(b.name || "", "it"));
+    const order = { pg: 0, npc: 1, nemico: 2 };
+    const people = state.entries.filter(e => isPerson(e) || (e.kind === "nemico" && e.enemy && isGm()))
+      .sort((a, b) => order[a.kind] - order[b.kind] || (a.name || "").localeCompare(b.name || "", "it"));
     openModal(`
       <form class="form" id="tok-form">
         <div class="modal-head"><h2>// AGGIUNGI TOKEN</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
@@ -2918,6 +3302,7 @@
             <div class="field"><label for="tk-name">Nome</label><input id="tk-name" name="name" placeholder="es. Ganger Maelstrom"></div>
             <div class="field"><label for="tk-n">Quanti</label><input id="tk-n" name="count" type="number" min="1" max="20" value="1"></div>
             <div class="field"><label for="tk-hp">HP max (facoltativo)</label><input id="tk-hp" name="hpMax" type="number" min="0"></div>
+            <div class="field"><label for="tk-sp">SP armatura (facoltativa)</label><input id="tk-sp" name="sp" type="number" min="0" placeholder="es. 7 Kevlar, 11 Light Armorjack"></div>
             <div class="field"><label for="tk-c">Colore</label><input id="tk-c" name="color" type="color" value="#ff2a3d"></div>
             ${isGm() && Store.gmReady ? `<label class="check field full gm-check"><input type="checkbox" name="hidden"> 🔒 Aggiungi nascosti ai giocatori (li riveli poi con un clic)</label>` : ""}
           </div>
@@ -2932,10 +3317,13 @@
       for (const id of $$("input[name=ent]:checked", form).map(i => i.value)) {
         const e = state.entries.find(x => x.id === id);
         // nome e immagine copiati: chi non vede la scheda (NPC segreto) vede comunque il token
+        if (e.kind === "nemico") { out.push(enemyToken(e, m, { hidden, ...freeCell(m, taken) })); continue; }
         out.push({ mapId: m.id, entryId: id, snapName: e.name, snapImage: imagesOf(e)[0] || "", color: e.kind === "pg" ? "#3dff9a" : "#00f0ff", size: 1, hidden, ...freeCell(m, taken) });
       }
       const name = form.elements["name"].value.trim(), n = clamp(num(form.count.value) || 1, 1, 20);
-      if (name) for (let i = 0; i < n; i++) out.push({ mapId: m.id, name: n > 1 ? `${name} ${i + 1}` : name, color: safeColor(form.color.value), size: 1, hidden, hpMax: form.hpMax.value === "" ? null : num(form.hpMax.value), ...freeCell(m, taken) });
+      const gsp = form.elements["sp"].value === "" ? null : num(form.elements["sp"].value);
+      if (name) for (let i = 0; i < n; i++) out.push({ mapId: m.id, name: n > 1 ? `${name} ${i + 1}` : name, color: safeColor(form.color.value), size: 1, hidden,
+        hpMax: form.hpMax.value === "" ? null : num(form.hpMax.value), armor: gsp ? { head: { sp: gsp }, body: { sp: gsp } } : undefined, ...freeCell(m, taken) });
       if (!out.length) return toast("Scegli almeno un personaggio o scrivi un nome", "err");
       closeModal();
       for (const t of out) await saveRec("tokens", t);
@@ -2953,9 +3341,12 @@
           <div class="field full"><label for="te-name">Nome${e ? " (vuoto = come nel database)" : ""}</label><input id="te-name" name="name" value="${esc(t.name || "")}" placeholder="${esc(e ? e.name : "")}"></div>
           <div class="field"><label for="te-size">Dimensione (caselle)</label><select id="te-size" name="size">${[1, 2, 3, 4].map(n => `<option ${num(t.size) === n || (!t.size && n === 1) ? "selected" : ""}>${n}</option>`).join("")}</select></div>
           <div class="field"><label for="te-c">Colore</label><input id="te-c" name="color" type="color" value="${safeColor(t.color)}"></div>
-          ${e && hasSheet(e) ? `<div class="field full"><span class="hint">Gli HP di questo token sono quelli della scheda di ${esc(e.name)}.</span></div>` : `
+          ${tokSheet(t) ? `<div class="field full"><span class="hint">HP e armatura di questo token sono quelli della scheda di ${esc(e.name)}: si cambiano lì o con i pulsanti del pannello.</span></div>` : `
           <div class="field"><label for="te-hpm">HP max</label><input id="te-hpm" name="hpMax" type="number" min="0" value="${esc(t.hpMax ?? "")}"></div>
-          <div class="field"><label for="te-hp">HP attuali</label><input id="te-hp" name="hp" type="number" value="${esc(t.hp ?? "")}"></div>`}
+          <div class="field"><label for="te-hp">HP attuali</label><input id="te-hp" name="hp" type="number" value="${esc(t.hp ?? "")}"></div>
+          ${["head", "body"].map(loc => { const a = (t.armor || {})[loc] || {}; return `
+          <div class="field"><label for="te-sp-${loc}">SP ${loc === "head" ? "testa" : "corpo"} · max</label><input id="te-sp-${loc}" name="sp-${loc}" type="number" min="0" value="${esc(a.sp ?? "")}" placeholder="es. 11"></div>
+          <div class="field"><label for="te-cur-${loc}">SP ${loc === "head" ? "testa" : "corpo"} · attuale</label><input id="te-cur-${loc}" name="cur-${loc}" type="number" min="0" value="${esc(a.cur ?? "")}" placeholder="vuoto = piena"></div>`; }).join("")}`}
           <div class="field full"><label for="te-img">Immagine (URL, vuoto = quella del personaggio)</label><input id="te-img" name="image" type="url" value="${esc(t.image && !t.image.startsWith("idb:") ? t.image : "")}"></div>
         </div></div>
         <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button type="submit" class="btn">Salva token</button></div>
@@ -2964,7 +3355,14 @@
     form.addEventListener("submit", async ev => {
       ev.preventDefault();
       const patch = { name: form.elements["name"].value.trim(), size: num(form.size.value) || 1, color: safeColor(form.color.value), image: form.image.value.trim() };
-      if (form.hpMax) { patch.hpMax = form.hpMax.value === "" ? null : num(form.hpMax.value); patch.hp = form.hp.value === "" ? null : num(form.hp.value); }
+      if (form.hpMax) {
+        patch.hpMax = form.hpMax.value === "" ? null : num(form.hpMax.value); patch.hp = form.hp.value === "" ? null : num(form.hp.value);
+        patch.armor = {};
+        for (const loc of ["head", "body"]) {
+          const sp = form.elements["sp-" + loc].value, cur = form.elements["cur-" + loc].value;
+          patch.armor[loc] = { ...((t.armor || {})[loc] || {}), sp: sp === "" ? null : num(sp), cur: cur === "" || sp === "" ? null : clamp(num(cur), 0, num(sp)) };
+        }
+      }
       closeModal(); await saveToken({ ...t, ...patch });
     });
   }
@@ -3002,10 +3400,20 @@
       case "tt-select": return selectToken(el.dataset.tok);
       case "tt-hp": {
         if (!t) return;
-        const e = tokEntry(t), d = num(el.dataset.d);
-        if (e && hasSheet(e)) return sheetPatch(e.id, s => ({ ...s, hp: clamp(hpOf(e) + d, 0, hpMaxOf(e)) }));
+        const e = tokSheet(t), d = num(el.dataset.d);
+        if (e) return sheetPatch(e.id, s => ({ ...s, hp: clamp(hpOf(e) + d, 0, hpMaxOf(e)) }));
         const hp = tokHp(t); if (!hp) return;
         return saveToken({ ...t, hp: clamp(hp.hp + d, 0, hp.max) });
+      }
+      case "tt-sp": {
+        if (!t) return;
+        const loc = el.dataset.loc, d = el.dataset.d, e = tokSheet(t);
+        if (e) {
+          const a = armorOf(e, loc);
+          return sheetPatch(e.id, s => { s.armor = s.armor || {}; s.armor[loc] = { ...(s.armor[loc] || {}), cur: d === "reset" ? a.sp : clamp(a.cur + num(d), 0, a.sp) }; return s; });
+        }
+        const a = tokArmor(t, loc); if (!a) return;
+        return saveToken({ ...t, armor: { ...(t.armor || {}), [loc]: { ...((t.armor || {})[loc] || {}), cur: d === "reset" ? a.sp : clamp(a.cur + num(d), 0, a.sp) } } });
       }
       case "tt-zoom": {
         const d = num(el.dataset.d);
@@ -3383,6 +3791,18 @@
       }); break;
       case "edit-gmnote": editGmNote(id); break;
       case "gm-new-entry": editEntry(null, { kind: "npc", gmOnly: true }); break;
+      // nemici
+      case "gm-gen-enemy": editEnemy(null, CPR.generateEnemy(CPR.ENEMY_TYPES[CPR.die(CPR.ENEMY_TYPES.length) - 1].id, 1)); break;
+      case "gm-new-enemy": editEnemy(null, { type: "booster", level: 1, name: "", stats: Object.fromEntries(CPR.STATS.map(s => [s.id, 5])), armor: {}, weapons: [], skills: [] }); break;
+      case "enemy-open": openEnemy(id); break;
+      case "enemy-edit": editEnemy(id); break;
+      case "enemy-spawn": spawnEnemy(id); break;
+      case "enemy-copy": { const e = state.entries.find(x => x.id === id); if (e) editEnemy(null, { ...JSON.parse(JSON.stringify(enemyOf(e))), name: e.name + " (copia)" }); break; }
+      case "enemy-roll": {
+        const e = state.entries.find(x => x.id === id), t = el.dataset.tok && state.tokens.find(x => x.id === el.dataset.tok);
+        if (e) rollEnemy(e, el.dataset.roll, t || null);
+        break;
+      }
       case "gm-new-note": editNote(null, { gmOnly: true, category: "GM" }); break;
       case "gm-add": {
         const inp = $("#gm-email"), email = inp && inp.value.trim();
@@ -3473,7 +3893,7 @@
           else if (f.startsWith("armor.")) {
             const loc = f.slice(6), a = armorOf(e, loc);
             s.armor = s.armor || {};
-            s.armor[loc] = { ...(s.armor[loc] || {}), cur: d === "reset" ? a.sp : Math.max(0, a.cur + num(d)) };
+            s.armor[loc] = { ...(s.armor[loc] || {}), cur: d === "reset" ? a.sp : clamp(a.cur + num(d), 0, a.sp) };
           }
           return s;
         });
@@ -3483,6 +3903,8 @@
       case "dice-toggle": if (drawer && !drawer.hidden) closeDrawer(); else openDrawer(); break;
       case "dice-open": openDrawer(); break;
       case "dice-close": closeDrawer(); break;
+      case "menu-toggle": if ($("#side-menu").hidden) openMenu(); else closeMenu(); break;
+      case "menu-close": closeMenu(); break;
       case "dice-min": minDrawer(); break;
       default: if (a.startsWith("tt-")) tableAction(a, el);
     }
