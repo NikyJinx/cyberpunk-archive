@@ -45,7 +45,7 @@ Basta un clic su una STAT, un'abilità o un'arma per **tirare i dadi**: base + 1
 Il tavolo di gioco per i combattimenti, condiviso **in tempo reale** tra tutti quelli che hanno il sito aperto.
 - **Mappe** con immagine di sfondo e griglia (1 casella = 2 m), zoom con la rotella e spostamento della vista trascinando lo sfondo.
 - **Mappa condivisa**: il GM prepara le mappe in privato e con «Mostra a tutti» porta tutti i giocatori su quella giusta. Chi sta guardando un'altra mappa ci viene spostato con un avviso.
-- **Token** trascinabili per PG, NPC e nemici generici, con la barra degli HP presa dalla scheda. Durante lo spostamento una **freccia** va dalla casella di partenza a quella d'arrivo, con la distanza in metri, e la vedono anche gli altri giocatori. Le frecce della tastiera muovono il token selezionato di una casella.
+- **Token** trascinabili per PG, NPC e nemici generici, con la barra degli HP presa dalla scheda. Nel pannello del token HP e armatura (SP di testa e corpo) hanno le barre e i pulsanti per danni, ablazione e riparazione; i token generici e i nemici hanno HP e SP propri, modificabili anche da «Modifica». Durante lo spostamento una **freccia** va dalla casella di partenza a quella d'arrivo, con la distanza in metri, e la vedono anche gli altri giocatori. Le frecce della tastiera muovono il token selezionato di una casella.
 - **Iniziativa**: un pulsante tira REF + 1d10 per tutti, poi «Turno ▶» passa al prossimo e conta i round.
 - **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto: `2d6+3` per un tiro libero, `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
 
@@ -60,6 +60,7 @@ Una sezione che vedono **solo i GM**: le righe segrete non arrivano proprio ai g
 - **Token nascosti**: nemici in agguato che compaiono ai giocatori quando il GM preme «👁 Rivela». Mentre il GM li sposta, la posizione non viaggia sul canale pubblico.
 - **Tiri segreti**: interruttore «🔒 Segreto» nel Dice log. I tiri degli NPC segreti e dei token nascosti sono segreti da soli.
 - **Account GM**: dalla pagina GM si aggiungono o tolgono altri master.
+- **☠ Nemici**: schede semplificate come i PNG del manuale (STAT, HP, Seriously Wounded, Death Save, armatura, armi con la base d'attacco, basi delle abilità, cyberware ed equipaggiamento). Il **generatore** crea un nemico scegliendo uno dei 14 tipi presi dai ruoli dei PNG del manuale e dei PDF gratuiti *Hardened* (guardia del corpo, booster, ganger di strada, guardia giurata, netrunner, capo reclamatore, agente di sicurezza, battipista, piromane, cyberpsicotico, assassino, cecchino, nomade, veterano) e la difficoltà da 1 a 5: **1** come gli Scagnozzi del manuale (basi d'attacco 10–12), **2** Luogotenenti, **3** Hardened (12–14), **4** Mini-Boss (14–15), **5** Hardened Mini-Boss con un potenziamento in più (16–17, fino a 18). Le basi delle abilità sono complete come nei blocchi del libro, LUCK non c'è, le armi sono per categoria con qualità Bassa o Eccellente e le armature sono quelle standard. Il **malus dell'armatura** (−2 Medium/Heavy Armorjack, −4 Flak/Metalgear su REF, DEX, MOVE e sulle abilità che li usano) è mostrato tra parentesi come nel manuale e vale nei tiri; vale anche per la scheda dei PG, salvo armatura migliorata dal Tech. Con «⇲ Sul tavolo» si mettono N copie sulla mappa, anche nascoste: ogni token ha HP e SP propri e tira dal suo pannello.
 - Con il ruolo GM attivo, mappe, token, turni e «Mostra a tutti» li gestiscono solo i GM. I giocatori muovono i token visibili, cambiano gli HP e tirano.
 
 **Per attivarlo** (una volta sola): su Supabase apri *SQL Editor*, incolla tutto `supabase/schema.sql`, togli i due trattini dall'ultima riga mettendo l'email del primo GM e premi *Run*. Gli altri GM si aggiungono poi dal sito.
@@ -135,6 +136,7 @@ Le schede dei personaggi stanno dentro `entries` (campo `sheet`). Il tavolo usa 
 - **Font**: *Orbitron* per i titoli, *Rajdhani* per il testo, *Share Tech Mono* per i dati.
 - **Dettagli**: angoli smussati, scanline, effetto glitch sui titoli e nei cambi di immagine, icone meteo disegnate in SVG.
 - **Responsive**: su telefono il calendario mostra punti colorati al posto dei titoli e le gallerie si sfogliano con lo swipe.
+- **Menu ☰**: il pulsante a sinistra del titolo apre un menu laterale con tutte le sezioni, più Dice log e Impostazioni. Quando la finestra è troppo stretta per tutte le voci, la barra in alto si nasconde e resta il menu.
 
 ## Struttura
 

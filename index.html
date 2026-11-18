@@ -8,11 +8,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=9">
+  <link rel="stylesheet" href="css/style.css?v=12">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2307070b'/><path d='M6 26 L16 4 L26 26 Z' fill='none' stroke='%23ff2a3d' stroke-width='3'/><circle cx='16' cy='19' r='3' fill='%2300f0ff'/></svg>">
 </head>
 <body>
   <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" data-action="menu-toggle" title="Menu: tutte le sezioni" aria-label="Apri il menu" aria-expanded="false" aria-controls="side-menu">☰</button>
     <a class="brand" href="#/home">
       <span class="brand-mark">▲</span>
       <span class="brand-text glitch" id="brand-title" data-text="NIGHT CITY ARCHIVE">NIGHT CITY ARCHIVE</span>
@@ -35,6 +36,20 @@
     </div>
   </header>
 
+  <!-- menu laterale: tutte le sezioni, sempre raggiungibili anche su schermi stretti -->
+  <div class="side-backdrop" id="side-backdrop" data-action="menu-close" hidden></div>
+  <aside class="side-menu" id="side-menu" aria-label="Menu delle sezioni" hidden>
+    <div class="side-head">
+      <span class="brand-mark">▲</span><span class="side-title">// NAVIGAZIONE</span>
+      <button class="x" data-action="menu-close" aria-label="Chiudi il menu">×</button>
+    </div>
+    <nav class="side-nav" id="side-nav"></nav>
+    <div class="side-foot">
+      <button class="btn ghost small yellow" data-action="dice-open">⬢ Dice log</button>
+      <button class="btn ghost small cyan" data-action="settings">⚙ Impostazioni</button>
+    </div>
+  </aside>
+
   <main id="app" class="app" aria-live="polite">
     <div class="boot">// BOOTING NEURAL LINK…</div>
   </main>
@@ -48,9 +63,9 @@
   <div id="toasts" class="toasts" aria-live="assertive"></div>
 
   <!-- cambia ?v= quando aggiorni i file, così i browser scaricano la versione nuova -->
-  <script src="js/config.js?v=9"></script>
-  <script src="js/store.js?v=9"></script>
-  <script src="js/dice.js?v=9"></script>
-  <script src="js/app.js?v=9"></script>
+  <script src="js/config.js?v=12"></script>
+  <script src="js/store.js?v=12"></script>
+  <script src="js/dice.js?v=12"></script>
+  <script src="js/app.js?v=12"></script>
 </body>
 </html>
