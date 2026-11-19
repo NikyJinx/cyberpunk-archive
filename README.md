@@ -33,6 +33,8 @@ Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del perso
 La scheda **Equipaggiamento** raccoglie eddies, armi, armature, oggetti e veicoli.
 
 #### ⚡ Catalogo del cyberware
+Le parti con slot (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito) sono **cyberware fondamentale**: non si aggiungono dentro lo slot ma si **attivano** in testa allo slot, con costo, PU (⚄), umanità massima e **numero di slot** modificabile per gli upgrade; anche Fashionware, Impianti Interni ed Esterni hanno i loro 7 slot modificabili. Ogni slot mostra «opzioni usate/disponibili» e avvisa se è pieno o se manca la base. Il **resoconto** di costo e umanità è in fondo alla tab.
+
 Nella modifica del cyberware ogni slot ha «+ dal catalogo…»: tutti gli impianti del manuale base (Fashionware, Neuralware e Chipware, Cyberottiche, Cyberudito, Impianti Interni ed Esterni, Cyberbraccio, Cybergamba e coperture, Borgware), con le voci dello slot in cima. La riga si compila da sola con nome, costo, PU media e descrizione; ⚄ tira la PU con i dadi del manuale.
 - Gli effetti vanno da soli nei tiri: Mirino +1 ai colpi mirati, Kerenzikov +2 all'iniziativa, Tecnoscanner e Medscanner, Analizzatore di Stress, Filtro Antitossina, Chip Abilità (abilità scelta a livello 3), Laccio Osseo-Muscolare e Telai Lineari sul BODY (con PF e Death Save), Antidolorifico. Gli effetti «non cumulativi» non si sommano e si può avere un solo Speedware.
 - Quelli a comando (Sandevistan, Definitore d'Immagine con la vista, Udito Amplificato, TeleOttica oltre 51 m, Audiovox mentre canti) hanno un interruttore nelle tab Cyberware e Combattimento. Le armi integrate (Wolvers, Digitolame, Zanne…) si aggiungono alle armi con un clic.

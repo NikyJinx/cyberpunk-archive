@@ -44,7 +44,7 @@ const slotGroup = slotId => (CW.GROUPS.find(g => g.slot === slotId.replace(/_sx$
 const cwOptions = slotId => {
   const g0 = slotGroup(slotId), groups = [...CW.GROUPS].sort((a, b) => (b.id === g0) - (a.id === g0) || (g0 === "arm" && b.id === "limbcover") - (g0 === "arm" && a.id === "limbcover"));
   return `<option value="">+ dal catalogo…</option>` + groups.map(g => {
-    const list = CW.all().filter(c => c.g === g.id); if (!list.length) return "";
+    const list = CW.all().filter(c => c.g === g.id && !c.base); if (!list.length) return "";   // la base si attiva sullo slot
     return `<optgroup label="${esc(g.label)}">${list.map(c => `<option value="${esc(c.id)}">${c.custom ? "★ " : ""}${esc(c.name)} · ${c.cost.toLocaleString("it-IT")} E$ · PU ${c.pu}${c.dice && c.dice !== "N/A" ? ` (${c.dice})` : ""}</option>`).join("")}</optgroup>`;
   }).join("");
 };
