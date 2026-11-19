@@ -103,6 +103,7 @@ function openModal(html, narrow = false, opts = {}) {
   if (m.open && m.matches(":modal") === free) { m.close(); }
   if (!m.open) free ? m.show() : m.showModal();
   if (opts.entry) winSetup(m, opts.entry, free);
+  $$(".dossier-tabs", m).forEach(tabScroller);
   m.scrollTop = keepY;
   placeDrawer();
 }
@@ -111,6 +112,33 @@ function closeModal() {
   // nella finestra esterna: dai moduli torno alla scheda, dalla scheda chiudo la finestra
   if (POP) { if (m.dataset.entry) window.close(); else openEntry(POP, ls.get("nc-pop-tab", "sheet")); return; }
   if (m.open) m.close();
+}
+
+// ---------- tab della scheda che non entrano in larghezza: frecce ‹ ›, rotellina, tab attiva sempre in vista ----------
+function tabScroller(bar) {
+  if (bar.parentElement.classList.contains("tabs-wrap")) return;
+  const wrap = document.createElement("div"); wrap.className = "tabs-wrap";
+  bar.before(wrap); wrap.append(bar);
+  wrap.insertAdjacentHTML("afterbegin", `<button type="button" class="tabs-arrow l" aria-label="Tab precedenti" tabindex="-1">‹</button>`);
+  wrap.insertAdjacentHTML("beforeend", `<button type="button" class="tabs-arrow r" aria-label="Tab successive" tabindex="-1">›</button>`);
+  const upd = () => {
+    const max = bar.scrollWidth - bar.clientWidth;
+    wrap.classList.toggle("can-l", bar.scrollLeft > 2);
+    wrap.classList.toggle("can-r", bar.scrollLeft < max - 2);
+  };
+  const step = d => bar.scrollBy({ left: d * Math.max(120, bar.clientWidth * 0.6), behavior: "smooth" });
+  $(".tabs-arrow.l", wrap).addEventListener("click", () => step(-1));
+  $(".tabs-arrow.r", wrap).addEventListener("click", () => step(1));
+  bar.addEventListener("scroll", upd, { passive: true });
+  // rotellina verticale = scorrimento orizzontale, solo se c'è qualcosa da scorrere
+  bar.addEventListener("wheel", ev => {
+    if (bar.scrollWidth <= bar.clientWidth || Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return;
+    ev.preventDefault(); bar.scrollBy({ left: ev.deltaY, behavior: "instant" });
+  }, { passive: false });
+  if ("ResizeObserver" in window) new ResizeObserver(upd).observe(bar);
+  const act = $("button.active", bar);
+  if (act) { bar.style.scrollBehavior = "auto"; bar.scrollLeft = act.offsetLeft - (bar.clientWidth - act.offsetWidth) / 2; bar.style.scrollBehavior = ""; }
+  upd();
 }
 
 // ---------- finestra della scheda ----------

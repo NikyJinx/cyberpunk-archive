@@ -2078,3 +2078,15 @@ button.en-tr:hover, button.en-tr:focus-visible { background: rgba(243,230,0,.08)
 body.popout > :not(dialog):not(#toasts):not(.dice-drawer) { display: none !important; }
 .modal.popwin { width: 100vw; max-width: none; height: 100vh; max-height: none; margin: 0; border: 0; box-shadow: none; }
 .modal.popwin::backdrop { background: var(--bg); backdrop-filter: none; }
+
+/* ---------- tab della scheda scorrevoli ---------- */
+.tabs-wrap { position: relative; margin-bottom: 18px; }
+.tabs-wrap .dossier-tabs { margin-bottom: 0; scroll-behavior: smooth; }
+.tabs-arrow {
+  position: absolute; top: 0; bottom: 1px; width: 38px; z-index: 1; display: none; align-items: center;
+  border: 0; padding: 0; cursor: pointer; color: var(--cyan); font-size: 22px; line-height: 1;
+}
+.tabs-arrow.l { left: 0; background: linear-gradient(90deg, var(--panel) 55%, transparent); justify-content: flex-start; padding-left: 4px; }
+.tabs-arrow.r { right: 0; background: linear-gradient(270deg, var(--panel) 55%, transparent); justify-content: flex-end; padding-right: 4px; }
+.tabs-arrow:hover { color: var(--yellow); text-shadow: 0 0 8px var(--cyan); }
+.tabs-wrap.can-l .tabs-arrow.l, .tabs-wrap.can-r .tabs-arrow.r { display: flex; }
