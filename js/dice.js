@@ -349,7 +349,7 @@ window.CPR = (() => {
   // "none" = combattente generico senza Capacità di Ruolo.
   const ROLES = [
     { id: "none", label: "Nessuno", ability: "", prim: ["REF", "DEX"], sec: ["BODY", "WILL"],
-      combat: ["handgun", "shoulderarms", "melee", "brawling"], tech: [], other: ["athletics", "interrogation", "resist", "drive"],
+      combat: ["handgun", "shoulderarms", "autofire", "melee", "brawling"], tech: [], other: ["athletics", "interrogation", "resist", "drive"],
       weapons: { 1: [["hpistol", "vhpistol", "shotgun", "smg"], ["lmelee", "mmelee"]], 2: [["ar", "shotgun", "hsmg", "vhpistol"], ["mmelee", "hpistol"]], 3: [["ar", "hsmg", "shotgun", "sniper"], ["vhpistol", "hmelee"]], 4: [["ar", "hsmg"], ["vhpistol", "vhmelee"], ["gl", "rl"]] },
       cyber: ["Comunicatore Radio", "Collegamento Neurale", "Cyberocchio (Low Light)", "Wolvers"], gear: ["Comunicatore Radio", "Cellulare usa-e-getta", "Agent"] },
     { id: "solo", label: "Solo", ability: "Combat Awareness", abilityIt: "Sensi da Combattimento", prim: ["REF", "DEX"], sec: ["BODY", "WILL"],
@@ -429,7 +429,7 @@ window.CPR = (() => {
         add({ key: `stat:${s}:9`, group: "STAT", label: `${s} a 9`, cost: 2 });
         add({ key: `stat:${s}:10`, group: "STAT", label: `${s} a 10`, cost: R.prim.includes(s) ? 4 : 3, apex: combat });
       }
-      for (const id of [...new Set([...R.combat, "evasion"])]) {
+      for (const id of [...new Set([...R.combat, "evasion", ...((E.skills || []).map(s => s.id).filter(id => COMBAT_SKILLS.includes(id)))])]) {
         const k = skill(id); if (!k) continue;
         add({ key: `skill:${id}`, group: "Skill", label: `${k.label} a 10`, cost: 4, apex: true });
       }
@@ -601,6 +601,14 @@ window.CPR = (() => {
     if ((sp < L.sp[0] || sp > L.sp[1]) && !D.picks.some(o => o.key === "metalgear")) warns.push(`SP ${sp} fuori dalla fascia ${L.sp[0]}–${L.sp[1]}`);
     if (D.hp < L.hp[0] && D.comp !== "hp") warns.push(`HP ${D.hp} sotto la fascia ${L.hp[0]}–${L.hp[1]}`);
     if (D.tier <= 2 && E.level !== "elite" && (E.weapons || []).some(w => w.quality === "hq")) warns.push("Armi HQ di serie solo dalla Fascia 3 Hardened");
+    if ((E.weapons || []).some(w => (weaponType(w.cat) || {}).auto || w.auto) && !D.skills.some(s => s.id === "autofire" && s.lvl > 0)) warns.push("Arma con Autofire presente ma abilità Autofire a 0 (consigliato minimo base 10)");
+    if (E.level === "hardened") {
+      const afSk = D.skills.find(s => s.id === "autofire");
+      if (afSk) {
+        const maxCap = D.tier >= 3 ? 16 : 14;
+        if (afSk.nat > maxCap) warns.push(`Autofire naturale ${afSk.nat} supera il massimo di ${maxCap} per la versione Hardened`);
+      }
+    }
     if (D.twenty.length) warns.push(`Regola del 20 (${D.twenty.map(s => s.label).join(", ")}): ${D.comp === "hp" ? "HP ridotti" : "SP portata a 11"}`);
     return { errors, warns, D };
   }
@@ -645,7 +653,24 @@ window.CPR = (() => {
     setSkill("evasion", L.eva);
     (R.combat || []).forEach(id => setSkill(id, L.combat));
     const weapons = rollWeapons(R.id, tier, level);
-    weapons.forEach(w => { if (!skills.has(w.skill)) setSkill(w.skill, L.combat); });
+    weapons.forEach(w => {
+      if (!skills.has(w.skill)) setSkill(w.skill, L.combat);
+      const wt = weaponType(w.cat);
+      if (((wt && wt.auto) || w.auto) && !skills.has("autofire")) setSkill("autofire", L.combat);
+    });
+    // Versione Hardened: Autofire uguale a Handgun o Shoulder Arms (max 14, fino a 16 per Mini Boss e Boss)
+    if (level === "hardened") {
+      const autoWpns = weapons.filter(w => ((weaponType(w.cat) || {}).auto || w.auto));
+      const refSkills = autoWpns.length ? autoWpns.map(w => w.cat === "ar" ? "shoulderarms" : "handgun") : ["handgun", "shoulderarms"];
+      const candSks = refSkills.map(id => skills.get(id)).filter(Boolean);
+      const refNat = candSks.length ? Math.max(...candSks.map(s => (stats.REF || 0) + s.lvl)) : L.combat[1];
+      const maxCap = tier >= 3 ? 16 : 14;
+      const target = Math.max(10, Math.min(maxCap, refNat));
+      const lvl = Math.max(0, Math.min(L.skillMax, target - (stats.REF || 0)));
+      if (skills.has("autofire") || autoWpns.length) {
+        skills.set("autofire", { id: "autofire", label: "Autofire", stat: "REF", lvl });
+      }
+    }
     const rank = R.ability ? roleRank(tier, level) : 0;
     const E = {
       v: 3, tier, level, role: R.id, name: `${R.id === "none" ? TIER_NAMES[tier] : R.label} «${pick(NICKS)}»`,
@@ -675,7 +700,36 @@ window.CPR = (() => {
     solo: 3, merc: 3, veteran: 3, assassin: 3, tracker: 3, pyro: 3, sniper: 3, cyberpsycho: 4, boss: 4 };
   function normalizeEnemy(E0) {
     if (!E0) return E0;
-    if (E0.v === 3) return E0;
+    const addAutoIfMissing = enemy => {
+      const hasAuto = (enemy.weapons || []).some(w => (weaponType(w.cat) || {}).auto || w.auto);
+      const L = levelOf(enemy.tier, enemy.level), ref = +((enemy.stats || {}).REF) || 0;
+      let target = L.combat[0];
+      if (enemy.level === "hardened") {
+        const autoWpns = (enemy.weapons || []).filter(w => (weaponType(w.cat) || {}).auto || w.auto);
+        const refSkills = autoWpns.length ? autoWpns.map(w => w.cat === "ar" ? "shoulderarms" : "handgun") : ["handgun", "shoulderarms"];
+        const candSks = refSkills.map(id => (enemy.skills || []).find(s => s.id === id)).filter(Boolean);
+        const refNat = candSks.length ? Math.max(...candSks.map(s => ref + (+s.lvl || 0))) : L.combat[1];
+        const maxCap = +enemy.tier >= 3 ? 16 : 14;
+        target = Math.min(maxCap, refNat);
+      }
+      target = Math.max(10, target);
+      const lvl = Math.max(0, Math.min(L.skillMax, target - ref));
+      const hasAf = (enemy.skills || []).some(s => s.id === "autofire");
+      if (hasAuto && !hasAf) {
+        const k = skill("autofire");
+        return { ...enemy, skills: [...(enemy.skills || []), { id: "autofire", label: k ? k.label : "Autofire", stat: "REF", lvl }] };
+      }
+      if (enemy.level === "hardened" && hasAf) {
+        const maxCap = +enemy.tier >= 3 ? 16 : 14;
+        const curAf = (enemy.skills || []).find(s => s.id === "autofire");
+        if (curAf && (ref + (+curAf.lvl || 0)) > maxCap) {
+          const clampedLvl = Math.max(0, Math.min(L.skillMax, maxCap - ref));
+          return { ...enemy, skills: (enemy.skills || []).map(s => s.id === "autofire" ? { ...s, lvl: clampedLvl } : s) };
+        }
+      }
+      return enemy;
+    };
+    if (E0.v === 3) return addAutoIfMissing(E0);
     const E = E0.v === 2 ? E0 : v1to2(E0);
     const role = TYPE_ROLE[E.type] || "none", R = roleOf(role);
     const rank = R.ability ? Math.max(roleRank(E.tier, E.level), (E.ability && E.ability.name === R.ability ? +E.ability.rank : 0) || 0) : 0;
@@ -687,7 +741,7 @@ window.CPR = (() => {
     if ((E.picks || []).some(k => k.startsWith("stim:"))) notes.push("Stimolanti tolti dal catalogo");
     if (notes.length) out.notes = [out.notes, ...notes].filter(Boolean).join("\n");
     out.migrated = true;
-    return out;
+    return addAutoIfMissing(out);
   }
   function v1to2(E) {
     const tierOfType = OLD_TIER[E.type] || 1, lv = +E.level || 1;
