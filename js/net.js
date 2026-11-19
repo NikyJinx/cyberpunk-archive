@@ -93,6 +93,18 @@ window.NET = (() => {
     { id: "hardened", name: "Circuiti Rinforzati", slots: 1, cost: 100, eff: "Non può essere disattivato né distrutto da EMP, microonde o programmi non Black ICE." },
     { id: "backup", name: "Disco di Backup", slots: 2, cost: 100, eff: "Salva i programmi non Black ICE quando vengono Distrutti; reinstallarne uno è un'Azione IRL (se c'è lo Slot)." },
     { id: "range", name: "Portata Migliorata", slots: 1, cost: 100, eff: "Si collega ad Access Point fino a 8 m di distanza." },
+    // Midnight with the Upload
+    { id: "aerie", name: "Aerie", slots: 2, cost: 500, eff: "Ogni Black ICE Raven del deck, col suo effetto d'attacco, distrugge un Defender Rezzato a caso del Netrunner nemico invece di derezzarlo.", src: "Midnight with the Upload" },
+    { id: "bushido", name: "Bushido Accelerator", slots: 3, cost: 500, eff: "Per ogni Bushido Accelerator, +2 alla Velocità di tutti i Black ICE Killer del deck. (3 slot secondo la descrizione, 2 nella tabella.)", src: "Midnight with the Upload" },
+    { id: "combatrec", name: "Combat Recorder", slots: 1, cost: 500, eff: "Quando un altro Netrunner nella stessa Architettura fallisce un Death Save, registra gli ultimi 5 minuti senza tracce tue: ogni registrazione vale circa 50 eb.", src: "Midnight with the Upload" },
+    { id: "defseq", name: "Defense Sequencer", slots: 2, cost: 500, eff: "Quando un Armor attivo viene derezzato o distrutto, all'inizio del tuo turno Rezza da solo un altro Armor del deck non ancora usato in questa Netrun, senza NET Action.", src: "Midnight with the Upload" },
+    { id: "feline", name: "Feline Instinct", slots: 2, cost: 500, eff: "Quando un Sabertooth del deck distrugge un programma, il suo danno sale di 1d6 fino al Jack Out.", src: "Midnight with the Upload" },
+    { id: "hangry", name: "Hangry Hangry Dragon", slots: 1, cost: 500, eff: "Quando un Dragon del deck distrugge un programma, torna a REZ piena.", src: "Midnight with the Upload" },
+    { id: "perfume", name: "Perfume Shoppe", slots: 2, cost: 500, eff: "I Black ICE Skunk occupano 1 slot invece di 2.", src: "Midnight with the Upload" },
+    { id: "smithy", name: "Smithy", slots: 1, cost: 500, eff: "Con una Meat Action trasformi tutti i Sword installati in Banhammer, e tutti i Banhammer in Sword.", src: "Midnight with the Upload" },
+    { id: "snaketrap", name: "Snaketrap", slots: 1, cost: 500, eff: "Blocca il primo effetto di Black ICE o programma della Netrun che distruggerebbe un programma a caso del deck. Più copie non servono.", src: "Midnight with the Upload" },
+    { id: "swampmist", name: "Swamp Mist", slots: 2, cost: 500, eff: "Rimappa i Black ICE Wisp in una versione più potente, a scapito dell'efficienza. (Il testo è incompleto: l'effetto preciso lo decide il GM.)", src: "Midnight with the Upload" },
+    { id: "swiftyclean", name: "Swifty Clean", slots: 2, cost: 500, eff: "Effetto non descritto nel testo: lo decide il GM.", src: "Midnight with the Upload" },
   ];
 
   // ---------- Capacità d'Interfaccia ----------

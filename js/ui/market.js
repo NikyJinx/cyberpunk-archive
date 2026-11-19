@@ -38,18 +38,21 @@ function marketBar() {
 // righe del negozio: armi, armature, equipaggiamento
 const mkCostCell = (cost, item) => {
   const p = mkPrice(cost), changed = p !== num(cost);
+  if (!num(cost)) return `<td class="gl-n">—</td>`;
   return `<td class="gl-n">${changed ? `<s>${num(cost).toLocaleString("it-IT")}</s> ` : ""}${p.toLocaleString("it-IT")} eb<small>${esc(MK.priceCat(num(cost)))}</small></td>`;
 };
 const mkBuyCell = (key, cost) => {
   if (!mkCanBuy()) return "";
+  if (!num(cost)) return `<td class="mk-buy"><span class="hint">non in vendita</span></td>`;
   const who = mkWho(), p = mkPrice(cost), poor = p > moneyOf(who) && !isGm();
   return `<td class="mk-buy"><button type="button" class="btn small ${poor ? "ghost" : ""}" data-action="mk-buy" data-key="${esc(key)}" ${poor ? `title="Non bastano gli eddies"` : ""}>Compra</button></td>`;
 };
 const mkTools = (key, it) => {
-  if (!isGm() || !Store.canEdit()) return "";
-  const hid = mkHidden(key);
-  return `<span class="mk-tools">${it ? `<button type="button" class="gp-btn" data-action="mk-edit" data-key="${esc(key)}" aria-label="Modifica" title="${it.custom ? "Modifica" : "Modifica (diventa una voce custom)"}">✎</button>` : ""}
-    <button type="button" class="gp-btn ${hid ? "on" : ""}" data-action="mk-hide" data-key="${esc(key)}" title="${hid ? "Nascosto ai giocatori: clic per mostrarlo" : "Nascondi ai giocatori"}" aria-label="Nascondi">${hid ? "⊘" : "👁"}</button></span>`;
+  if (!Store.canEdit()) return "";
+  const gm = isGm(), hid = mkHidden(key), ed = it && MK_FORMS[it.type] && (gm || it.custom);
+  if (!ed && !gm) return "";
+  return `<span class="mk-tools">${ed ? `<button type="button" class="gp-btn" data-action="mk-edit" data-key="${esc(key)}" aria-label="Modifica" title="${it.custom ? "Modifica" : "Modifica (diventa una voce custom)"}">✎</button>` : ""}
+    ${gm ? `<button type="button" class="gp-btn ${hid ? "on" : ""}" data-action="mk-hide" data-key="${esc(key)}" title="${hid ? "Nascosto ai giocatori: clic per mostrarlo" : "Nascondi ai giocatori"}" aria-label="Nascondi">${hid ? "⊘" : "👁"}</button>` : ""}</span>`;
 };
 let glossP = "";
 const mkFilters = (n, extra = "") => `<div class="gl-filters"><input type="search" data-gloss-q placeholder="cerca: nome, effetto, fonte…" value="${esc(glossQ)}">
@@ -81,9 +84,34 @@ function shopBody(type) {
       <thead><tr><th>Armatura</th><th>SP</th><th>Malus a REF, DEX, MOVE</th><th>Descrizione</th><th>Costo</th>${buyTh}</tr></thead>
       <tbody>${list.map(it => `<tr class="${cls(it)}">${name(it)}<td class="gl-n">${it.sp}</td><td class="gl-n">${it.pen || "—"}</td>${desc(it)}${mkCostCell(it.cost)}${mkBuyCell(it.id, it.cost)}</tr>`).join("")}</tbody></table></div>
       <p class="hint">Un'armatura copre una sola zona: comprala due volte per testa e corpo. Si può indossare subito o metterla nell'inventario.</p>`;
+  if (type === "deck") return deckShopBody(q, name, desc, buyTh);
+  if (type === "drug") return drugShopBody(q, name, buyTh);
+  const lab = it => it.label || (it.gcat === "veicoli" ? "Veicolo" : "Equipaggiamento");
+  const labs = [...new Set(list.map(lab))].sort((a, b) => (a === "Equipaggiamento" ? -1 : b === "Equipaggiamento" ? 1 : a.localeCompare(b, "it")));
   return `${mkFilters(list.length)}<div class="gl-wrap"><table class="gl-t mk-t">
-      <thead><tr><th>Oggetto</th><th>Tipo</th><th>Descrizione</th><th>Costo</th>${buyTh}</tr></thead>
-      <tbody>${list.map(it => `<tr class="${cls(it)}">${name(it)}<td>${esc(it.label || (it.gcat === "veicoli" ? "Veicolo" : "Equipaggiamento"))}</td>${desc(it)}${mkCostCell(it.cost)}${mkBuyCell(it.id, it.cost)}</tr>`).join("")}</tbody></table></div>`;
+      <thead><tr><th>Oggetto</th><th>Descrizione</th><th>Costo</th>${buyTh}</tr></thead>
+      <tbody>${labs.map(l => `<tr class="gl-grp"><th colspan="${mkCanBuy() ? 4 : 3}">${esc(l)}</th></tr>` + list.filter(it => lab(it) === l).map(it => `<tr class="${cls(it)}">${name(it)}${desc(it)}${mkCostCell(it.cost)}${mkBuyCell(it.id, it.cost)}</tr>`).join("")).join("")}</tbody></table></div>
+      <p class="hint">I farmaci del Medtech non si comprano: li prepara il Medtech con la specialità Farmaceutica.</p>`;
+}
+// tab Cyberdeck: deck, programmi, Black ICE e hardware (questi ultimi dal catalogo NET)
+const netShop = () => [
+  ...NET.PROGRAMS.map(p => ({ key: "net:prog:" + p.id, grp: "Programmi", name: p.name, info: `${(NET.CLASSES[p.cls] || {}).label || ""} · ATK ${p.atk} · DEF ${p.def} · REZ ${p.rez}`, desc: p.eff, cost: p.cost, src: p.src })),
+  ...NET.allIce().map(c => ({ key: "net:ice:" + c.id, grp: "Black ICE", name: NET.iceLabel(c), info: `${(NET.CLASSES[c.cls] || {}).short || ""} · PER ${c.per} · VEL ${c.spd} · ATK ${c.atk} · DEF ${c.def} · REZ ${c.rez} · 2 slot`, desc: c.eff, cost: num(c.cost), src: c.homebrew ? "★ homebrew" : c.src })),
+  ...NET.HARDWARE.map(h => ({ key: "net:hw:" + h.id, grp: "Hardware", name: h.name, info: `${h.slots} slot`, desc: h.eff, cost: h.cost, src: h.src })),
+];
+function deckShopBody(q, name, desc, buyTh) {
+  const buy = mkCanBuy(), ok = it => (isGm() || !mkHidden(it.id || it.key)) && (!glossP || MK.priceCat(num(it.cost)) === glossP) && (!q || norm2(`${it.name} ${it.desc || ""} ${it.special || ""} ${it.info || ""} ${it.src || ""}`).includes(q));
+  const decks = MK.all().filter(it => it.type === "deck").filter(ok);
+  const progs = MK.all().filter(it => it.type === "deckprog").map(it => ({ ...it, key: it.id, grp: it.cls === "hw" ? "Hardware" : it.cls === "ice" ? "Black ICE" : "Programmi",
+    info: it.cls === "hw" ? `${it.slots || 1} slot` : `${it.cls === "ice" ? "Black ICE" : (NET.CLASSES[it.cls] || {}).short || ""} · ATK ${num(it.atk)} · DEF ${num(it.def)} · REZ ${num(it.rez)}${it.cls === "ice" ? ` · PER ${num(it.per)} · VEL ${num(it.spd)}` : ""} · ${it.slots || 1} slot`, custom: true })).filter(ok);
+  const net = [...netShop().filter(ok), ...progs];
+  const head = l => `<tr class="gl-grp"><th colspan="${buy ? 5 : 4}">${esc(l)}</th></tr>`;
+  const row = (it, key, info) => `<tr class="${mkHidden(key) ? "mk-hid" : ""}"><td><b>${it.custom ? "★ " : ""}${esc(it.name)}</b>${mkTools(key, it.type === "deck" || it.type === "deckprog" ? it : null)}${it.src ? `<small>${esc(it.src)}</small>` : ""}</td><td class="mk-info">${esc(info)}</td>${desc(it)}${mkCostCell(it.cost)}${mkBuyCell(key, it.cost)}</tr>`;
+  return `${mkFilters(decks.length + net.length)}<div class="gl-wrap"><table class="gl-t mk-t mk-deck">
+    <thead><tr><th>Nome</th><th>Slot / dati</th><th>Descrizione</th><th>Costo</th>${buyTh}</tr></thead>
+    <tbody>${decks.length ? head("Cyberdeck") + decks.map(it => row(it, it.id, `${it.slots} slot`)).join("") : ""}
+      ${["Programmi", "Black ICE", "Hardware"].map(g => { const l = net.filter(x => x.grp === g); return l.length ? head(g) + l.map(it => row(it, it.key, it.info)).join("") : ""; }).join("")}</tbody></table></div>
+    <p class="hint">Un cyberdeck comprato si aggiunge ai deck del PG (tab Cyberdeck) con le sue regole nelle note. Programmi, Black ICE e hardware vanno nel deck che scegli, o nell'inventario.</p>`;
 }
 
 // ---------- acquisto ----------
@@ -94,7 +122,13 @@ const mkCySlots = (e, c) => {
   const all = slotsOf(e), fit = all.filter(s => want.includes(s.id));
   return { fit: fit.length ? fit : all, other: all.filter(s => !fit.includes(s)) };
 };
-const mkItemOf = key => key.startsWith("cw:") ? (c => c && { ...c, type: "cyber", key })(CW.byId(key.slice(3))) : (it => it && { ...it, key })(MK.byId(key));
+const mkItemOf = key => {
+  if (key.startsWith("cw:")) return (c => c && { ...c, type: "cyber", key })(CW.byId(key.slice(3)));
+  if (key.startsWith("net:")) { const it = netShop().find(x => x.key === key); return it && { ...it, type: "netitem", ref: key.slice(4), id: key }; }
+  const m = MK.byId(key);
+  if (m && m.type === "deckprog") return { ...m, key, deckItem: { ref: "custom", name: m.name, cls: m.cls || "antipersonnel", atk: num(m.atk), def: num(m.def), rez: num(m.rez), per: num(m.per), spd: num(m.spd), slots: num(m.slots) || 1, dmg: m.dmg || "", eff: m.eff || m.desc || "" } };
+  return (it => it && { ...it, key })(MK.byId(key));
+};
 
 function mkBuy(key) {
   const e = mkWho(), it = mkItemOf(key); if (!e || !it || !mkCanBuy()) return;
@@ -103,7 +137,15 @@ function mkBuy(key) {
   if (it.type === "weapon") extra = `<p class="hint">Va nella tab Combattimento: ${esc(MK.weaponStats(it).dmg)} · ROF ${MK.weaponStats(it).rof}${it.special ? ` · ${esc(it.special)}` : ""}</p>`;
   if (it.type === "armor") {
     const s = sheetOf(e), cur = l => { const a = (s.armor || {})[l] || {}; return a.name ? `${a.name} SP ${num(a.sp)}` : "niente"; };
-    extra = `<div class="field"><label>Indossala</label><select name="loc"><option value="body">sul corpo (ora: ${esc(cur("body"))})</option><option value="head">sulla testa (ora: ${esc(cur("head"))})</option><option value="">no, solo nell'inventario</option></select></div>`;
+    extra = `<div class="field"><label>Indossala</label><select name="loc">${it.both ? `<option value="both">su testa e corpo (ora: ${esc(cur("head"))} · ${esc(cur("body"))})</option>`
+      : `<option value="body">sul corpo (ora: ${esc(cur("body"))})</option><option value="head">sulla testa (ora: ${esc(cur("head"))})</option>`}<option value="">no, solo nell'inventario</option></select></div>`;
+  }
+  if (it.type === "deck") extra = `<p class="hint">Si aggiunge ai cyberdeck di ${esc(e.name)}: ${it.slots} slot · ${esc(it.special || "")}</p>`;
+  if (it.type === "drug") extra = `<div class="field"><label>Dosi</label><input name="qty" type="number" min="1" max="99" value="1"></div><p class="hint field full">${it.dur ? `Dura ${esc(it.dur)} · ` : ""}VD ${it.dv || "—"} · ${esc(it.primary || "")}</p>`;
+  if (it.type === "netitem" || it.type === "deckprog") {
+    const ds = decksOf(e);
+    extra = `<div class="field full"><label>Mettilo in</label><select name="deck">${ds.map((d, i) => { const S = NET.deckSlots(d); return `<option value="${i}" ${i === deckIdx(e) ? "selected" : ""}>${esc(d.name || `Cyberdeck ${i + 1}`)} · slot ${S.used}/${S.total}</option>`; }).join("")}<option value="">nell'inventario, da installare dopo</option></select>
+      ${ds.length ? "" : `<span class="hint">${esc(e.name)} non ha un cyberdeck: va nell'inventario.</span>`}</div><p class="mk-warn field full" data-mk-cap></p>`;
   }
   if (it.type === "gear") extra = `<div class="field"><label>Quantità</label><input name="qty" type="number" min="1" max="99" value="1"></div>`;
   if (it.type === "cyber") {
@@ -142,6 +184,11 @@ function mkBuy(key) {
     $("[data-mk-poor]", form).textContent = poor ? (gm ? "Gli eddies non bastano: comprando vai in negativo." : "Gli eddies non bastano.") : "";
     $("[data-mk-ok]", form).disabled = poor && !gm;
     const cap = $("[data-mk-cap]", form);
+    if (cap && (it.type === "netitem" || it.type === "deckprog")) {
+      const v = F("deck").value, d = v === "" ? null : decksOf(e)[num(v)];
+      if (!d) cap.textContent = "";
+      else { const S = NET.deckSlots({ ...d, items: [...(d.items || []), it.deckItem || { ref: it.ref }] }); cap.textContent = S.over ? `Il deck è pieno: slot ${S.used}/${S.total}.` : `Slot dopo l'acquisto: ${S.used}/${S.total}.`; }
+    }
     if (cap && it.type === "cyber") {
       const sl = F("slot").value, items = (((e.cyber || {}).slots || {})[sl]) || [];
       if (it.base) cap.textContent = "";
@@ -155,7 +202,7 @@ function mkBuy(key) {
     ev.preventDefault();
     const paid = total(), qty = F("qty") ? Math.max(1, Math.trunc(num(F("qty").value)) || 1) : 1;
     if (money - paid < 0 && !gm) return;
-    mkCommit(e, it, paid, qty, { loc: F("loc") ? F("loc").value : "", slot: F("slot") ? F("slot").value : "", hl: F("hl") ? num(F("hl").value) : 0, param: F("param") ? F("param").value : "" });
+    mkCommit(e, it, paid, qty, { loc: F("loc") ? F("loc").value : "", slot: F("slot") ? F("slot").value : "", hl: F("hl") ? num(F("hl").value) : 0, param: F("param") ? F("param").value : "", deck: F("deck") ? F("deck").value : "" });
   });
 }
 
@@ -171,12 +218,26 @@ async function mkCommit(e0, it, paid, qty, o) {
   if (it.type === "gear") { addGear(it.gcat || "equip", it.name, "", qty, mkPrice(it.cost)); undo = { k: "gear", cat: it.gcat || "equip", qty }; }
   if (it.type === "armor") {
     addGear("armature", it.name, `SP ${it.sp}${it.pen ? ` · ${it.pen} REF/DEX/MOVE` : ""}`, 1, mkPrice(it.cost));
-    undo = { k: "armor", loc: o.loc };
-    if (o.loc) {
-      s.armor = s.armor || {}; undo.prev = s.armor[o.loc] || null;
-      const T = CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(it.name));
-      s.armor[o.loc] = { name: it.name, sp: it.sp, cur: it.sp, type: T ? T.id : "custom" };
-    }
+    undo = { k: "armor", loc: o.loc, prevs: {} };
+    const T = CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(it.name));
+    (o.loc === "both" ? ["head", "body"] : o.loc ? [o.loc] : []).forEach(l => {
+      s.armor = s.armor || {}; undo.prevs[l] = s.armor[l] || null;
+      s.armor[l] = { name: it.name, sp: it.sp, cur: it.sp, type: T ? T.id : "custom" };
+    });
+  }
+  if (it.type === "deck") {
+    migrateDecks(s); s.decks.push({ name: it.name, slots: it.slots, items: [], note: it.special || "" });
+    undo = { k: "deck" };
+  }
+  if (it.type === "netitem" || it.type === "deckprog") {
+    const i = o.deck === "" ? -1 : num(o.deck), di = it.deckItem || { ref: it.ref };
+    if (i >= 0 && decksOf(e)[i]) { migrateDecks(s); s.decks[i].items = [...(s.decks[i].items || []), di]; undo = { k: "deckitem", deck: i, ref: di.ref, name: di.name || "" }; }
+    else { netGearAdd(gear.items, di); const g = gear.items.find(x => x.cat === NET_CAT && netSame(netGearItem(x), di)); if (g && !g.cost) g.cost = mkPrice(it.cost); undo = { k: "gear", cat: NET_CAT, qty: 1 }; }
+  }
+  if (it.type === "drug") {
+    const old = gear.items.find(x => x.cat === "droghe" && (x.drug === it.id || norm2(x.name) === norm2(it.name)));
+    if (old) old.qty = (num(old.qty) || 1) + qty; else gear.items.push({ cat: "droghe", name: it.name, qty, drug: it.id, detail: `${it.dur ? it.dur + " · " : ""}VD ${it.dv || "—"}`, cost: mkPrice(it.cost) });
+    undo = { k: "gear", cat: "droghe", qty };
   }
   if (it.type === "cyber") {
     const cy = e.cyber = e.cyber || {};
@@ -219,7 +280,13 @@ async function mkUndo(id) {
   const lastIdx = (arr, f) => { for (let i = arr.length - 1; i >= 0; i--) if (f(arr[i])) return i; return -1; };
   if (u.k === "weapon") { const w = s.weapons || [], i = lastIdx(w, x => x.market === last.id || norm2(x.name) === norm2(last.name)); if (i >= 0) w.splice(i, 1); }
   if (u.k === "gear") dropGear(u.cat || "equip", u.qty || 1);
-  if (u.k === "armor") { dropGear("armature", 1); if (u.loc) { s.armor = s.armor || {}; if (u.prev) s.armor[u.loc] = u.prev; else delete s.armor[u.loc]; } }
+  if (u.k === "armor") {
+    dropGear("armature", 1); s.armor = s.armor || {};
+    const prevs = u.prevs || (u.loc ? { [u.loc]: u.prev || null } : {});
+    Object.entries(prevs).forEach(([l, p]) => { if (p) s.armor[l] = p; else delete s.armor[l]; });
+  }
+  if (u.k === "deck") { migrateDecks(s); const i = lastIdx(s.decks, d => norm2(d.name) === norm2(last.name)); if (i >= 0) { s.decks.splice(i, 1); s.deckActive = clamp(num(s.deckActive), 0, Math.max(0, s.decks.length - 1)); } }
+  if (u.k === "deckitem") { migrateDecks(s); const d = s.decks[u.deck]; if (d) { const i = lastIdx(d.items || [], x => x.ref === u.ref && (!u.name || x.name === u.name)); if (i >= 0) d.items.splice(i, 1); } }
   if (u.k === "base") { const b = (e.cyber || {}).bases || {}; if (u.prev) b[u.slot] = u.prev; else delete b[u.slot]; }
   if (u.k === "cyber") { const l = ((e.cyber || {}).slots || {})[u.slot] || [], i = lastIdx(l, x => x.ref === last.id.replace(/^cw:/, "") || norm2(x.name) === norm2(last.name)); if (i >= 0) l.splice(i, 1); }
   if (last.cost) gear.money = num(gear.money) + last.cost;
@@ -313,4 +380,156 @@ function mkImport(key) {
     const ok = await saveAll(mkNew.length ? merge((state.markethb || {}).items || [], mkNew) : null, cyNew.length ? merge(cyberHbRec().items || [], cyNew, true) : null);
     if (ok) toast(`${it ? "Voce salvata" : `Importate ${r.items.length} voci`}${r.errors.length ? ` · ${r.errors.length} scartate` : ""}`, "ok");
   });
+}
+
+
+// ---------- voci custom in ogni sezione (meta "markethb") ----------
+// stesso modulo per armi, armature, oggetti, cyberdeck, programmi/hardware e droghe; con un id di una voce base la sostituisce
+const MK_FORMS = {
+  weapon: { title: "ARMA", fields: () => [
+    ["name", "Nome", "text", { req: true, full: true }],
+    ["cat", "Categoria (VD e autofire)", "select", { opts: CPR.WEAPON_TYPES.map(t => [t.id, t.label]), def: "hpistol" }],
+    ["skill", "Abilità", "select", { opts: [["", "quella della categoria"], ...CPR.WEAPON_SKILLS.map(k => [k, CPR.skill(k).label])] }],
+    ["dmg", "Danno", "text", { ph: "vuoto = quello della categoria" }], ["mag", "Caricatore", "num"], ["rof", "ROF", "num"], ["hands", "Mani", "num", { def: 1 }],
+    ["auto", "Autofire (× massimo)", "num", { ph: "vuoto = categoria" }],
+    ["quality", "Qualità", "select", { opts: [["standard", "Standard"], ["poor", "Poor"], ["excellent", "Excellent (+1 a colpire)"]] }],
+    ["conceal", "Occultabile", "chk"], ["exotic", "Esotica", "chk"],
+    ["cost", "Costo (eb)", "num", { def: 500 }], ["src", "Fonte", "text"],
+    ["special", "Speciale (va nelle note dell'arma)", "area", { full: true }], ["desc", "Descrizione", "area", { full: true }]] },
+  armor: { title: "ARMATURA", fields: () => [
+    ["name", "Nome", "text", { req: true, full: true }], ["sp", "SP", "num", { req: true, def: 11 }], ["pen", "Malus a REF, DEX, MOVE", "num", { ph: "0, 2, 4…" }],
+    ["both", "Copre sempre testa e corpo", "chk"], ["cost", "Costo (eb)", "num", { def: 100 }], ["src", "Fonte", "text"], ["desc", "Descrizione", "area", { full: true }]] },
+  gear: { title: "OGGETTO", fields: () => [
+    ["name", "Nome", "text", { req: true, full: true }], ["label", "Tipo", "text", { list: [...new Set(MK.all().filter(x => x.type === "gear").map(x => x.label).filter(Boolean))], ph: "es. Attrezzo, Scudo, Granata" }],
+    ["veicolo", "È un veicolo", "chk"], ["cost", "Costo (eb)", "num", { def: 100 }], ["src", "Fonte", "text"], ["desc", "Descrizione", "area", { full: true }]] },
+  deck: { title: "CYBERDECK", fields: () => [
+    ["name", "Nome", "text", { req: true, full: true }], ["slots", "Slot", "num", { req: true, def: 7 }], ["cost", "Costo (eb)", "num", { def: 500 }], ["src", "Fonte", "text"],
+    ["special", "Regole del deck", "area", { full: true, ph: "es. solo programmi · un Jack Out non sicuro conta come sicuro" }], ["desc", "Descrizione", "area", { full: true }]] },
+  deckprog: { title: "PROGRAMMA / HARDWARE", fields: () => [
+    ["name", "Nome", "text", { req: true, full: true }],
+    ["cls", "Tipo", "select", { opts: [...Object.entries(NET.CLASSES).map(([k, c]) => [k, "Programma " + c.label]), ["ice", "Black ICE"], ["hw", "Hardware"]], def: "antipersonnel" }],
+    ["atk", "ATK", "num"], ["def", "DEF", "num"], ["rez", "REZ", "num"], ["per", "PER (Black ICE)", "num"], ["spd", "VEL (Black ICE)", "num"], ["slots", "Slot", "num", { def: 1 }],
+    ["dmg", "Danno", "text", { ph: "es. 2d6" }], ["cost", "Costo (eb)", "num", { def: 100 }], ["src", "Fonte", "text"], ["desc", "Effetto", "area", { full: true }]] },
+  drug: { title: "DROGA", fields: () => [
+    ["name", "Nome", "text", { req: true, full: true }], ["dur", "Durata", "text", { ph: "es. 4 ore" }], ["dv", "VD (Resist Torture/Drugs)", "num", { def: 17 }],
+    ["cost", "Costo per dose (eb)", "num", { def: 100 }], ["src", "Fonte", "text"],
+    ["primary", "Effetto primario", "area", { full: true }], ["secondary", "Effetto secondario (se la prova fallisce)", "area", { full: true }],
+    ["mtarget", "Bonus automatico finché dura", "select", { opts: [["", "nessuno"], ...CPR.MOD_TARGETS] }], ["mv", "Valore (±)", "num"]] },
+};
+const mkHbItems = () => (state.markethb && state.markethb.items) || [];
+async function mkSaveHb(items) {
+  const saved = await Store.save("meta", { ...(state.markethb || {}), id: "markethb", items });
+  state.markethb = saved; MK.setHomebrew(saved); liveSend("meta", saved);
+}
+function editMkItem(type, id) {
+  if (!Store.canEdit() || !MK_FORMS[type]) return;
+  const old = id ? MK.byId(id) || {} : {}, base = MK.BASE.some(b => b.id === id), F = MK_FORMS[type];
+  if (base && !isGm()) return;
+  const val = (k, o) => k === "veicolo" ? old.gcat === "veicoli" : k === "mtarget" ? (old.mod || {}).target || "" : k === "mv" ? (old.mod || {}).v ?? "" : k === "pen" && old.pen ? Math.abs(old.pen) : old[k] ?? o.def ?? "";
+  const field = ([k, l, kind, o = {}]) => {
+    const v = val(k, o), cls = `field ${o.full ? "full" : ""}`;
+    if (kind === "chk") return `<div class="${cls}"><label class="check"><input type="checkbox" name="${k}" ${v ? "checked" : ""}> ${esc(l)}</label></div>`;
+    if (kind === "select") return `<div class="${cls}"><label>${esc(l)}</label><select name="${k}">${o.opts.map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? "selected" : ""}>${esc(ol)}</option>`).join("")}</select></div>`;
+    if (kind === "area") return `<div class="${cls}"><label>${esc(l)}</label><textarea name="${k}" rows="3" placeholder="${esc(o.ph || "")}">${esc(v)}</textarea></div>`;
+    return `<div class="${cls}"><label class="${o.req ? "req" : ""}">${esc(l)}</label><input name="${k}" ${kind === "num" ? `type="number" step="1"` : ""} ${o.req ? "required" : ""} value="${esc(v)}" placeholder="${esc(o.ph || "")}" ${o.list ? `list="dl-mk-${k}"` : ""}>${o.list ? `<datalist id="dl-mk-${k}">${o.list.map(x => `<option value="${esc(x)}">`).join("")}</datalist>` : ""}</div>`;
+  };
+  openModal(`
+    <form class="form" id="mkc-form">
+      <div class="modal-head"><h2>// ★ ${F.title} ${old.id ? "· MODIFICA" : "CUSTOM"}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+      <div class="modal-body">${base ? `<p class="hint">È una voce del catalogo base: salvando diventa custom e sostituisce l'originale (che puoi ripristinare).</p>` : ""}<div class="fields">${F.fields().map(field).join("")}</div></div>
+      <div class="modal-foot">
+        ${old.custom ? `<button type="button" class="btn ghost small left danger" data-mkc-del>${base ? "Ripristina l'originale" : "Elimina"}</button>` : `<button type="button" class="btn ghost small left" data-action="close">Annulla</button>`}
+        <button type="submit" class="btn">Salva</button>
+      </div>
+    </form>`);
+  const form = $("#mkc-form");
+  const del = $("[data-mkc-del]", form);
+  del && del.addEventListener("click", async () => {
+    if (!(await askConfirm(`${base ? "Ripristinare l'originale di" : "Eliminare dal catalogo"} «${old.name}»? Gli oggetti già comprati restano nelle schede.`, base ? "Ripristina" : "Elimina"))) return;
+    try { await mkSaveHb(mkHbItems().filter(x => x.id !== old.id)); closeModal(); route(); toast("Fatto", "ok"); } catch (err) { fail(err); }
+  });
+  form.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const E = form.elements, out = { id: old.id || "mk-" + NET.uid(), type };
+    for (const [k, , kind] of F.fields()) {
+      if (k === "veicolo" || k === "mtarget" || k === "mv") continue;
+      if (kind === "chk") { if (E[k].checked) out[k] = true; continue; }
+      const raw = E[k].value.trim(); if (raw === "") continue;
+      out[k] = kind === "num" ? num(raw) : raw;
+    }
+    if (type === "weapon" && out.dmg && !CPR.parse(out.dmg)) return toast("Danno non valido (es. 3d6)", "err");
+    if (type === "deckprog" && out.dmg && !CPR.parse(out.dmg)) return toast("Danno non valido (es. 2d6)", "err");
+    if (type === "armor" && out.pen) out.pen = -Math.abs(out.pen);
+    if (type === "gear") { out.gcat = E.veicolo.checked ? "veicoli" : "equip"; if (out.gcat === "veicoli" && !out.label) out.label = "Veicolo"; }
+    if (type === "drug" && E.mtarget.value && num(E.mv.value)) out.mod = { target: E.mtarget.value, v: num(E.mv.value) };
+    if (type === "deckprog") { out.slots = out.slots || (out.cls === "ice" ? 2 : 1); out.eff = out.desc || ""; }
+    if (type === "weapon" && out.quality === "standard") delete out.quality;
+    out.cost = num(out.cost);
+    const list = mkHbItems(), i = list.findIndex(x => x.id === out.id);
+    try { await mkSaveHb(i >= 0 ? list.map(x => x.id === out.id ? out : x) : [...list, out]); closeModal(); route(); toast(`★ ${out.name} salvato`, "ok"); }
+    catch (err) { fail(err); }
+  });
+}
+
+// ---------- droghe da strada ----------
+// nell'inventario: e.gear.items { cat: "droghe", name, qty, drug: id }
+// sheet.drugs = effetti attivi [{ uid, id, name, dur, at }] · sheet.addictions = [{ id, name, eff, at }]
+function drugShopBody(q, name, buyTh) {
+  const list = mkVisible(MK.all().filter(it => it.type === "drug"))
+    .filter(it => (!glossP || MK.priceCat(num(it.cost)) === glossP) && (!q || norm2(`${it.name} ${it.primary || ""} ${it.secondary || ""} ${it.src || ""}`).includes(q)));
+  return `${mkFilters(list.length)}<div class="gl-wrap"><table class="gl-t mk-t mk-drug">
+    <thead><tr><th>Droga</th><th>Durata</th><th>Effetto primario</th><th>VD</th><th>Effetto secondario (prova fallita)</th><th>Per dose</th>${buyTh}</tr></thead>
+    <tbody>${list.map(it => `<tr class="${mkHidden(it.id) ? "mk-hid" : ""}">${name(it)}<td class="gl-n">${esc(it.dur || "—")}</td>
+      <td>${esc(it.primary || "")}${it.mod ? `<small class="mk-sp">⚡ ${it.mod.v > 0 ? "+" : ""}${it.mod.v} ${esc((CPR.MOD_TARGETS.find(t => t[0] === it.mod.target) || [, it.mod.target])[1])}, applicato da solo finché dura</small>` : ""}</td>
+      <td class="gl-n">${it.dv || "—"}</td><td>${esc(it.secondary || "")}</td>${mkCostCell(it.cost)}${mkBuyCell(it.id, it.cost)}</tr>`).join("")}</tbody></table></div>
+    <p class="hint">Le dosi comprate vanno nell'Equipaggiamento del PG. Da lì «💉 Assumi» tira Resist Torture/Drugs contro la VD: se fallisce scatta l'effetto secondario (di solito la dipendenza), che resta segnato nella scheda.</p>`;
+}
+const drugOf = it => (it.drug && MK.byId(it.drug)) || MK.all().find(x => x.type === "drug" && norm2(x.name) === norm2(it.name)) || null;
+async function drugSave(e0, fn, msg) {
+  const e = JSON.parse(JSON.stringify(e0)); e.sheet = e.sheet || {}; e.gear = e.gear || {}; e.gear.items = e.gear.items || [];
+  if (fn(e) === false) return;
+  try { const saved = await Store.save("entries", e); upsert(state.entries, saved); liveSend("entries", saved); refreshSheetView(saved.id); refreshParty(); if (msg) toast(msg, "ok"); }
+  catch (err) { fail(err); }
+}
+// assumere una dose: la tolgo dall'inventario, tiro Resist Torture/Drugs contro la VD, segno effetto attivo e, se fallisce, il secondario
+function drugTake(id, gi) {
+  const e = state.entries.find(x => x.id === id), g = gearItems(e)[gi]; if (!e || !g || !Store.canEdit()) return;
+  const d = drugOf(g) || { name: g.name, dv: 0, primary: g.detail || "", secondary: "" };
+  const k = skillByKey(e, "skill:resist") || { label: "Resist Torture/Drugs", stat: "WILL", lvl: 0 };
+  const r = CPR.check([{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...skillBonusAll(e, k), ...sheetExtra(e)]);
+  const ok = !d.dv || r.total > d.dv, uid = NET.uid();
+  postRoll({ kind: "check", who: e.name, entryId: e.id, label: `${d.name} · Resist Torture/Drugs`, ...r,
+    hit: d.dv ? { ok, text: ok ? `Superata la VD ${d.dv}: niente effetto secondario` : `VD ${d.dv} non superata: effetto secondario` } : undefined,
+    note: [d.dur ? `Dura ${d.dur}` : "", d.primary, !ok && d.secondary ? `Secondario: ${d.secondary}` : ""].filter(Boolean).join(" · ") });
+  drugSave(e, x => {
+    const it = x.gear.items[gi]; if (!it) return false;
+    it.qty = (num(it.qty) || 1) - 1; if (it.qty <= 0) x.gear.items.splice(gi, 1);
+    const s = x.sheet;
+    s.drugs = [...(s.drugs || []), { uid, id: d.id || "", name: d.name, dur: d.dur || "", at: new Date().toISOString() }];
+    if (d.mod) s.mods = [...(s.mods || []), { on: true, name: d.name, target: d.mod.target, value: d.mod.v, note: `Droga (${d.dur || "attiva"})` }];
+    if (!ok && d.secondary && !(s.addictions || []).some(a => a.name === d.name)) s.addictions = [...(s.addictions || []), { id: d.id || "", name: d.name, eff: d.secondary, at: new Date().toISOString() }];
+  }, `${d.name} assunta`);
+}
+function drugEnd(id, uid) {
+  const e = state.entries.find(x => x.id === id); if (!e || !Store.canEdit()) return;
+  drugSave(e, x => {
+    const s = x.sheet, a = (s.drugs || []).find(z => z.uid === uid); if (!a) return false;
+    s.drugs = s.drugs.filter(z => z.uid !== uid);
+    // il bonus va via solo se non c'è un'altra dose della stessa droga ancora attiva
+    if (!s.drugs.some(z => z.name === a.name)) s.mods = (s.mods || []).filter(m => !(m.name === a.name && /^Droga/.test(m.note || "")));
+  }, "Effetto finito");
+}
+function drugCure(id, i) {
+  const e = state.entries.find(x => x.id === id); if (!e || !Store.canEdit()) return;
+  drugSave(e, x => { const l = x.sheet.addictions || []; if (!l[i]) return false; l.splice(i, 1); }, "Dipendenza tolta");
+}
+// riquadro delle droghe nella tab Equipaggiamento: effetti attivi e dipendenze
+function drugStatusHtml(e) {
+  const s = sheetOf(e), act = s.drugs || [], add = s.addictions || [], edit = Store.canEdit(), id = esc(e.id);
+  if (!act.length && !add.length) return "";
+  const ago = at => { const m = Math.round((Date.now() - new Date(at)) / 60000); return m < 60 ? `${m} min fa` : m < 1440 ? `${Math.round(m / 60)} h fa` : new Date(at).toLocaleDateString("it-IT"); };
+  return `<div class="drug-box">
+    ${act.length ? `<div><span class="sh-k">Sotto effetto</span><ul>${act.map(a => `<li><b>${esc(a.name)}</b> <span class="hint">${a.dur ? `dura ${esc(a.dur)} · ` : ""}presa ${esc(ago(a.at))}</span>${edit ? ` <button type="button" class="btn ghost small g-act" data-action="drug-end" data-id="${id}" data-uid="${esc(a.uid)}">Effetto finito</button>` : ""}</li>`).join("")}</ul></div>` : ""}
+    ${add.length ? `<div><span class="sh-k">Dipendenze ed effetti secondari</span><ul>${add.map((a, i) => `<li class="addict"><b>${esc(a.name)}</b> <span>${esc(a.eff)}</span>${edit ? ` <button type="button" class="btn ghost small g-act" data-action="drug-cure" data-id="${id}" data-i="${i}" title="Disintossicato o curato">Curata</button>` : ""}</li>`).join("")}</ul></div>` : ""}
+  </div>`;
 }
