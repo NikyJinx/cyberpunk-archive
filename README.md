@@ -162,7 +162,7 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 └──────────────────────┘        └───────────────────────────────┘
 ```
 
-- **Frontend**: single page application con routing a hash (`#/database`, `#/calendario/2045-03-14`…). Tutta l'interfaccia è generata in `js/app.js`.
+- **Frontend**: single page application con routing a hash (`#/database`, `#/calendario/2045-03-14`…). Tutta l'interfaccia è generata dai file in `js/ui/`: sono script normali caricati in ordine, che condividono le costanti di primo livello (niente build, niente import). Se aggiungi un file, mettilo in `index.html` dopo quelli di cui usa le funzioni al caricamento.
 - **Dati**: un'unica tabella `records` con documenti JSON divisi per collezione. Immagini e audio caricati dal sito finiscono nello storage di Supabase. Le immagini vengono ridimensionate nel browser prima del caricamento.
 - **Permessi**: le regole di *Row Level Security* (`supabase/schema.sql`) consentono la **lettura a tutti** e la **scrittura solo agli utenti autenticati**. Le righe con `gm_only = true` le leggono e scrivono solo gli account elencati nella tabella `gm_users` (funzione `is_gm()`). La registrazione pubblica è disattivata: gli account vengono creati manualmente.
 - **Modalità locale**: senza configurazione Supabase il sito funziona interamente nel browser (IndexedDB). È utile per sviluppo e prove.
@@ -210,7 +210,23 @@ js/dice.js              STAT e abilità di Cyberpunk RED, motore dei dadi, gener
 js/net.js               Netrunning: programmi, Black ICE, hardware, Demoni, generatore di architetture
 js/roles.js             Ruoli e Capacità di Ruolo
 js/cyberware.js         catalogo del cyberware base con gli effetti
-js/app.js               interfaccia, routing e logica delle sezioni
+js/ui/                  interfaccia, un file per sezione (caricati in ordine da index.html):
+  core.js               costanti, stato, utilità, dati, menu, routing, Home e Database
+  cyber.js              tab Cyberware ed Equipaggiamento (sagoma, slot, umanità)
+  sheet.js              scheda del personaggio e modulo
+  roles.js              tab Ruoli
+  catalog.js            catalogo del cyberware nelle schede, cyberware custom, Glossario
+  ip.js                 Punti Miglioramento
+  combat.js             tab Combattimento e schede delle armi (PG e nemici)
+  rules.js              munizioni, stati, Critical Injury, modificatori, Regole della campagna
+  deck.js               Cyberdeck
+  dicelog.js            Dice log e pop-up dei tiri
+  records.js            dossier, galleria e modulo dei record
+  calendar.js · notes.js · diary.js · tracks.js · party.js   le altre pagine
+  enemies.js · gm.js    nemici e area GM
+  net.js                architetture NET e homebrew
+  map.js                pagina Mappa e tempo reale
+  settings.js · events.js · boot.js   impostazioni, eventi, avvio
 supabase/schema.sql     tabella, regole di accesso e storage
 tools/suno-import.js    importa le playlist Suno come tracce
 tools/lista-import.js   converte una lista di schede in testo in un file importabile
