@@ -1966,3 +1966,15 @@ button.en-tr:hover, button.en-tr:focus-visible { background: rgba(243,230,0,.08)
 .gl-t tr.gl-grp th { background: rgba(255,43,214,.08); color: var(--magenta); font-family: var(--font-head); letter-spacing: .1em; text-transform: uppercase; font-size: 12px; }
 .gl-t tr.gl-grp th small { color: var(--muted); text-transform: none; letter-spacing: 0; font-family: var(--font-mono); }
 .gl-t tr.gl-base td:first-child b { color: var(--yellow); }
+
+/* v21 · armatura sottopelle, slot del cyberware, Punti Miglioramento */
+.sp-skin { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--magenta); }
+.sp-skin b { color: var(--text); }
+.sp-skin .gp-btn { width: 24px; height: 22px; font-size: 12px; }
+.cy-cap { margin-left: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--cyan); border: 1px solid rgba(0,240,255,.35); padding: 0 5px; white-space: nowrap; }
+.cy-cap.over { color: var(--yellow); border-color: rgba(243,230,0,.6); }
+.ip-box { display: grid; gap: 10px; }
+.ip-now { font-size: 16px; } .ip-now b { font-family: var(--font-head); font-size: 26px; color: var(--yellow); }
+.ip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ip-row input[data-ip-amt] { width: 90px; } .ip-row input[data-ip-why] { flex: 1 1 220px; } .ip-row select { flex: 1 1 280px; width: auto; }
+.ip-t tr.earn td:nth-child(3) { color: var(--green); } .ip-t tr.spend td:nth-child(3) { color: var(--yellow); }

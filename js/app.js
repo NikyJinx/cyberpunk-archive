@@ -595,12 +595,30 @@
         .map(([z, x, y]) => `<g class="cy-zone" data-zone="${z}" transform="translate(${x} ${y})"><circle class="cy-ping" r="9"/><circle class="cy-dot" r="3.2"/></g>`).join("")}
     </svg>`;
 
+  // slot opzioni di ogni parte del corpo: Cyberocchio 3, Cyberbraccio 4, Cybergamba 3, Collegamento Neurale 5,
+  // Sistema Cyberudito 3; Fashionware, Impianti Interni ed Esterni 7. Il Chipware sta nell'Alveolo e non conta.
+  const SLOT_BASE = { occhio: ["cybereye", 3, "Cyberocchio"], braccio: ["cyberarm", 4, "Cyberbraccio"], gamba: ["cyberleg", 3, "Cybergamba"], neural: ["neurallink", 5, "Collegamento Neurale"], audio: ["cyberaudio", 3, "Sistema Cyberudito"] };
+  const SLOT_FIXED = { fashion: 7, interni: 7, esterni: 7 };
+  function slotUse(slotId, items) {
+    const kind = slotId.replace(/_(dx|sx)$/, ""), inst = (items || []).filter(it => it.installed !== false && it.name);
+    const B = SLOT_BASE[kind], fixed = SLOT_FIXED[kind];
+    if (!B && !fixed) return null;
+    const list = inst.map(it => ({ it, c: CW.byId(it.ref) || CW.byName(it.name) }));
+    const hasBase = B && list.some(x => x.c && x.c.id === B[0]);
+    const opts = list.filter(x => !(x.c && (x.c.base || x.c.chip)));
+    const used = opts.reduce((t, x) => t + (x.c ? num(x.c.slots) : 1), 0);
+    // senza l'arto artificiale c'è posto solo per un'opzione «installabile su un arto di carne»
+    const cap = fixed || (hasBase ? B[1] : kind === "braccio" || kind === "gamba" ? 1 : 0);
+    const missing = B && !hasBase && opts.length && !(kind === "braccio" || kind === "gamba") ? B[2] : "";
+    return { used, cap, over: used > cap, missing, base: B ? B[2] : "", hasBase };
+  }
+  const slotUseHtml = u => !u || (!u.used && !u.hasBase) ? "" : `<span class="cy-cap ${u.over || u.missing ? "over" : ""}" title="Slot opzioni usati / disponibili${u.base && !u.hasBase ? ` (senza ${u.base})` : ""}">${u.missing ? `⚠ manca il ${esc(u.missing)}` : `opzioni ${u.used}/${u.cap}${u.over ? " ⚠" : ""}`}</span>`;
   function slotCard(e, s) {
     const items = ((e.cyber && e.cyber.slots && e.cyber.slots[s.id]) || []).map(it => ({ ...it, slot: s.id }));
     const inst = items.filter(it => it.installed !== false);
     return `
       <section class="cy-slot ${inst.length ? "has" : ""} ${items.length ? "" : "vacant"} ${s.custom ? "custom" : ""}" data-zone="${s.zone}">
-        <header><span class="cy-title">${esc(s.label)}</span>
+        <header><span class="cy-title">${esc(s.label)}</span>${slotUseHtml(slotUse(s.id, items))}
           ${inst.length ? `<span class="cy-sum">${fmtEb(inst.reduce((t, it) => t + num(it.cost), 0))} · ${inst.reduce((t, it) => t + num(it.hl), 0)} HL</span>` : ""}</header>
         ${items.length ? `<ul>${items.map(it => {
           const m = itemMax(e, it), changed = hasVal(it.max) && Number(it.max) !== s.max;
@@ -695,7 +713,7 @@
   const zoneSelect = (z = "") => `<select data-slot-f="zone" title="Punto acceso sulla sagoma">${BODY_ZONES.map(([v, l]) => `<option value="${v}" ${v === z ? "selected" : ""}>${l}</option>`).join("")}</select>`;
   const cyFieldset = (s, items) => `
     <fieldset class="cy-edit ${s.custom ? "custom" : ""}" data-slot="${esc(s.id)}" data-max="${s.max}">
-      <legend>${s.custom ? "Slot personalizzato" : `${esc(s.label)} <small>· max standard ${s.max}</small>`}</legend>
+      <legend>${s.custom ? "Slot personalizzato" : `${esc(s.label)} <small>· max standard ${s.max}</small>`} <span data-cy-cap></span></legend>
       ${s.custom ? `<div class="cy-slot-head">
         <input data-slot-f="label" placeholder="Nome dello slot (es. Chipware, Opzioni occhi…)" value="${esc(s.label === "Slot personalizzato" ? "" : s.label)}">
         ${zoneSelect(s.zone)}
@@ -831,6 +849,14 @@
         if (!n || await askConfirm(`Rimuovere lo slot e i suoi ${n} impianti? Diventa definitivo quando salvi.`, "Rimuovi slot")) { fs.remove(); refreshRestore(); }
       }
     });
+    // contatore degli slot opzioni, aggiornato a ogni modifica
+    const capCount = () => $$("fieldset[data-slot]", form).forEach(fs => {
+      const items = readRows(fs, ".cy-row").map(r => ({ name: r.name, ref: r.ref, installed: r.installed }));
+      const el = $("[data-cy-cap]", fs); if (el) el.innerHTML = slotUseHtml(slotUse(fs.dataset.slot, items));
+    });
+    ["change", "input"].forEach(t => form.addEventListener(t, () => setTimeout(capCount)));
+    form.addEventListener("click", ev => { if (ev.target.closest("[data-row-del], [data-row-add]")) setTimeout(capCount); });
+    capCount();
     // voce scelta dal catalogo: riga compilata (nome, costo, PU media, nota)
     form.addEventListener("change", ev => {
       const sel = ev.target.closest("[data-cy-pick]");
@@ -921,7 +947,32 @@
   const hpOf = e => { const s = sheetOf(e); return hasVal(s.hp) ? num(s.hp) : hpMaxOf(e); };
   const woundOf = e => CPR.wound(hpOf(e), hpMaxOf(e));
   const luckOf = e => { const s = sheetOf(e); return hasVal(s.luck) ? num(s.luck) : statBase(e, "LUCK"); };
-  const armorOf = (e, loc) => { const a = (sheetOf(e).armor || {})[loc] || {}; const sp = num(a.sp); return { name: a.name || "", sp, cur: hasVal(a.cur) ? num(a.cur) : sp }; };
+  const wornOf = (e, loc) => { const a = (sheetOf(e).armor || {})[loc] || {}; const sp = num(a.sp); return { name: a.name || "", sp, cur: hasVal(a.cur) ? num(a.cur) : sp }; };
+  // Armatura Subdermale / Skin Weave: SP sottopelle a testa e corpo (vale la più alta, ma si ablano tutte insieme;
+  // ogni giorno di riposo completo ne ricostruisce 1) · sheet.skin = { head, body } con la SP attuale sottopelle
+  const skinOf = (e, loc) => {
+    if (!cyberItems(e).length) return null;
+    const best = cyberFx(e).armor.sort((a, b) => b.sp - a.sp)[0]; if (!best) return null;
+    const v = (sheetOf(e).skin || {})[loc];
+    return { name: best.name, sp: best.sp, cur: hasVal(v) ? clamp(num(v), 0, best.sp) : best.sp };
+  };
+  const armorOf = (e, loc) => {
+    const w = wornOf(e, loc), k = skinOf(e, loc);
+    if (!k) return w;
+    return { name: [w.sp ? w.name || "Armatura" : "", k.name].filter(Boolean).join(" + "), sp: Math.max(w.sp, k.sp), cur: Math.max(w.cur, k.cur), worn: w, skin: k };
+  };
+  // −1 = ablazione di tutte le armature della locazione · +1 / ↺ = riparazione di quella indossata · rest = +1 sottopelle (riposo)
+  function armorPatch(s, e, loc, d) {
+    const w = wornOf(e, loc), k = skinOf(e, loc);
+    s.armor = s.armor || {};
+    const setWorn = v => { s.armor[loc] = { ...(s.armor[loc] || {}), cur: v }; };
+    const setSkin = v => { s.skin = { ...(s.skin || {}), [loc]: v }; };
+    if (d === "reset") { if (w.sp) setWorn(w.sp); else if (k) setSkin(k.sp); }
+    else if (d === "rest") { if (k) setSkin(clamp(k.cur + 1, 0, k.sp)); }
+    else if (num(d) < 0) { if (w.sp) setWorn(clamp(w.cur + num(d), 0, w.sp)); if (k) setSkin(clamp(k.cur + num(d), 0, k.sp)); }
+    else { if (w.sp) setWorn(clamp(w.cur + num(d), 0, w.sp)); else if (k) setSkin(clamp(k.cur + num(d), 0, k.sp)); }
+    return s;
+  }
   const SK_GROUPS = [...CPR.SKILL_GROUPS.map(g => g.name), "Other"];
   // abilità standard + abilità personalizzate (Language (Japanese), Science (Chemistry)…)
   function skillsOf(e) {
@@ -1020,11 +1071,14 @@
   // a = { cur, sp, name } · btn(d) = attributi del pulsante, oppure falso se non si può modificare
   function spBar(label, a, btn) {
     const pct = a.sp ? Math.max(0, Math.min(100, a.cur / a.sp * 100)) : 0;
+    const sk = a.skin ? `<span class="sp-skin" title="Si abla insieme all'armatura indossata; vale la SP più alta">Sottopelle ${esc(a.skin.name)} <b>${a.skin.cur}</b>/${a.skin.sp}${a.worn && a.worn.sp ? ` · indossata ${a.worn.cur}/${a.worn.sp}` : ""}
+      ${btn ? `<button type="button" class="gp-btn" ${btn("rest")} title="Giorno di riposo completo: +1 SP sottopelle" aria-label="Riposo: +1 SP sottopelle">🛌</button>` : ""}</span>` : "";
     return `<div class="sp-line ${a.sp && a.cur < a.sp ? "worn" : ""} ${a.sp && a.cur <= 0 ? "broken" : ""}">
       <span class="sp-top"><span class="sh-k">${label}</span><b>${a.cur}</b><small>/ ${a.sp}</small>${a.name ? `<em>${esc(a.name)}</em>` : ""}</span>
       <span class="sp-bar" title="SP attuale"><i style="width:${pct}%"></i></span>
       ${btn ? `<span class="sh-adj">${[[-1, "−1", "Ablazione: −1 SP"], [1, "+1", "Riparazione: +1 SP"], ["reset", "↺", "SP piena"]]
         .map(([d, l, t]) => `<button type="button" class="gp-btn" ${btn(d)} title="${t}">${l}</button>`).join("")}</span>` : ""}
+      ${sk}
     </div>`;
   }
 
@@ -1095,7 +1149,7 @@
 
         <div class="sh-foot">
           <div><span class="sh-k">Reputation</span> <b>${num(s.rep)}</b></div>
-          <div><span class="sh-k">Improvement Points</span> <b>${num(s.ip)}</b></div>
+          <div><span class="sh-k">Improvement Points</span> <b>${num(s.ip)}</b> <button type="button" class="btn ghost small yellow" data-action="ip-open" data-id="${id}" title="Guadagna e spendi IP, con lo storico">★ Migliora</button></div>
           ${s.owner ? `<div><span class="sh-k">Player</span> <b>${esc(s.owner)}</b></div>` : ""}
         </div>
         ${s.notes ? `<div class="block"><h4>Notes</h4><div class="prewrap">${esc(s.notes)}</div></div>` : ""}
@@ -1366,7 +1420,7 @@
     fx.mods.forEach(m => lines.push(`${esc(m.name)}: ${m.value > 0 ? "+" : ""}${m.value} ${esc((CPR.MOD_TARGETS.find(t => t[0] === m.target) || [, m.target])[1])}`));
     if (fx.body !== rawBody(e)) lines.push(`BODY ${rawBody(e)} → <b>${fx.body}</b> (PF, soglie delle ferite e Death Save aggiornati)`);
     if (fx.pain) lines.push("Antidolorifico: ignori i malus di Seriously Wounded");
-    fx.armor.forEach(a => lines.push(`${esc(a.name)}: SP ${a.sp} a testa e corpo (imposta l'armatura «${esc(a.type === "subdermal" ? "Subdermal Armor" : "SP " + a.sp)}» nella scheda; vale la più alta)`));
+    fx.armor.forEach(a => lines.push(`${esc(a.name)}: SP ${a.sp} sottopelle a testa e corpo, già combinata con l'armatura indossata (vale la più alta, si ablano insieme; 🛌 = +1 per giorno di riposo)`));
     const have = new Set((s.weapons || []).map(w => norm(w.name)));
     const wpn = fx.weapons.map(w => `${esc(w.name)} (${esc(w.dmg)})${have.has(norm(w.name)) ? " ✓ nelle armi" : edit ? ` <button type="button" class="btn ghost small" data-action="cy-weapon" data-id="${id}" data-name="${esc(w.name)}">+ alle armi</button>` : ""}`);
     if (!lines.length && !conds.length && !wpn.length) return compact ? "" : `<p class="hint">Gli impianti scelti dal catalogo con un effetto (bonus alle abilità, iniziativa, BODY…) lo applicano da soli ai tiri.</p>`;
@@ -1509,6 +1563,83 @@
       <h3 class="sh-h">Demoni</h3>
       <div class="gl-wrap"><table class="gl-t"><thead><tr><th>Demone</th><th>REZ</th><th>Interface</th><th>Azioni NET</th><th>Combattimento</th></tr></thead><tbody>${NET.allDemons().map(d => `<tr><td><b>${d.homebrew ? "★ " : ""}${esc(d.name)}</b></td><td class="gl-n">${d.rez}</td><td class="gl-n">${d.iface}</td><td class="gl-n">${d.actions}</td><td class="gl-n">${d.combat}</td></tr>`).join("")}</tbody></table></div>`;
     return "";
+  }
+
+
+  // ---------- PUNTI MIGLIORAMENTO (IP) ----------
+  // costi del manuale: abilità 20 × nuovo livello (×2 per le abilità a costo doppio), Capacità di Ruolo 60 × nuovo grado
+  // sheet.ipLog = [{ at, kind: "earn" | "spend", amount, why, key, label, from, to }] (più recente in fondo)
+  const ipCost = (kind, to, x2) => kind === "role" ? 60 * to : (x2 ? 40 : 20) * to;
+  function ipTargets(e) {
+    const s = sheetOf(e);
+    const sk = skillsOf(e).map(k => ({ key: k.key, label: k.label, kind: "skill", lvl: k.lvl, x2: !!k.x2, group: k.group }));
+    const rl = rolesOf(e).map((r, i) => ({ key: "role:" + i, label: `${(RL.roleById(r.id) || {}).it || r.id} · ${(RL.roleById(r.id) || {}).abilityIt || ""}`, kind: "role", lvl: clamp(num(r.rank), 0, 10) }));
+    return [...rl, ...sk].map(t => ({ ...t, cost: t.lvl >= 10 ? null : ipCost(t.kind, t.lvl + 1, t.x2) }));
+  }
+  function openIp(id) {
+    const e = state.entries.find(x => x.id === id); if (!e) return;
+    const s = sheetOf(e), edit = Store.canEdit(), ip = num(s.ip), log = [...(s.ipLog || [])].reverse();
+    const tg = ipTargets(e), last = (s.ipLog || []).slice(-1)[0];
+    const opt = t => `<option value="${esc(t.key)}" ${t.cost == null || t.cost > ip ? "disabled" : ""}>${esc(t.label)} ${t.lvl} → ${t.lvl + 1 > 10 ? "max" : t.lvl + 1} · ${t.cost == null ? "al massimo" : t.cost + " IP"}${t.x2 ? " (×2)" : ""}</option>`;
+    openModal(`
+      <div class="modal-head"><h2>// PUNTI MIGLIORAMENTO · ${esc(e.name)}</h2><button type="button" class="x" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="sheet" aria-label="Chiudi">×</button></div>
+      <div class="modal-body ip-box" data-ip="${esc(e.id)}">
+        <div class="ip-now"><span class="sh-k">Disponibili</span> <b>${ip}</b> IP</div>
+        <p class="hint">Abilità: 20 IP × il livello nuovo (40 × per le abilità ×2). Capacità di Ruolo: 60 IP × il grado nuovo. Le abilità che non hai partono da 0 (il livello 1 costa 20).</p>
+        ${edit ? `<div class="ip-row"><span class="lbl">Guadagna</span><input type="number" min="1" max="999" data-ip-amt placeholder="IP" aria-label="IP guadagnati"><input data-ip-why placeholder="Perché (es. sessione 12, missione al porto)" aria-label="Motivo">
+          <button type="button" class="btn small" data-action="ip-earn" data-id="${esc(e.id)}">+ Aggiungi IP</button></div>
+        <div class="ip-row"><span class="lbl">Spendi</span><select data-ip-target aria-label="Cosa migliorare">
+          <optgroup label="Capacità di Ruolo">${tg.filter(t => t.kind === "role").map(opt).join("") || `<option disabled>nessun Ruolo</option>`}</optgroup>
+          ${SK_GROUPS.map(g => { const l = tg.filter(t => t.kind === "skill" && t.group === g); return l.length ? `<optgroup label="${esc(g)}">${l.map(opt).join("")}</optgroup>` : ""; }).join("")}</select>
+          <button type="button" class="btn small yellow" data-action="ip-spend" data-id="${esc(e.id)}">Migliora</button></div>` : ""}
+        <h3 class="sh-h">Storico ${edit && last ? `<button type="button" class="btn ghost small" data-action="ip-undo" data-id="${esc(e.id)}" title="Annulla l'ultima voce (restituisce gli IP o li toglie)">↶ Annulla l'ultima</button>` : ""}</h3>
+        ${log.length ? `<div class="gl-wrap"><table class="gl-t ip-t"><thead><tr><th>Data</th><th>Cosa</th><th>IP</th><th>Totale dopo</th></tr></thead><tbody>${(() => {
+          let run = ip; return log.map(x => { const row = `<tr class="${x.kind}"><td class="gl-n">${esc(new Date(x.at).toLocaleDateString("it-IT"))}</td><td>${x.kind === "earn" ? `Guadagnati${x.why ? ` · ${esc(x.why)}` : ""}` : `${esc(x.label)} ${x.from} → ${x.to}`}</td><td class="gl-n">${x.kind === "earn" ? "+" : "−"}${x.amount}</td><td class="gl-n">${run}</td></tr>`; run += x.kind === "earn" ? -x.amount : x.amount; return row; }).join(""); })()}</tbody></table></div>`
+          : `<p class="hint">Nessuna voce ancora.</p>`}
+      </div>`);
+  }
+  async function ipSave(e, fn, msg) {
+    const sh = JSON.parse(JSON.stringify(sheetOf(e)));
+    const next = fn(sh); if (!next) return;
+    try {
+      const saved = await Store.save("entries", { ...e, sheet: next });
+      upsert(state.entries, saved); liveSend("entries", saved);
+      if (msg) toast(msg, "ok"); openIp(saved.id); refreshParty();
+    } catch (err) { fail(err); }
+  }
+  function ipAction(el) {
+    const e = state.entries.find(x => x.id === el.dataset.id); if (!e || !Store.canEdit()) return;
+    const box = el.closest(".ip-box"), a = el.dataset.action;
+    if (a === "ip-earn") {
+      const n = Math.trunc(num($("[data-ip-amt]", box).value)), why = $("[data-ip-why]", box).value.trim();
+      if (n <= 0) return toast("Scrivi quanti IP aggiungere", "err");
+      return ipSave(e, s => { s.ip = num(s.ip) + n; s.ipLog = [...(s.ipLog || []), { at: new Date().toISOString(), kind: "earn", amount: n, why }]; return s; }, `+${n} IP`);
+    }
+    if (a === "ip-spend") {
+      const key = $("[data-ip-target]", box).value, t = ipTargets(e).find(x => x.key === key);
+      if (!t || t.cost == null) return toast("Già al massimo", "err");
+      if (t.cost > num(sheetOf(e).ip)) return toast(`Servono ${t.cost} IP`, "err");
+      return ipSave(e, s => {
+        if (t.kind === "role") { migrateRoles(s, e); const r = s.roles[num(key.split(":")[1])]; if (!r) return null; r.rank = t.lvl + 1; }
+        else if (key.startsWith("cskill:")) { const c = (s.custom || [])[num(key.split(":")[1])]; if (!c) return null; c.lvl = t.lvl + 1; }
+        else { s.skills = { ...(s.skills || {}), [key.split(":")[1]]: t.lvl + 1 }; }
+        s.ip = num(s.ip) - t.cost;
+        s.ipLog = [...(s.ipLog || []), { at: new Date().toISOString(), kind: "spend", amount: t.cost, key, label: t.label, from: t.lvl, to: t.lvl + 1 }];
+        return s;
+      }, `${t.label} ${t.lvl} → ${t.lvl + 1} (−${t.cost} IP)`);
+    }
+    if (a === "ip-undo") {
+      const last = (sheetOf(e).ipLog || []).slice(-1)[0]; if (!last) return;
+      return ipSave(e, s => {
+        s.ipLog = (s.ipLog || []).slice(0, -1);
+        if (last.kind === "earn") { s.ip = Math.max(0, num(s.ip) - last.amount); return s; }
+        if (last.key.startsWith("role:")) { migrateRoles(s, e); const r = s.roles[num(last.key.split(":")[1])]; if (r) r.rank = last.from; }
+        else if (last.key.startsWith("cskill:")) { const c = (s.custom || [])[num(last.key.split(":")[1])]; if (c) c.lvl = last.from; }
+        else { s.skills = { ...(s.skills || {}) }; if (last.from) s.skills[last.key.split(":")[1]] = last.from; else delete s.skills[last.key.split(":")[1]]; }
+        s.ip = num(s.ip) + last.amount;
+        return s;
+      }, "Ultima voce annullata");
+    }
   }
 
   // ---------- tab COMBATTIMENTO: HP, armatura, iniziativa, stati, modificatori, armi, Critical Injury ----------
@@ -5176,8 +5307,7 @@
         if (!t) return;
         const loc = el.dataset.loc, d = el.dataset.d, e = tokSheet(t);
         if (e) {
-          const a = armorOf(e, loc);
-          return sheetPatch(e.id, s => { s.armor = s.armor || {}; s.armor[loc] = { ...(s.armor[loc] || {}), cur: d === "reset" ? a.sp : clamp(a.cur + num(d), 0, a.sp) }; return s; });
+          return sheetPatch(e.id, s => armorPatch(s, e, loc, d));
         }
         const a = tokArmor(t, loc); if (!a) return;
         return saveToken({ ...t, armor: { ...(t.armor || {}), [loc]: { ...((t.armor || {})[loc] || {}), cur: d === "reset" ? a.sp : clamp(a.cur + num(d), 0, a.sp) } } });
@@ -5710,6 +5840,8 @@
       // scheda personaggio
       case "edit-sheet": editSheet(id); break;
       case "edit-decks": editDecks(id); break;
+      case "ip-open": openIp(id); break;
+      case "ip-earn": case "ip-spend": case "ip-undo": ipAction(el); break;
       case "sheet-roll": { const e = state.entries.find(x => x.id === id); if (e) sheetRoll(e, el.dataset.roll); break; }
       case "rl-op": roleOp(el); break;
       case "rl-roll": roleRoll(el); break;
@@ -5747,11 +5879,7 @@
           if (f === "hp") s.hp = clamp(hpOf(e) + num(d), 0, hpMaxOf(e));
           else if (f === "luck") s.luck = d === "reset" ? null : clamp(luckOf(e) + num(d), 0, statBase(e, "LUCK"));
           else if (f === "dsp") s.dsp = Math.max(0, num(s.dsp) + num(d));
-          else if (f.startsWith("armor.")) {
-            const loc = f.slice(6), a = armorOf(e, loc);
-            s.armor = s.armor || {};
-            s.armor[loc] = { ...(s.armor[loc] || {}), cur: d === "reset" ? a.sp : clamp(a.cur + num(d), 0, a.sp) };
-          }
+          else if (f.startsWith("armor.")) armorPatch(s, e, f.slice(6), d);
           return s;
         });
         break;
