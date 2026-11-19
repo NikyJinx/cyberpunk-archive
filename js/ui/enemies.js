@@ -190,6 +190,34 @@ function editEnemy(id, preset = null) {
     <input data-f="lvl" type="number" min="0" max="10" placeholder="Lvl" value="${esc(s.lvl ?? 0)}" title="Livello della skill">
     <span class="en-nat" title="base_naturale = STAT + livello">= ?</span>
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
+  const ensureAutoSkill = (wpns = []) => {
+    if (wpns.some(w => (CPR.weaponType(w.cat) || {}).auto || w.auto)) {
+      const cur = readRows(form, "#en-skills .sh-row");
+      const tier = num(form.elements["tier"].value) || 1, level = form.elements["level"].value;
+      const L = CPR.levelOf(tier, level), ref = num(form.elements["st-REF"].value) || 0;
+      let target = L.combat[0];
+      if (level === "hardened") {
+        const autoWpns = wpns.filter(w => (CPR.weaponType(w.cat) || {}).auto || w.auto);
+        const refSkills = autoWpns.length ? autoWpns.map(w => w.cat === "ar" ? "shoulderarms" : "handgun") : ["handgun", "shoulderarms"];
+        const candSks = refSkills.map(id => cur.find(s => s.id === id)).filter(Boolean);
+        const refNat = candSks.length ? Math.max(...candSks.map(s => ref + num(s.lvl))) : L.combat[1];
+        const maxCap = tier >= 3 ? 16 : 14;
+        target = Math.min(maxCap, refNat);
+      }
+      target = Math.max(10, target);
+      const lvl = Math.max(0, Math.min(L.skillMax, target - ref));
+      const existing = cur.find(s => s.id === "autofire");
+      if (!existing) {
+        $("#en-skills", form).insertAdjacentHTML("beforeend", sRow({ id: "autofire", stat: "REF", lvl }));
+      } else if (level === "hardened") {
+        const rows = $$("#en-skills .sh-row", form);
+        const idx = cur.indexOf(existing);
+        if (idx >= 0 && rows[idx]) {
+          $("[data-f=lvl]", rows[idx]).value = lvl;
+        }
+      }
+    }
+  };
   openModal(`
     <form class="form" id="enemy-form">
       <div class="modal-head"><h2>// 🔒 ${old ? "MODIFICA NEMICO" : "NUOVO NEMICO"}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
@@ -350,14 +378,14 @@ function editEnemy(id, preset = null) {
     // armi: ripesca tutte o una sola, per la Fascia, il Livello e il Ruolo scelti
     if (ev.target.closest("[data-wpn-reroll-all]")) {
       const ws = CPR.rollWeapons(form.elements["role"].value, num(form.elements["tier"].value), form.elements["level"].value);
-      $("#en-wpns", form).innerHTML = ws.map(wRow).join(""); refresh(); return;
+      $("#en-wpns", form).innerHTML = ws.map(wRow).join(""); ensureAutoSkill(ws); refresh(); return;
     }
     const one = ev.target.closest("[data-wpn-reroll]");
     if (one) {
       const row = one.closest(".sh-row"), i = $$("#en-wpns .sh-row", form).indexOf(row);
       const ws = CPR.rollWeapons(form.elements["role"].value, num(form.elements["tier"].value), form.elements["level"].value);
       const w = ws[Math.min(i, ws.length - 1)] || ws[0];
-      if (w) { row.outerHTML = wRow(w); refresh(); }
+      if (w) { row.outerHTML = wRow(w); ensureAutoSkill([w]); refresh(); }
       return;
     }
     if (ev.target.closest("[data-nd-auto]")) { renderDeck("netrunner", NET.autoDeck(num(form.elements["tier"].value), form.elements["level"].value)); return; }
@@ -384,6 +412,7 @@ function editEnemy(id, preset = null) {
         set("dmg", w.dmg === "BODY" ? CPR.brawlDmg(num(form.elements["st-BODY"].value)) : w.dmg); set("rof", w.rof); set("skill", w.skill); set("mag", w.mag || ""); set("range", ""); set("autoRange", "");
         const nm = $("[data-f=name]", row).value.trim();
         if (!nm || CPR.WEAPON_TYPES.some(x => x.label === nm)) set("name", w.label);
+        if (w.auto) ensureAutoSkill([w]);
       }
     }
     if (t.matches(".en-sk [data-f=id]")) { const k = CPR.skill(t.value); if (k) $("[data-f=stat]", t.closest(".sh-row")).value = k.stat; }
