@@ -41,6 +41,7 @@ const GEAR_CATS = [
   { id: "armi",     label: "Armi",            color: "var(--red)",     hint: "es. 3d6 · ROF 1 · Caricatore 8" },
   { id: "armature", label: "Armature",        color: "var(--cyan)",    hint: "es. SP 11 · Testa / Corpo" },
   { id: "equip",    label: "Equipaggiamento", color: "var(--yellow)",  hint: "es. Agente, kit medico, grimaldelli" },
+  { id: "cyber",    label: "Cyberware",       color: "var(--magenta)", hint: "es. impianto da installare, preso come bottino" },
   { id: "veicoli",  label: "Veicoli",         color: "var(--magenta)", hint: "es. Supermoto potenziata" },
   { id: "altro",    label: "Altro",           color: "var(--muted)",   hint: "" },
 ];
@@ -61,7 +62,7 @@ function baseState(e, slotId) {
   if (F) return { fixed: true, on: true, slots: saved && hasVal(saved.slots) ? num(saved.slots) : F, std: F };
   const c = CW.byId(B[0]) || { cost: 0, pu: 0 };
   const pick = (v, d) => hasVal(v) ? num(v) : d;
-  if (saved) return { on: !!saved.on, slots: pick(saved.slots, B[1]), std: B[1], cost: pick(saved.cost, c.cost), hl: pick(saved.hl, c.pu), max: pick(saved.max, 2), name: B[2], ref: B[0] };
+  if (saved) return { on: !!saved.on, stored: !saved.on && !!saved.stored, slots: pick(saved.slots, B[1]), std: B[1], cost: pick(saved.cost, c.cost), hl: pick(saved.hl, c.pu), max: pick(saved.max, 2), name: B[2], ref: B[0] };
   // schede vecchie: la base era inserita come impianto dentro lo slot
   const old = (((e.cyber || {}).slots || {})[slotId] || []).find(it => isBaseItem(it) && it.installed !== false);
   return { on: !!old, slots: B[1], std: B[1], cost: old && hasVal(old.cost) ? num(old.cost) : c.cost, hl: old && hasVal(old.hl) ? num(old.hl) : c.pu, max: old && hasVal(old.max) ? num(old.max) : 2, name: B[2], ref: B[0], legacy: !!old };
@@ -70,17 +71,20 @@ const baseCyber = e => slotsOf(e).map(sl => ({ slot: sl.id, b: baseState(e, sl.i
 const gearItems = e => (e.gear && e.gear.items) || [];
 
 function cyberStats(e) {
-  const all = cyberItems(e).filter(it => !isBaseItem(it)), inst = all.filter(it => it.installed !== false), plan = all.filter(it => it.installed === false);
-  const bases = baseCyber(e);
+  // disinstallato (stored): fuori dal corpo, niente effetti né umanità massima tolta, ma l'umanità persa resta (si recupera solo con la terapia)
+  const all = cyberItems(e).filter(it => !isBaseItem(it)), inst = all.filter(it => it.installed !== false);
+  const plan = all.filter(it => it.installed === false && !it.stored), stored = all.filter(it => it.installed === false && it.stored);
+  const bases = baseCyber(e), storedBases = slotsOf(e).map(sl => baseState(e, sl.id)).filter(b => b && !b.fixed && b.stored);
   const cost = inst.reduce((t, it) => t + num(it.cost), 0) + bases.reduce((t, x) => t + x.b.cost, 0);
-  const hl = inst.reduce((t, it) => t + num(it.hl), 0) + bases.reduce((t, x) => t + x.b.hl, 0);
+  const hl = inst.reduce((t, it) => t + num(it.hl), 0) + bases.reduce((t, x) => t + x.b.hl, 0)
+    + stored.reduce((t, it) => t + num(it.hl), 0) + storedBases.reduce((t, b) => t + b.hl, 0);
   const maxLoss = inst.reduce((t, it) => t + itemMax(e, it), 0) + bases.reduce((t, x) => t + x.b.max, 0);
   const start = e.cyber && hasVal(e.cyber.humanity) ? num(e.cyber.humanity) : null;
   const therapy = e.cyber ? num(e.cyber.therapy) : 0;          // umanità recuperata con la terapia
   const max = start == null ? null : start - maxLoss;
   // la terapia restituisce umanità, ma l'attuale non può mai superare la massima
   const current = start == null ? null : Math.min(start - hl + therapy, max);
-  return { inst, plan, bases, cost, hl, maxLoss, therapy, planCost: plan.reduce((t, it) => t + num(it.cost), 0), start, max, current };
+  return { inst, plan, stored, bases, cost, hl, maxLoss, therapy, planCost: plan.reduce((t, it) => t + num(it.cost), 0), start, max, current };
 }
 
 // sagoma olografica: limbi = linee spesse semi-trasparenti + linea centrale
@@ -130,13 +134,13 @@ function slotCard(e, s) {
     <section class="cy-slot ${inst.length || bOn ? "has" : ""} ${items.length || bOn ? "" : "vacant"} ${s.custom ? "custom" : ""}" data-zone="${s.zone}">
       <header><span class="cy-title">${esc(s.label)}</span>${slotUseHtml(slotUse(s.id, items, b))}
         ${inst.length || bOn ? `<span class="cy-sum">${fmtEb(sumC)} · ${sumH} HL</span>` : ""}</header>
-      ${b && !b.fixed ? `<div class="cy-base ${b.on ? "on" : ""}" title="Cyberware fondamentale: si attiva sullo slot">${b.on ? `◆ <b>${esc(b.name)}</b> · ${b.slots} slot${b.slots !== b.std ? ` (standard ${b.std})` : ""} <small>${b.cost.toLocaleString("it-IT")} eb · ${b.hl} HL · −${b.max}</small>` : `○ ${esc(b.name)} non installato${slotKind(s.id) === "braccio" || slotKind(s.id) === "gamba" ? " <small>(arto di carne: 1 opzione)</small>" : ""}`}</div>`
+      ${b && !b.fixed ? `<div class="cy-base ${b.on ? "on" : ""}" title="Cyberware fondamentale: si attiva sullo slot">${b.on ? `◆ <b>${esc(b.name)}</b> · ${b.slots} slot${b.slots !== b.std ? ` (standard ${b.std})` : ""} <small>${b.cost.toLocaleString("it-IT")} eb · ${b.hl} HL · −${b.max}</small>` : b.stored ? `⬚ ${esc(b.name)} disinstallato <small>(in Equipaggiamento · ${b.hl} HL restano)</small>` : `○ ${esc(b.name)} non installato${slotKind(s.id) === "braccio" || slotKind(s.id) === "gamba" ? " <small>(arto di carne: 1 opzione)</small>" : ""}`}</div>`
         : b && b.slots !== b.std ? `<div class="cy-base on"><small>${b.slots} slot opzioni (standard ${b.std})</small></div>` : ""}
       ${items.length ? `<ul>${items.map(it => {
         const m = itemMax(e, it), changed = hasVal(it.max) && Number(it.max) !== s.max;
         return `
-        <li class="${it.installed === false ? "planned" : ""}" ${it.note || cwOf(it) ? `title="${esc([(cwOf(it) || {}).desc, it.note].filter(Boolean).join(" · "))}"` : ""}>
-          <span class="cy-chk" aria-label="${it.installed === false ? "pianificato" : "installato"}">${it.installed === false ? "◇" : "◆"}</span>
+        <li class="${it.installed === false ? (it.stored ? "planned stored" : "planned") : ""}" ${it.note || cwOf(it) ? `title="${esc([(cwOf(it) || {}).desc, it.note].filter(Boolean).join(" · "))}"` : ""}>
+          <span class="cy-chk" aria-label="${it.installed === false ? (it.stored ? "disinstallato" : "pianificato") : "installato"}">${it.installed === false ? (it.stored ? "⬚" : "◇") : "◆"}</span>
           <span class="cy-name">${esc(it.name)}${cwOf(it) && (cwOf(it).fx || []).length ? ` <i class="gl-fx" title="Effetto applicato ai tiri">⚡</i>` : ""}${it.ref === "skillchip" && it.param ? ` <small>${esc((CPR.skill(it.param) || {}).label || "")}</small>` : ""}${it.note ? `<small>${esc(it.note)}</small>` : ""}</span>
           <span class="cy-cost">${hasVal(it.cost) ? esc(num(it.cost).toLocaleString("it-IT")) : "—"}</span>
           <span class="cy-hl">${hasVal(it.hl) ? esc(it.hl) : "—"}</span>
@@ -171,34 +175,74 @@ function cyberInner(e) {
       </div>
     </div>`;
   return `
-    <div class="cy-legend"><span>◆ installato</span><span>◇ pianificato</span><span>○ base non installata</span><span>colonne: costo (eb) · HL = umanità persa · −N = umanità massima tolta (in giallo se modificata)</span></div>
+    <div class="cy-legend"><span>◆ installato</span><span>◇ pianificato</span><span>⬚ disinstallato (resta in Equipaggiamento)</span><span>○ base non installata</span><span>colonne: costo (eb) · HL = umanità persa · −N = umanità massima tolta (in giallo se modificata)</span></div>
     <div class="cy-layout">
       <div class="cy-col">${col("l")}</div>
       <div class="cy-center">
         ${col("top")}
         <div class="cy-figure" data-zones="${[...zonesOn].join(" ")}">${BODY_SVG}</div>
-        ${col("bottom")}
       </div>
       <div class="cy-col">${col("r")}</div>
+      ${col("bottom") ? `<div class="cy-bottom">${col("bottom")}</div>` : ""}
     </div>
     ${summary}`;
 }
 
-function gearHtml(e) {
-  const items = gearItems(e), money = e.gear && e.gear.money;
-  if (!items.length && (money === "" || money == null)) return `<div class="empty"><div class="big">// INVENTARIO VUOTO</div>Nessun equipaggiamento registrato.</div>`;
+function gearHtml(e) { return `<div class="gear-wrap" data-gear="${esc(e.id)}">${gearInner(e)}</div>`; }
+function gearInner(e) {
+  const s = sheetOf(e), items = gearItems(e), money = e.gear && e.gear.money, id = esc(e.id), edit = Store.canEdit();
+  const rows = Object.fromEntries([...GEAR_CATS.map(c => c.id), "deck"].map(k => [k, []]));
+  const go = (tab, label) => `<button type="button" class="g-src" data-action="open-entry-tab" data-id="${id}" data-tab="${tab}" title="Apri la tab ${label}">${label} ›</button>`;
+  const cyBtn = (op, slot, i, label, tip) => edit ? `<button type="button" class="btn ghost small g-act" data-action="gear-cy" data-id="${id}" data-op="${op}" data-slot="${esc(slot)}" data-i="${i}" title="${tip}">${label}</button>` : "";
+  const fromGear = it => ({ qty: num(it.qty), name: it.name, detail: it.detail, note: it.note });
+  // armi della tab Combattimento + quelle segnate solo nell'inventario
+  (s.weapons || []).forEach(w => {
+    const T = CPR.weaponType(w.cat || CPR.guessWeapon(w.name, w.skill)) || {};
+    rows.armi.push({ name: w.name || T.label || "Arma", detail: [T.label && T.label !== w.name ? T.label : "", w.dmg || T.dmg, w.rof ? `ROF ${w.rof}` : "", w.mag ? `Car. ${w.mag}` : ""].filter(Boolean).join(" · "), note: w.note });
+  });
+  // armature: quelle indossate e quelle nell'inventario (con lo stesso nome sono la stessa armatura)
+  const LOC = { head: "testa", body: "corpo" };
+  const worn = ["head", "body"].map(l => ({ l, a: (s.armor || {})[l] || {} })).filter(x => x.a.name || num(x.a.sp));
+  items.forEach(it => {
+    const cat = it.cat || "altro";
+    if (cat !== "armature") { rows[cat] && rows[cat].push(fromGear(it)); return; }
+    const on = []; for (let k = 0; k < Math.max(1, num(it.qty)); k++) { const j = worn.findIndex(x => norm2(x.a.name) === norm2(it.name)); if (j < 0) break; on.push(LOC[worn[j].l]); worn.splice(j, 1); }
+    rows.armature.push({ ...fromGear(it), tag: on.length ? `indossata: ${on.join(", ")}` : "" });
+  });
+  worn.forEach(x => rows.armature.push({ name: x.a.name || "Armatura", detail: `SP ${hasVal(x.a.cur) ? num(x.a.cur) : num(x.a.sp)}/${num(x.a.sp)}`, tag: `indossata: ${LOC[x.l]}` }));
+  // cyberware: installato, disinstallato (resta qui) e pianificato, parte per parte
+  slotsOf(e).forEach(sl => {
+    const b = baseState(e, sl.id);
+    if (b && !b.fixed && (b.on || b.stored)) rows.cyber.push({ name: `${b.name}`, detail: `${sl.label} · ${b.slots} slot · ${b.hl} HL`, cls: b.on ? "" : "stored",
+      tag: b.on ? "◆ installato" : "⬚ disinstallato", act: b.on ? cyBtn("out", sl.id, -1, "⇩ Disinstalla", "Lo togli dal corpo: resta nell'inventario") : cyBtn("in", sl.id, -1, "⇧ Reinstalla", "Lo rimetti nel corpo") });
+    (((e.cyber || {}).slots || {})[sl.id] || []).forEach((it, i) => {
+      if (!it.name || isBaseItem(it)) return;
+      const st = it.installed !== false ? "in" : it.stored ? "stored" : "plan";
+      rows.cyber.push({ name: it.name, detail: [sl.label, hasVal(it.hl) ? `${num(it.hl)} HL` : ""].filter(Boolean).join(" · "), note: it.note, cls: st === "in" ? "" : st,
+        tag: { in: "◆ installato", stored: "⬚ disinstallato", plan: "◇ pianificato" }[st],
+        act: st === "in" ? cyBtn("out", sl.id, i, "⇩ Disinstalla", "Lo togli dal corpo: resta nell'inventario") : st === "stored" ? cyBtn("in", sl.id, i, "⇧ Reinstalla", "Lo rimetti nel corpo") : "" });
+    });
+  });
+  // cyberdeck con programmi e hardware
+  decksOf(e).forEach(d => rows.deck.push({ name: d.name || "Cyberdeck", detail: `${num(d.slots) || 7} slot · ${(d.items || []).length} tra programmi e hardware`,
+    note: (d.items || []).map(it => NET.itemInfo(it).label).join(", ") }));
+  const SECS = [...GEAR_CATS.slice(0, 2), GEAR_CATS.find(c => c.id === "cyber"), { id: "deck", label: "Cyberdeck", color: "var(--green)" }, ...GEAR_CATS.filter(c => !["armi", "armature", "cyber"].includes(c.id))];
+  const LINK = { armi: (s.weapons || []).length ? ["combat", "Combattimento"] : null, cyber: ["cyber", "Cyberware"], deck: ["deck", "Cyberdeck"] };
+  const total = SECS.reduce((t, c) => t + rows[c.id].length, 0);
+  if (!total && (money === "" || money == null)) return `<div class="empty"><div class="big">// INVENTARIO VUOTO</div>Nessun equipaggiamento registrato.</div>`;
   return `
-    ${money !== "" && money != null ? `<div class="cy-summary"><div class="cy-stat"><span class="l">Eddies</span><span class="n">${fmtEb(num(money))}</span></div>
-      <div class="cy-stat"><span class="l">Oggetti</span><span class="n">${items.length}</span></div></div>` : ""}
+    <div class="cy-summary">${money !== "" && money != null ? `<div class="cy-stat"><span class="l">Eddies</span><span class="n">${fmtEb(num(money))}</span></div>` : ""}
+      <div class="cy-stat"><span class="l">Voci</span><span class="n">${total}</span></div></div>
+    <p class="hint">Qui c'è tutto quello che il personaggio possiede: anche le armi della tab Combattimento, le armature indossate, il cyberware (pure quello disinstallato) e i cyberdeck. «Modifica» cambia solo gli oggetti dell'inventario; il resto si modifica nella sua tab.</p>
     <div class="gear-grid">
-      ${GEAR_CATS.map(c => {
-        const list = items.filter(it => (it.cat || "altro") === c.id);
-        if (!list.length) return "";
-        return `<section class="gear-sec" style="--c:${c.color}">
-          <header>${esc(c.label)} <span>${list.length}</span></header>
-          <ul>${list.map(it => `<li>
+      ${SECS.map(c => {
+        const list = rows[c.id]; if (!list.length) return "";
+        return `<section class="gear-sec ${c.id === "cyber" ? "wide" : ""}" style="--c:${c.color}">
+          <header>${esc(c.label)} <span>${list.length}</span>${LINK[c.id] ? go(...LINK[c.id]) : ""}</header>
+          <ul>${list.map(it => `<li class="${it.cls || ""}">
             <span class="g-qty">${num(it.qty) > 1 ? "×" + num(it.qty) : ""}</span>
-            <span class="g-name">${esc(it.name)}${it.detail ? `<small>${esc(it.detail)}</small>` : ""}${it.note ? `<em>${esc(it.note)}</em>` : ""}</span>
+            <span class="g-name">${esc(it.name)}${it.tag ? ` <i class="g-tag">${esc(it.tag)}</i>` : ""}${it.detail ? `<small>${esc(it.detail)}</small>` : ""}${it.note ? `<em>${esc(it.note)}</em>` : ""}</span>
+            ${it.act ? `<span class="g-side">${it.act}</span>` : ""}
           </li>`).join("")}</ul></section>`;
       }).join("")}
     </div>`;
@@ -216,7 +260,7 @@ const cyRow = (it = {}, def = 2) => `
   <div class="cy-row ${it.ref === "skillchip" ? "chip" : ""}">
     <label class="cy-inst" title="Installato (togli la spunta se è solo pianificato)"><input type="checkbox" data-f="installed" ${it.installed === false ? "" : "checked"}><span></span></label>
     <input data-f="name" placeholder="Nome impianto" list="dl-cyber" value="${esc(it.name)}">
-    <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="on" value="${it.on ? "1" : ""}">
+    <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="stored" value="${it.stored ? "1" : ""}"><input type="hidden" data-f="withBase" value="${it.withBase ? "1" : ""}"><input type="hidden" data-f="on" value="${it.on ? "1" : ""}">
     <select data-f="param" class="cy-param" title="Abilità del Chip Abilità (livello 3)"><option value="">abilità del chip…</option>${CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === it.param ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
     <input data-f="cost" type="number" min="0" step="1" placeholder="eb" title="Costo in eddies" value="${esc(it.cost ?? "")}">
     <input data-f="hl" type="number" min="0" step="1" placeholder="HL" title="Umanità persa (HL)" value="${esc(it.hl ?? "")}">
@@ -407,11 +451,11 @@ function editCyber(id) {
     ev.preventDefault();
     const out = {}, extra = [], bases = {};
     for (const fs of $$("fieldset[data-slot]", form)) {
-      const bs = readBase(fs); if (bs) { const { name, fixed, ...keep } = bs; bases[fs.dataset.slot] = fixed ? { slots: keep.slots } : keep; }
+      const bs = readBase(fs); if (bs) { const { name, fixed, ...keep } = bs, was = baseState(e, fs.dataset.slot); bases[fs.dataset.slot] = fixed ? { slots: keep.slots } : { ...keep, ...(!keep.on && was && was.stored ? { stored: true } : {}) }; }
       const items = readRows(fs, ".cy-row").filter(it => it.name && !isBaseItem(it)).map(it => ({
         name: it.name, installed: it.installed, cost: it.cost === "" ? null : num(it.cost), hl: it.hl === "" ? null : num(it.hl),
         max: it.max === "" ? null : num(it.max), note: it.note,
-        ...(it.ref ? { ref: it.ref } : {}), ...(it.on ? { on: true } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param } : {}),
+        ...(it.ref ? { ref: it.ref } : {}), ...(it.on ? { on: true } : {}), ...(it.stored && it.installed === false ? { stored: true, ...(it.withBase ? { withBase: true } : {}) } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param } : {}),
       }));
       if (fs.classList.contains("custom")) {
         const label = $("[data-slot-f=label]", fs).value.trim();
@@ -457,7 +501,7 @@ function editGear(id) {
     const items = readRows(form, ".gear-row").filter(it => it.name).map(it => ({ ...it, qty: Math.max(1, num(it.qty) || 1) }));
     const money = form.money.value;
     try {
-      const saved = await Store.save("entries", { ...e, gear: { money: money === "" ? null : num(money), items } });
+      const saved = await Store.save("entries", { ...e, gear: { ...(e.gear || {}), money: money === "" ? null : num(money), items } });
       upsert(state.entries, saved); toast("Equipaggiamento salvato", "ok"); openEntry(saved.id, "gear");
     } catch (err) { fail(err); }
   });

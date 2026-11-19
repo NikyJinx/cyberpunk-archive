@@ -23,9 +23,15 @@ async function boot() {
   try { Store.live(onLive, onLiveStatus); } catch (e) { console.warn("realtime", e); }
   window.addEventListener("hashchange", () => {
     // navigando altrove chiudo il dossier aperto
-    if (!/^#\/(database|appunti)\/.+/.test(location.hash)) closeModal();
+    if (!/^#\/(database|appunti)\/.+/.test(location.hash) && !$("#modal").classList.contains("free") && !POP) closeModal();
     route();
   });
   route();
+  // finestra esterna: solo la scheda del personaggio, a tutta finestra
+  if (POP) {
+    document.body.classList.add("popout");
+    if (state.entries.some(e => e.id === POP)) openEntry(POP, ls.get("nc-pop-tab", "sheet"));
+    else $("#app").innerHTML = `<div class="empty"><div class="big">// SCHEDA NON TROVATA</div>Forse è segreta o è stata eliminata.</div>`;
+  }
 }
 boot();

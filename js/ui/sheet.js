@@ -131,8 +131,9 @@ function sheetPatch(id, fn) {
 function refreshSheetView(id) {
   const e = state.entries.find(x => x.id === id); if (!e) return;
   const box = $(`#modal .sh[data-sheet="${CSS.escape(id)}"]`), dt = $(`#modal .nd-tab[data-deck-tab="${CSS.escape(id)}"]`), cb = $(`#modal .cb[data-combat="${CSS.escape(id)}"]`), rt = $(`#modal .rl-tab[data-roles-tab="${CSS.escape(id)}"]`);
-  const cw = $(`#modal .cy-wrap[data-cyber="${CSS.escape(id)}"]`);
-  if (!box && !dt && !cb && !rt && !cw) return;
+  const cw = $(`#modal .cy-wrap[data-cyber="${CSS.escape(id)}"]`), gw = $(`#modal .gear-wrap[data-gear="${CSS.escape(id)}"]`);
+  if (!box && !dt && !cb && !rt && !cw && !gw) return;
+  if (gw) gw.innerHTML = gearInner(e);
   if (cw) { cw.outerHTML = cyberHtml(e); const fig = $("#modal .cy-figure"); if (fig) fig.dataset.zones.split(" ").filter(Boolean).forEach(z => $$(`.cy-zone[data-zone="${z}"]`, fig).forEach(n => n.classList.add("on"))); }
   if (rt) { const keep = $$("details[open]", rt).map(d => [...rt.querySelectorAll("details")].indexOf(d)); rt.outerHTML = rolesTabHtml(e); const n = $(`#modal .rl-tab[data-roles-tab="${CSS.escape(id)}"]`); keep.forEach(k => { const d = n.querySelectorAll("details")[k]; if (d) d.open = true; }); }
   const y = $("#modal").scrollTop;

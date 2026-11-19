@@ -87,6 +87,20 @@ document.addEventListener("click", async ev => {
       else openEntry(id);
       break;
     case "open-entry-tab": openEntry(id, el.dataset.tab); break;
+    case "gear-cy": {   // disinstalla / reinstalla il cyberware senza perderlo
+      if (!Store.canEdit()) break;
+      const e = state.entries.find(x => x.id === id); if (!e) break;
+      const slot = el.dataset.slot, i = num(el.dataset.i), out = el.dataset.op === "out";
+      if (i < 0) { const b = baseState(e, slot); if (!b) break;
+        cyberPatch(id, cy => { cy.bases = cy.bases || {}; const { name, ref, std, legacy, fixed, ...keep } = b; cy.bases[slot] = { ...keep, on: !out, ...(out ? { stored: true } : {}) }; if (!out) delete cy.bases[slot].stored;
+          if (legacy) cy.slots[slot] = (cy.slots[slot] || []).filter(it => !isBaseItem(it));
+          // le opzioni dentro l'arto o l'occhio escono e rientrano con la base
+          (cy.slots && cy.slots[slot] || []).forEach(it => { if (out && it.installed !== false) { it.installed = false; it.stored = true; it.withBase = true; } else if (!out && it.withBase) { it.installed = true; delete it.stored; delete it.withBase; } });
+          return cy; });
+      } else cyberPatch(id, cy => { const it = ((cy.slots || {})[slot] || [])[i]; if (!it) return cy; if (out) { it.installed = false; it.stored = true; } else { it.installed = true; delete it.stored; delete it.withBase; } return cy; });
+      toast(out ? `Disinstallato${i < 0 ? " con le sue opzioni" : ""}: resta in Equipaggiamento (l'umanità persa non torna)` : `Reinstallato${i < 0 ? " con le sue opzioni" : ""}`, "ok");
+      break;
+    }
     case "edit-cyber": editCyber(id); break;
     case "edit-humanity": editHumanity(id); break;
     case "edit-gear": editGear(id); break;
@@ -235,6 +249,12 @@ document.addEventListener("click", async ev => {
     }
     case "cyhb-edit": editCyberHb(id); break;
     case "gloss-tab": ls.set("nc-gloss", el.dataset.tab); route(); break;
+    case "mk-buy": mkBuy(el.dataset.key); break;
+    case "mk-log": mkHistory(id); break;
+    case "mk-undo": mkUndo(id); break;
+    case "mk-import": mkImport(); break;
+    case "mk-edit": mkImport(el.dataset.key); break;
+    case "mk-hide": { const k = el.dataset.key, h = mkCfg().hide || []; mkSaveCfg({ hide: h.includes(k) ? h.filter(x => x !== k) : [...h, k] }); break; }
     case "cb-roll": cbRoll(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), el.dataset.mode || "single"); break;
     case "cb-dmg": cbDamage(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.mult)); break;
     case "sheet-status": { const e = state.entries.find(x => x.id === el.dataset.stSheet); if (e && Store.canEdit()) statusOp(el, sheetStatusApply(e)); break; }
@@ -310,7 +330,11 @@ document.addEventListener("change", ev => {
     if (t.dataset.stTok) { const k = state.tokens.find(x => x.id === t.dataset.stTok); if (k && Store.canEdit()) statusOp(t, tokStatusApply(k)); }
     return;
   }
-  if (t.matches("[data-gloss-g]")) { glossG = t.value; const b = $("#gloss-body"); if (b) b.innerHTML = glossBody("cyber"); return; }
+  if (t.matches("[data-gloss-g]")) { glossG = t.value; const b = $("#gloss-body"); if (b) b.innerHTML = glossBody(glossTab()); return; }
+  if (t.matches("[data-gloss-p]")) { glossP = t.value; const b = $("#gloss-body"); if (b) b.innerHTML = glossBody(glossTab()); return; }
+  if (t.matches("[data-mk-who]")) { ls.set("nc-mk-who", t.value || "none"); route(); return; }
+  if (t.matches("[data-mk-open]")) { mkSaveCfg({ open: t.checked }); return; }
+  if (t.matches("[data-mk-pct]")) { const v = Math.max(10, Math.min(500, Math.round(num(t.value)) || 100)); mkSaveCfg({ pct: v }); return; }
   if (t.matches("[data-roll-as]")) { ls.set("nc-as", t.value || null); $$("[data-roll-as]").forEach(s => { s.value = t.value; }); }
   // cambio mappa: solo per me; il GM poi può premere "Mostra a tutti"
   if (t.matches("[data-secret]")) { secretRoll = t.checked; ls.set("nc-secret", secretRoll); $$("[data-secret]").forEach(c => { c.checked = secretRoll; }); $$(".roll-form").forEach(f => f.classList.toggle("is-secret", secretRoll)); return; }
@@ -322,7 +346,7 @@ document.addEventListener("change", ev => {
   }
 });
 document.addEventListener("input", ev => {
-  if (ev.target.matches("[data-gloss-q]")) { glossQ = ev.target.value; const b = $("#gloss-body"); if (b) { b.innerHTML = glossBody("cyber"); const i = $("[data-gloss-q]", b); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } return; }
+  if (ev.target.matches("[data-gloss-q]")) { glossQ = ev.target.value; const b = $("#gloss-body"); if (b) { b.innerHTML = glossBody(glossTab()); const i = $("[data-gloss-q]", b); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } return; }
   if (ev.target.matches("[data-sheet-mod]")) sheetMod = Math.trunc(num(ev.target.value));
 });
 

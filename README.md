@@ -30,7 +30,9 @@ Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del perso
 - per ogni impianto costo, **perdita di umanità** e **umanità massima tolta**. Quest'ultima segue la regola standard (2, borgware 4, fashionware 0) ma si può cambiare impianto per impianto, per esempio per gli impianti modificati;
 - impianti **installati** o solo **pianificati**, con i totali di costo, l'umanità attuale e massima, l'EMP effettiva e l'avviso di **cyberpsicosi**.
 
-La scheda **Equipaggiamento** raccoglie eddies, armi, armature, oggetti e veicoli.
+La **finestra della scheda** (dossier, scheda, combattimento, cyberware…) si sposta trascinandola dalla barra in alto e si ridimensiona dall'angolo in basso a destra; posizione e misura restano su quel dispositivo (doppio clic sulla barra o ⟲ la rimettono com'era). ⇱ la **sgancia**: resta aperta e la pagina dietro si può usare (mappa, dice log, altre pagine); 📌 la riaggancia. ⧉ la apre in una **finestra a parte** del browser, che mostra solo la scheda e si aggiorna in tempo reale con le modifiche fatte altrove. Su schermi stretti la finestra resta fissa.
+
+La scheda **Equipaggiamento** è l'inventario completo, diviso per categoria: eddies, armi (anche quelle della tab Combattimento), armature (con quelle indossate), cyberware, cyberdeck con programmi e hardware, oggetti e veicoli. Il cyberware si può **disinstallare** da qui (⇩) senza perderlo: resta nell'elenco come ⬚ disinstallato, non dà più effetti né toglie umanità massima, ma l'umanità già persa resta (torna solo con la terapia). Togliendo un Cyberbraccio, un Cyberocchio… escono con lui anche le opzioni che contiene, e ⇧ Reinstalla le rimette.
 
 #### ⚡ Catalogo del cyberware
 Le parti con slot (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito) sono **cyberware fondamentale**: non si aggiungono dentro lo slot ma si **attivano** in testa allo slot, con costo, PU (⚄), umanità massima e **numero di slot** modificabile per gli upgrade; anche Fashionware, Impianti Interni ed Esterni hanno i loro 7 slot modificabili. Ogni slot mostra «opzioni usate/disponibili» e avvisa se è pieno o se manca la base. Il **resoconto** di costo e umanità è in fondo alla tab.
@@ -39,7 +41,7 @@ Nella modifica del cyberware ogni slot ha «+ dal catalogo…»: tutti gli impia
 - Gli effetti vanno da soli nei tiri: Mirino +1 ai colpi mirati, Kerenzikov +2 all'iniziativa, Tecnoscanner e Medscanner, Analizzatore di Stress, Filtro Antitossina, Chip Abilità (abilità scelta a livello 3), Laccio Osseo-Muscolare e Telai Lineari sul BODY (con PF e Death Save), Antidolorifico. Gli effetti «non cumulativi» non si sommano e si può avere un solo Speedware.
 - Quelli a comando (Sandevistan, Definitore d'Immagine con la vista, Udito Amplificato, TeleOttica oltre 51 m, Audiovox mentre canti) hanno un interruttore nelle tab Cyberware e Combattimento. Le armi integrate (Wolvers, Digitolame, Zanne…) si aggiungono alle armi con un clic.
 - Anche i **nemici** prendono cyberware dal catalogo, con gli stessi bonus.
-- **Cyberware custom**: dal Glossario si creano impianti nuovi con costo, PU, descrizione e un effetto nei tiri; compaiono nel catalogo con la ★.
+- **Cyberware custom**: dal Night Market si creano impianti nuovi con costo, PU, descrizione e un effetto nei tiri; compaiono nel catalogo con la ★.
 
 #### ⬢ Scheda del personaggio
 Ogni PG e NPC ha una **Scheda** con le regole di *Cyberpunk RED* (nomi in inglese, come sul manuale):
@@ -89,8 +91,39 @@ La mappa per i combattimenti, condiviso **in tempo reale** tra tutti quelli che 
 - **Pop-up dei tiri**: sulla mappa ogni tiro (tuo o degli altri) compare per qualche secondo in alto a destra e resta nel Dice log. Ogni token ha i suoi **stati**, segnati da un contatore sul token.
 - **Dice log** in stile chat, sempre a portata di mano dal pulsante ⬢ in alto (🧹 Pulisci nasconde i tiri vecchi su questo dispositivo; il GM con 🗑 Elimina tutti li cancella per tutti): `2d6+3` per un tiro libero, `3d6kh2` per tirare 3d6 e tenere i 2 più alti (`kl` per i più bassi; vale anche nei danni delle armi), `/d 3d6` per i danni, `/c 14` per una prova con base 14, oppure un messaggio di testo. Chi non ha fatto l'accesso può tirare, ma i suoi tiri restano sul suo dispositivo.
 
-### ❖ Glossario — `// DATA_FORTRESS`
-Tutti i cataloghi del sito in tabelle: il cyberware (con ricerca e filtro per tipo, ⚡ = effetto applicato ai tiri), armi e tabelle delle distanze, armature, munizioni e stati, colpi mirati, Critical Injury e NET (programmi, Black ICE, hardware, Demoni).
+### ❖ Night Market — `// NIGHT_MARKET`
+Il negozio della campagna e tutti i cataloghi del sito (la pagina che prima era il Glossario).
+- **Negozio**: Armi (quelle del manuale e le 12 di *12 Days of Gunmas*), Armature, Equipaggiamento e Cyberware, con ricerca e filtro per categoria di prezzo.
+- **Entra come**: scegli il personaggio (il giocatore entra col suo PG, il GM con chiunque). «Compra» scala gli eddies e mette l'oggetto nella scheda:
+  - armi nella tab Combattimento, con categoria, tabella delle VD, autofire e qualità (Excellent dà +1 a colpire); lo speciale va nelle note;
+  - armature nell'inventario, e se vuoi indossate subito su testa o corpo;
+  - equipaggiamento nell'inventario, con la quantità;
+  - cyberware nello slot scelto, con l'umanità persa tirata (⚄ per ritirarla) e il controllo degli slot opzioni; il cyberware fondamentale si attiva sullo slot.
+- **Storico** degli acquisti del personaggio e «Annulla l'ultimo» (restituisce gli eddies e toglie l'oggetto).
+- **GM**: mercato aperto o chiuso ai giocatori, prezzi in percentuale, 👁 per nascondere una voce, «Senza pagare» per regali e bottino, ✎ per modificare una voce (anche quelle base: «Ripristina l'originale» le riporta com'erano).
+- **⇪ Importa** (GM): incolli o carichi un file .txt / .md con le voci nel formato a blocchi qui sotto, vedi l'anteprima e salvi. Armi, armature ed equipaggiamento vanno nel catalogo custom del mercato, il cyberware nel cyberware custom. Una voce con lo stesso nome la aggiorna.
+- **Consultazione**: regole delle armi e tabelle delle distanze, munizioni e stati, colpi mirati, Critical Injury e NET (programmi, Black ICE, hardware, Demoni).
+
+Formato per l'importazione (una voce per blocco, chiavi in italiano o in inglese; le righe senza chiave continuano la descrizione):
+
+```
+## Magnum Opus Hellbringer
+Tipo: Arma                 (Arma, Armatura, Equipaggiamento, Cyberware)
+Categoria: Very Heavy Pistol
+Abilità: Handgun
+Danno: 5d6
+Caricatore: 3
+ROF: 1
+Mani: 1
+Occultabile: no
+Autofire: 4                (moltiplicatore massimo, se ce l'ha)
+Qualità: Exotic            (Poor, Excellent, Exotic)
+Costo: 1000
+Speciale: Si inceppa dopo ogni colpo se BODY < 10
+Descrizione: Revolver enorme in titanio.
+```
+
+Armatura: `SP`, `Malus`. Cyberware: `Gruppo` (Fashionware, Neuralware, Cyberottiche, Cyberudito, Impianti Interni, Impianti Esterni, Cyberbraccio, Cybergamba, Borgware), `Installazione`, `PU` (es. `2d6 (7)`), `Slot`, `Richiede`. Tutti: `Fonte`.
 
 ### ⌬ NET — `// NET_ARCHITECTURE`
 Le Architetture di Rete che il GM sta mostrando: compaiono piano per piano mentre il Netrunner scende, con Password, File, Nodi e Black ICE (REZ compresi), aggiornate in tempo reale. I piani non ancora raggiunti e le note del GM non arrivano ai giocatori.
@@ -212,12 +245,14 @@ js/dice.js              STAT e abilità di Cyberpunk RED, motore dei dadi, gener
 js/net.js               Netrunning: programmi, Black ICE, hardware, Demoni, generatore di architetture
 js/roles.js             Ruoli e Capacità di Ruolo
 js/cyberware.js         catalogo del cyberware base con gli effetti
+js/market.js            catalogo del Night Market (armi, armature, equipaggiamento) e lettore del formato a blocchi
 js/ui/                  interfaccia, un file per sezione (caricati in ordine da index.html):
   core.js               costanti, stato, utilità, dati, menu, routing, Home e Database
   cyber.js              tab Cyberware ed Equipaggiamento (sagoma, slot, umanità)
   sheet.js              scheda del personaggio e modulo
   roles.js              tab Ruoli
-  catalog.js            catalogo del cyberware nelle schede, cyberware custom, Glossario
+  catalog.js            catalogo del cyberware nelle schede, cyberware custom, pagina Night Market
+  market.js             Night Market: acquisti, storico, impostazioni del GM, importazione
   ip.js                 Punti Miglioramento
   combat.js             tab Combattimento e schede delle armi (PG e nemici)
   rules.js              munizioni, stati, Critical Injury, modificatori, Regole della campagna
