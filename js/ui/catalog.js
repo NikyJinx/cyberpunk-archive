@@ -110,33 +110,40 @@ function editCyberHb(cid) {
 }
 
 // ---------- GLOSSARIO: tutti i cataloghi del sito ----------
-const GLOSS_TABS = [["cyber", "Cyberware"], ["weapons", "Armi e armature"], ["rules", "Munizioni e stati"], ["crit", "Critical Injury"], ["net", "NET"]];
+// Night Market: le prime quattro tab sono il negozio (con un PG scelto si compra), le altre la consultazione
+const GLOSS_TABS = [["weapon", "Armi"], ["armor", "Armature"], ["gear", "Equipaggiamento"], ["cyber", "Cyberware"], ["weapons", "Regole delle armi"], ["rules", "Munizioni e stati"], ["crit", "Critical Injury"], ["net", "NET"]];
+const SHOP_TABS = ["weapon", "armor", "gear", "cyber"];
+const glossTab = () => { const t = ls.get("nc-gloss", "weapon"); return GLOSS_TABS.some(x => x[0] === t) ? t : "weapon"; };
 let glossQ = "", glossG = "";
 function viewGlossary() {
-  const tab = ls.get("nc-gloss", "cyber");
+  const tab = glossTab();
   return `
     <div class="page-head">
-      <div><div class="kicker">// DATA_FORTRESS</div><h1>Glossario</h1><p>Tutti i cataloghi del sito: cyberware, armi, munizioni, stati, Critical Injury e NET. Le voci ★ sono custom.</p></div>
+      <div><div class="kicker">// NIGHT_MARKET</div><h1>Night Market</h1><p>Armi, armature, equipaggiamento e cyberware da comprare, più i cataloghi delle regole. Scegli con chi entri e compra con un clic: l'oggetto va nella sua scheda. Le voci ★ sono custom.</p></div>
       <div class="row-btns">${tab === "cyber" && Store.canEdit() ? `<button type="button" class="btn small yellow" data-action="cyhb-edit">★ + Cyberware custom</button>` : ""}</div>
     </div>
-    <div class="chips gl-tabs">${GLOSS_TABS.map(([id, l]) => `<button type="button" class="chip ${id === tab ? "active" : ""}" data-action="gloss-tab" data-tab="${id}">${l}</button>`).join("")}</div>
+    ${SHOP_TABS.includes(tab) ? marketBar() : ""}
+    <div class="chips gl-tabs">${GLOSS_TABS.map(([id, l], i) => `${i === SHOP_TABS.length ? `<span class="gl-sep"></span>` : ""}<button type="button" class="chip ${id === tab ? "active" : ""}" data-action="gloss-tab" data-tab="${id}">${l}</button>`).join("")}</div>
     <div id="gloss-body">${glossBody(tab)}</div>`;
 }
 function glossBody(tab) {
+  if (["weapon", "armor", "gear"].includes(tab)) return shopBody(tab);
   if (tab === "cyber") {
-    const q = norm2(glossQ), list = CW.all().filter(c => (!glossG || c.g === glossG) && (!q || norm2(`${c.name} ${c.desc} ${c.req || ""}`).includes(q)));
+    const q = norm2(glossQ), buy = mkCanBuy();
+    const list = CW.all().filter(c => (isGm() || !mkHidden("cw:" + c.id)) && (!glossG || c.g === glossG) && (!glossP || MK.priceCat(num(c.cost)) === glossP) && (!q || norm2(`${c.name} ${c.desc} ${c.req || ""}`).includes(q)));
     return `<div class="gl-filters"><input type="search" data-gloss-q placeholder="cerca: nome, effetto, requisito…" value="${esc(glossQ)}">
         <select data-gloss-g><option value="">Tutti i tipi</option>${CW.GROUPS.map(g => `<option value="${g.id}" ${g.id === glossG ? "selected" : ""}>${esc(g.label)}</option>`).join("")}</select>
+        <select data-gloss-p><option value="">Tutti i prezzi</option>${MK.PRICES.map(([l, v]) => `<option value="${esc(l)}" ${l === glossP ? "selected" : ""}>${esc(l)} (${v.toLocaleString("it-IT")} eb)</option>`).join("")}</select>
         <span class="hint">${list.length} voci · un impianto occupa 1 Slot salvo indicazione</span></div>
       <div class="gl-wrap"><table class="gl-t">
-        <thead><tr><th>Nome</th><th>Tipo</th><th>Installazione</th><th>Descrizione</th><th>Costo</th><th>PU</th></tr></thead>
-        <tbody>${CW.GROUPS.filter(g => list.some(c => c.g === g.id)).map(g => `<tr class="gl-grp"><th colspan="6">${esc(g.label)}${g.note ? ` <small>${esc(g.note)}</small>` : ""}</th></tr>` +
-          list.filter(c => c.g === g.id).map(c => `<tr class="${c.base ? "gl-base" : ""}">
-            <td><b>${c.custom ? "★ " : ""}${esc(c.name)}</b>${c.custom && Store.canEdit() ? ` <button type="button" class="gp-btn" data-action="cyhb-edit" data-id="${esc(c.id)}" aria-label="Modifica">✎</button>` : ""}${(c.fx || []).length ? ` <span class="gl-fx" title="Effetto applicato ai tiri">⚡</span>` : ""}</td>
+        <thead><tr><th>Nome</th><th>Tipo</th><th>Installazione</th><th>Descrizione</th><th>Costo</th><th>PU</th>${buy ? "<th></th>" : ""}</tr></thead>
+        <tbody>${CW.GROUPS.filter(g => list.some(c => c.g === g.id)).map(g => `<tr class="gl-grp"><th colspan="${buy ? 7 : 6}">${esc(g.label)}${g.note ? ` <small>${esc(g.note)}</small>` : ""}</th></tr>` +
+          list.filter(c => c.g === g.id).map(c => `<tr class="${c.base ? "gl-base" : ""} ${mkHidden("cw:" + c.id) ? "mk-hid" : ""}">
+            <td><b>${c.custom ? "★ " : ""}${esc(c.name)}</b>${c.custom && Store.canEdit() ? ` <button type="button" class="gp-btn" data-action="cyhb-edit" data-id="${esc(c.id)}" aria-label="Modifica">✎</button>` : ""}${mkTools("cw:" + c.id, null)}${(c.fx || []).length ? ` <span class="gl-fx" title="Effetto applicato ai tiri">⚡</span>` : ""}</td>
             <td>${esc(g.label)}</td><td>${esc(c.inst)}</td>
             <td>${esc(c.desc)}${c.req ? `<small>Richiede: ${esc(c.req)}${c.slots > 1 ? ` · ${c.slots} Slot` : ""}</small>` : c.slots === 0 ? `<small>Nessuno Slot</small>` : ""}</td>
-            <td class="gl-n">${c.cost.toLocaleString("it-IT")} E$<small>${esc(c.cat || "")}</small></td><td class="gl-n">${c.pu}<small>${esc(c.dice || "")}</small></td></tr>`).join("")).join("")}</tbody></table></div>
-      <p class="hint">⚡ = effetto già applicato ai tiri quando l'impianto è nella scheda (alcuni solo a comando, con l'interruttore nella tab Cyberware).</p>`;
+            ${mkCostCell(c.cost)}<td class="gl-n">${c.pu}<small>${esc(c.dice || "")}</small></td>${buy ? mkBuyCell("cw:" + c.id, c.cost) : ""}</tr>`).join("")).join("")}</tbody></table></div>
+      <p class="hint">⚡ = effetto già applicato ai tiri quando l'impianto è nella scheda (alcuni solo a comando, con l'interruttore nella tab Cyberware). Comprato, l'impianto va nello slot scelto con l'umanità persa tirata; il cyberware fondamentale (Cyberbraccio, Cyberocchio…) si attiva sullo slot.</p>`;
   }
   if (tab === "weapons") return `<div class="gl-wrap"><table class="gl-t"><thead><tr><th>Arma</th><th>Abilità</th><th>Danno</th><th>ROF</th><th>Caricatore</th><th>Autofire</th><th>Munizioni</th><th>VD per distanza</th></tr></thead>
       <tbody>${CPR.WEAPON_TYPES.map(w => { const T = CPR.rangeById(CPR.rangeDefault(w.id)); return `<tr><td><b>${esc(w.label)}</b></td><td>${esc((CPR.skill(w.skill) || {}).label || w.skill)}</td><td>${esc(w.dmg === "BODY" ? "secondo il BODY" : w.dmg)}</td><td>${w.rof}</td><td>${w.mag || "—"}</td><td>${w.auto ? "×" + w.auto : "—"}</td><td>${esc(w.ammo || "—")}</td><td>${T ? T.dv.map(x => x == null ? "–" : x).join(" / ") : "—"}</td></tr>`; }).join("")}</tbody></table></div>

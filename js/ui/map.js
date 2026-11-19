@@ -619,6 +619,15 @@ function refetchEntries() {
     try { state.entries = await Store.list("entries"); if (onTable()) { renderTokens(); renderSide(); } } catch (e) { console.warn(e); }
   }, 300);
 }
+// cyberware, equipaggiamento… cambiati da un'altra finestra o da un altro giocatore: li rileggo dal database
+const entryTimers = new Map();
+function refetchEntry(id) {
+  clearTimeout(entryTimers.get(id));
+  entryTimers.set(id, setTimeout(async () => {
+    entryTimers.delete(id);
+    try { const rec = await Store.get("entries", id); if (!rec) return; upsert(state.entries, rec); if (!$("#modal form")) refreshSheetView(id); refreshParty(); } catch (e) { console.warn(e); }
+  }, 300));
+}
 const unknownEntries = () => state.tokens.some(t => t.entryId && !state.entries.some(e => e.id === t.entryId));
 
 // messaggi in tempo reale dagli altri giocatori
@@ -638,8 +647,9 @@ function onLive(msg) {
   if (col === "meta") {
     const r = msg.rec; if (!r) return;
     if (r.id === "site") applySharedMap(r.tableMap);
-    if (r.id === "rules" || r.id === "nethb" || r.id === "cyberhb") {
-      if (r.id === "rules") state.rules = r; else if (r.id === "cyberhb") { state.cyberhb = r; CW.setHomebrew(r); } else { state.nethb = r; NET.setHomebrew(r); }
+    if (["rules", "nethb", "cyberhb", "markethb", "market"].includes(r.id)) {
+      if (r.id === "rules") state.rules = r; else if (r.id === "cyberhb") { state.cyberhb = r; CW.setHomebrew(r); }
+      else if (r.id === "markethb") { state.markethb = r; MK.setHomebrew(r); } else if (r.id === "market") state.market = r; else { state.nethb = r; NET.setHomebrew(r); }
       if (!$("#modal form")) { if (/^#\/(gm|net|party|glossario)/.test(location.hash) && !$("#modal").open) route(); }
     }
     return;
@@ -668,6 +678,7 @@ function applyLive(col, rec, trusted) {
     const e = state.entries.find(x => x.id === rec.id); if (!e) return;
     upsert(state.entries, { ...e, sheet: rec.sheet, updatedAt: rec.updatedAt });
     if (!$("#modal form")) refreshSheetView(e.id);
+    if ($("#modal").dataset.entry === e.id) refetchEntry(e.id);
     refreshParty();
     if (onTable()) { renderTokens(); renderSide(); }
     return;

@@ -89,20 +89,101 @@ async function doExport() {
 }
 
 // ---------- modal ----------
-function openModal(html, narrow = false) {
-  const m = $("#modal");
+// opts.entry = { id, tab }: è la scheda di un personaggio, che si può spostare, ridimensionare,
+// sganciare dalla pagina (la pagina dietro resta usabile) o aprire in una finestra a parte
+function openModal(html, narrow = false, opts = {}) {
+  const m = $("#modal"), keepY = opts.entry && m.dataset.entry === opts.entry.id ? m.scrollTop : 0;
   closeLightbox();
   m.className = "modal" + (narrow ? " narrow" : "");
+  m.removeAttribute("style"); delete m.dataset.entry; delete m.dataset.tab;
   m.innerHTML = html;
   hydrate(m);
-  if (!m.open) m.showModal();
-  m.scrollTop = 0;
+  const free = !!opts.entry && !POP && canFloat() && ls.get("nc-win-free", false);
+  // le altre finestre (moduli, conferme…) bloccano sempre la pagina dietro
+  if (m.open && m.matches(":modal") === free) { m.close(); }
+  if (!m.open) free ? m.show() : m.showModal();
+  if (opts.entry) winSetup(m, opts.entry, free);
+  m.scrollTop = keepY;
   placeDrawer();
 }
 function closeModal() {
   const m = $("#modal");
+  // nella finestra esterna: dai moduli torno alla scheda, dalla scheda chiudo la finestra
+  if (POP) { if (m.dataset.entry) window.close(); else openEntry(POP, ls.get("nc-pop-tab", "sheet")); return; }
   if (m.open) m.close();
 }
+
+// ---------- finestra della scheda ----------
+const POP = new URLSearchParams(location.search).get("pop");   // finestra esterna: ?pop=<id della scheda>
+const canFloat = () => innerWidth >= 760;
+const winGeo = () => ls.get("nc-win", null);                    // { x, y, w, h } ricordati su questo dispositivo
+function winSetup(m, en, free) {
+  m.dataset.entry = en.id; m.dataset.tab = en.tab;
+  const x = $(".modal-head .x", m);
+  if (POP) {
+    m.classList.add("popwin"); ls.set("nc-pop-tab", en.tab);
+    const e = state.entries.find(z => z.id === en.id); if (e) document.title = `${e.name} · ${site().title}`;
+    return;
+  }
+  if (!canFloat()) return;
+  m.classList.add("floating"); m.classList.toggle("free", free);
+  x && x.insertAdjacentHTML("beforebegin", `<div class="win-btns">
+    ${winGeo() ? `<button type="button" class="win-btn" data-win="reset" title="Rimetti la finestra al centro, con la misura normale">⟲</button>` : ""}
+    <button type="button" class="win-btn ${free ? "on" : ""}" data-win="free" title="${free ? "Blocca la pagina dietro la scheda" : "Sgancia: la scheda resta aperta e puoi usare la pagina dietro (mappa, dice log…)"}">${free ? "📌" : "⇱"}</button>
+    <button type="button" class="win-btn" data-win="pop" title="Apri la scheda in una finestra a parte">⧉</button></div>`);
+  const g = winGeo();
+  if (g) {
+    if (g.w) m.style.width = Math.min(g.w, innerWidth - 8) + "px";
+    if (g.h) m.style.height = Math.min(g.h, innerHeight - 8) + "px";
+    if (g.x != null) winMove(m, g.x, g.y);
+  } else if (free) winMove(m, (innerWidth - m.offsetWidth) / 2, 24);
+}
+function winMove(m, x, y) {
+  const w = m.offsetWidth;
+  m.style.margin = "0"; m.style.inset = "auto";
+  m.style.left = clamp(Math.round(x), Math.min(0, 120 - w), innerWidth - 120) + "px";
+  m.style.top = clamp(Math.round(y), 0, innerHeight - 48) + "px";
+}
+function winSave(patch) { ls.set("nc-win", { ...(winGeo() || {}), ...patch }); }
+// trascinare dalla barra in alto
+let winDrag = null, winSize = null;
+$("#modal").addEventListener("pointerdown", ev => {
+  const m = $("#modal"); if (!m.classList.contains("floating")) return;
+  if (ev.target === m) { winSize = { w: m.offsetWidth, h: m.offsetHeight }; return; }   // maniglia di ridimensionamento
+  const head = ev.target.closest(".modal-head");
+  if (!head || ev.target.closest("button, a, input, select, textarea") || ev.button !== 0) return;
+  const r = m.getBoundingClientRect();
+  winDrag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, id: ev.pointerId };
+  head.setPointerCapture(ev.pointerId); m.classList.add("dragging"); ev.preventDefault();
+});
+$("#modal").addEventListener("pointermove", ev => { if (winDrag && ev.pointerId === winDrag.id) winMove($("#modal"), ev.clientX - winDrag.dx, ev.clientY - winDrag.dy); });
+document.addEventListener("pointerup", () => {
+  const m = $("#modal");
+  if (winDrag) { winDrag = null; m.classList.remove("dragging"); const r = m.getBoundingClientRect(); winSave({ x: r.left, y: r.top }); refreshWinBtns(); }
+  if (winSize) {
+    const w = m.offsetWidth, h = m.offsetHeight;
+    if (Math.abs(w - winSize.w) > 2 || Math.abs(h - winSize.h) > 2) { const r = m.getBoundingClientRect(); winSave({ w, h, x: r.left, y: r.top }); refreshWinBtns(); }
+    winSize = null;
+  }
+});
+$("#modal").addEventListener("dblclick", ev => { if (ev.target.closest(".modal-head") && !ev.target.closest("button") && $("#modal").classList.contains("floating")) winReset(); });
+const refreshWinBtns = () => { const m = $("#modal"); if (m.dataset.entry && !$("[data-win=reset]", m)) openEntry(m.dataset.entry, m.dataset.tab); };
+function winReset() { localStorage.removeItem("nc-win"); const m = $("#modal"); if (m.dataset.entry) openEntry(m.dataset.entry, m.dataset.tab); }
+$("#modal").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-win]"); if (!b) return;
+  const m = $("#modal"), id = m.dataset.entry, tab = m.dataset.tab; if (!id) return;
+  if (b.dataset.win === "reset") return winReset();
+  if (b.dataset.win === "free") { ls.set("nc-win-free", !ls.get("nc-win-free", false)); return openEntry(id, tab); }
+  if (b.dataset.win === "pop") {
+    ls.set("nc-pop-tab", tab);
+    const w = window.open(`${location.pathname}?pop=${encodeURIComponent(id)}#/pg`, "nc-pg-" + id, "popup,width=1000,height=900");
+    if (!w) return toast("Il browser ha bloccato la finestra: permetti i pop-up per questo sito", "err");
+    closeModal();
+  }
+});
+// se cambia la finestra del browser, la scheda resta dentro lo schermo
+window.addEventListener("resize", () => { const m = $("#modal"); if (m.classList.contains("floating") && m.style.left) winMove(m, parseFloat(m.style.left), parseFloat(m.style.top)); });
+
 $("#modal").addEventListener("close", () => {
   if ($("#modal").open) return; // riaperto prima che l'evento arrivasse
   closeLightbox();
@@ -112,4 +193,8 @@ $("#modal").addEventListener("close", () => {
   if (r) history.replaceState(null, "", "#/" + r[1]);
 });
 $("#modal").addEventListener("cancel", ev => { if (lightbox) { ev.preventDefault(); closeLightbox(); } });
-$("#modal").addEventListener("click", ev => { if (ev.target === ev.currentTarget) closeModal(); });
+$("#modal").addEventListener("click", ev => {
+  if (ev.target !== ev.currentTarget || POP) return;
+  const r = ev.currentTarget.getBoundingClientRect();
+  if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) closeModal();
+});

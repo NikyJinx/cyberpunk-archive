@@ -1987,3 +1987,94 @@ button.en-tr:hover, button.en-tr:focus-visible { background: rgba(243,230,0,.08)
 .cy-base-edit label:not(.check) { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
 .cy-base-edit input[type=number] { width: 72px; padding: 3px 6px; }
 .cy-res-h { margin: 18px 0 6px; font-family: var(--font-head); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--yellow); }
+
+/* ---------- v22: Night Market ---------- */
+.mk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 14px; margin: 4px 0 10px; border: 1px solid var(--line); border-left: 3px solid var(--yellow); background: var(--bg-2); }
+.mk-who { display: flex; align-items: center; gap: 8px; }
+.mk-who span { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.mk-who select { width: auto; min-width: 200px; }
+.mk-money { display: flex; align-items: baseline; gap: 8px; }
+.mk-money .l { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.mk-money b { font-family: var(--font-head); font-size: 20px; color: var(--yellow); }
+.mk-money b.neg, .mk-pay b.neg { color: var(--red); }
+.mk-closed { color: var(--red); font-family: var(--font-mono); font-size: 13px; }
+.mk-gm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-left: auto; }
+.mk-pct { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.mk-pct input { width: 72px; }
+.gl-sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 6px; }
+.mk-t td.mk-buy { white-space: nowrap; vertical-align: middle; text-align: center; }
+.gl-t td small.mk-sp { color: var(--cyan); }
+.gl-t td s { color: var(--muted); }
+.gl-t tr.mk-hid td { opacity: .45; }
+.gp-btn.on { color: var(--red); }
+.mk-sum { display: grid; gap: 4px; margin-bottom: 12px; }
+.mk-sum b { font-family: var(--font-head); font-size: 18px; color: var(--yellow); }
+.mk-sum span { color: #c9c9dc; }
+.mk-pay { display: flex; gap: 1px; margin: 12px 0 8px; background: var(--line); border: 1px solid var(--line); }
+.mk-pay > div { flex: 1; display: grid; gap: 2px; padding: 8px 12px; background: var(--bg-2); }
+.mk-pay .l { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.mk-pay b { font-family: var(--font-head); font-size: 17px; color: var(--text); }
+.mk-warn { color: var(--yellow); min-height: 1em; margin: 4px 0 0; font-size: 14px; }
+.mk-warn:empty { display: none; }
+.mk-hl { display: flex; gap: 6px; align-items: center; }
+.mk-hl input { width: 90px; }
+.mk-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.mk-log li { display: grid; grid-template-columns: 90px 1fr auto auto; gap: 10px; align-items: baseline; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.mk-log .d { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.mk-log .c { font-family: var(--font-mono); color: var(--yellow); }
+.mk-imp-tools { display: flex; gap: 8px; margin: 8px 0; }
+.mk-txt { width: 100%; font-family: var(--font-mono); font-size: 13px; line-height: 1.45; }
+.mk-help { margin: 8px 0; font-size: 14px; color: #c9c9dc; }
+.mk-help summary { cursor: pointer; color: var(--cyan); }
+.mk-help code { color: var(--yellow); }
+.mk-prev h4 { margin: 10px 0 6px; color: var(--cyan); font-family: var(--font-head); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+.mk-prev ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.mk-prev li em { font-style: normal; font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+.mk-prev li em.new { color: var(--green); }
+.mk-tag { display: inline-block; min-width: 92px; margin-right: 8px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; color: var(--muted); }
+.mk-tag.weapon { color: var(--red); } .mk-tag.armor { color: var(--cyan); } .mk-tag.gear { color: var(--yellow); } .mk-tag.cyber { color: var(--magenta); }
+.mk-err li { color: var(--red); }
+@media (max-width: 640px) {
+  .mk-gm { margin-left: 0; }
+  .mk-who select { min-width: 0; flex: 1; }
+  .mk-log li { grid-template-columns: 1fr auto; }
+  .mk-log .hint { display: none; }
+}
+.mk-tools { display: inline-flex; gap: 2px; margin-left: 4px; vertical-align: middle; }
+.mk-tools .gp-btn { width: 24px; height: 24px; min-width: 0; padding: 0; font-size: 12px; }
+/* inventario completo */
+.gear-sec li { grid-template-columns: 34px 1fr auto; align-items: start; }
+.gear-sec li.stored .g-name, .gear-sec li.plan .g-name { opacity: .7; }
+.g-tag { font-style: normal; font-family: var(--font-mono); font-size: 11.5px; color: var(--c, var(--muted)); margin-left: 4px; white-space: nowrap; }
+.gear-sec li.stored .g-tag { color: var(--yellow); }
+.gear-sec li.plan .g-tag { color: var(--muted); }
+.g-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.g-src { background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--font-mono); font-size: 11.5px; color: var(--cyan); white-space: nowrap; }
+.g-src:hover { text-decoration: underline; }
+.g-act { padding: 3px 8px; font-size: 12px; white-space: nowrap; }
+.cy-slot li.stored .cy-chk { color: var(--yellow); }
+.gear-sec.wide { grid-column: span 2; }
+@media (max-width: 640px) { .gear-sec.wide { grid-column: auto; } }
+.gear-sec header .g-src { margin-left: auto; }
+.gear-sec li { grid-template-columns: 34px 1fr; }
+.gear-sec li:has(.g-side) { grid-template-columns: 34px 1fr auto; }
+.g-act.btn { padding: 2px 8px; font-size: 11px; letter-spacing: .04em; clip-path: none; min-height: 0; }
+.gear-sec header { justify-content: flex-start; align-items: baseline; gap: 8px; }
+/* la colonna centrale della sagoma non si allarga per i contenuti lunghi (es. «manca il Collegamento Neurale») */
+.cy-center { grid-template-columns: minmax(0, 1fr); }
+.cy-slot header { flex-wrap: wrap; row-gap: 4px; }
+.cy-cap { white-space: normal; }
+.cy-bottom { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+
+/* ---------- scheda del personaggio: finestra spostabile, ridimensionabile, sganciabile, esterna ---------- */
+.modal.floating { position: fixed; resize: both; overflow: auto; min-width: 420px; min-height: 220px; max-width: calc(100vw - 8px); max-height: calc(100vh - 8px); }
+.modal.floating .modal-head { cursor: move; user-select: none; }
+.modal.dragging { opacity: .92; }
+.modal.free { z-index: 950; margin: 0; box-shadow: 0 0 0 1px rgba(0,240,255,.35), 0 20px 60px rgba(0,0,0,.85); border-color: var(--cyan); }
+.win-btns { display: flex; gap: 4px; margin-left: auto; }
+.win-btn { width: 28px; height: 28px; display: grid; place-items: center; background: none; border: 1px solid var(--line); color: var(--muted); font-size: 14px; cursor: pointer; line-height: 1; }
+.win-btn:hover, .win-btn.on { color: var(--cyan); border-color: var(--cyan); }
+/* finestra esterna: solo la scheda */
+body.popout > :not(dialog):not(#toasts):not(.dice-drawer) { display: none !important; }
+.modal.popwin { width: 100vw; max-width: none; height: 100vh; max-height: none; margin: 0; border: 0; box-shadow: none; }
+.modal.popwin::backdrop { background: var(--bg); backdrop-filter: none; }

@@ -23,6 +23,8 @@ function finishSrc(X) {
   X.attrs = `data-src="${X.kind}" data-id="${esc(X.id)}" data-i="${X.i}"${X.tok ? ` data-tok="${esc(X.tok)}"` : ""}`;
   return X;
 }
+// qualità Excellent: +1 a colpire (le armi del Night Market la salvano nell'arma)
+const qualBonus = w => w.quality === "excellent" ? [{ l: "Excellent", v: 1 }] : [];
 function pcSrc(e, i) {
   const s = sheetOf(e), w = (s.weapons || [])[i]; if (!w) return null;
   const k = skillByKey(e, weaponSkillKey(w.skill)) || skillByKey(e, "skill:handgun"), af = skillByKey(e, "skill:autofire");
@@ -30,8 +32,8 @@ function pcSrc(e, i) {
     kind: "pc", id: e.id, i, key: `pc:${e.id}:${i}`, w, cat: sheetWeaponCat(w), mods: [...(s.mods || []), ...roleMods(e), ...cyberFx(e).mods], skillLabel: k.label,
     weakness: num((caOf(e) || {}).weakness),
     fix: r => { const ca = caOf(e); if (ca && num(ca.recover) && CPR.FIREARMS.includes(sheetWeaponCat(w)) && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il dado conta come 1)"; } },
-    single: [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }],
-    auto: [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: af ? af.lvl : 0 }], afLvl: af ? af.lvl : 0,
+    single: [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...qualBonus(w)],
+    auto: [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: af ? af.lvl : 0 }, ...qualBonus(w)], afLvl: af ? af.lvl : 0,
     extra: () => sheetExtra(e), edit: Store.canEdit(),
     post: r => postRoll({ ...r, who: e.name, entryId: e.id }),
     save: (f, v) => sheetPatch(e.id, x => { if (x.weapons && x.weapons[i]) x.weapons[i][f] = v; return x; }),
@@ -234,7 +236,7 @@ function editSheet(id) {
     <input data-f="afDmg" placeholder="Autofire 2d6" title="Danno dell'autofire (vuoto = 2d6). Vale anche 3d6kh2 = tira 3d6 e tieni i 2 più alti" value="${esc(w.afDmg || "")}">
     <input data-f="auto" type="number" min="0" max="10" placeholder="× max" title="Moltiplicatore massimo dell'autofire (vuoto = quello della categoria: SMG 3, fucile d'assalto 4; 0 o vuoto su armi senza autofire)" value="${esc(w.auto ?? "")}">
     <input data-f="note" placeholder="Note (Smartgun, Excellent…)" value="${esc(w.note)}">
-    <input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}">
+    <input type="hidden" data-f="quality" value="${esc(w.quality || "")}"><input type="hidden" data-f="market" value="${esc(w.market || "")}"><input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
   const modRow = (m = {}) => `<div class="sh-row mod-row">
     <label class="check" title="Attivo"><input type="checkbox" data-f="on" ${m.on === false ? "" : "checked"}></label>

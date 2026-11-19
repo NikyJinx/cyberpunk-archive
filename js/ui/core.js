@@ -192,6 +192,8 @@ async function loadAll() {
   state.rules = meta.find(m => m.id === "rules") || null;
   state.nethb = meta.find(m => m.id === "nethb") || null; NET.setHomebrew(state.nethb);
   state.cyberhb = meta.find(m => m.id === "cyberhb") || null; CW.setHomebrew(state.cyberhb);
+  state.markethb = meta.find(m => m.id === "markethb") || null; MK.setHomebrew(state.markethb);
+  state.market = meta.find(m => m.id === "market") || null;
   // tavolo di gioco: se qualcosa va storto qui, il resto del sito funziona lo stesso
   try {
     const [maps, tokens, rolls] = await Promise.all([Store.list("maps"), Store.list("tokens"), Store.list("rolls", { limit: 100 })]);
@@ -225,7 +227,7 @@ function renderChrome() {
 const MENU_INFO = {
   home: ["⌂", "Pagina iniziale"], database: ["▤", "PG, NPC, fazioni, luoghi"], diario: ["✎", "Cronaca e quest"],
   calendario: ["▦", "Eventi e meteo"], appunti: ["✉", "Note della campagna"], tracce: ["♫", "Colonna sonora"],
-  party: ["◈", "Schede dei PG"], mappa: ["⬡", "Mappa, token e iniziativa"], net: ["⌬", "Architetture di Rete"], glossario: ["❖", "Cyberware, armi, regole"], gm: ["🔒", "Solo per i GM"],
+  party: ["◈", "Schede dei PG"], mappa: ["⬡", "Mappa, token e iniziativa"], net: ["⌬", "Architetture di Rete"], glossario: ["❖", "Negozio: armi, cyberware, regole"], gm: ["🔒", "Solo per i GM"],
 };
 function renderSideMenu() {
   const box = $("#side-nav"); if (!box) return;

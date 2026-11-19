@@ -28,7 +28,7 @@ function openEntry(id, tab = "dossier") {
       </div>
       ${edit && tab !== "roles" && (!["sheet", "combat"].includes(tab) || hasSheet(e)) ? `<div class="modal-foot">
         <button class="btn cyan" data-action="${T[2]}" data-id="${esc(e.id)}">Modifica ${T[3]}</button>
-      </div>` : ""}`);
+      </div>` : ""}`, false, { entry: { id: e.id, tab } });
     const fig = $("#modal .cy-figure");
     if (fig) fig.dataset.zones.split(" ").filter(Boolean).forEach(z => $$(`.cy-zone[data-zone="${z}"]`, fig).forEach(n => n.classList.add("on")));
     if (location.hash !== "#/database/" + e.id && location.hash.startsWith("#/database")) history.replaceState(null, "", "#/database/" + e.id);
@@ -76,7 +76,7 @@ function openEntry(id, tab = "dossier") {
       <button class="btn ghost small left" data-action="delete-entry" data-id="${esc(e.id)}">Elimina</button>
       <button class="btn cyan" data-action="edit-entry" data-id="${esc(e.id)}">Modifica</button>
     </div>` : ""}
-  `);
+  `, false, isPerson(e) ? { entry: { id: e.id, tab: "dossier" } } : {});
   const car = $("#modal .carousel[data-n]");
   if (car) bindSwipe($(".car-stage", car), d => carGo(car, +car.dataset.i + d));
   if (location.hash !== "#/database/" + e.id && location.hash.startsWith("#/database")) history.replaceState(null, "", "#/database/" + e.id);
