@@ -111,8 +111,8 @@ function editCyberHb(cid) {
 
 // ---------- GLOSSARIO: tutti i cataloghi del sito ----------
 // Night Market: le prime quattro tab sono il negozio (con un PG scelto si compra), le altre la consultazione
-const GLOSS_TABS = [["weapon", "Armi"], ["armor", "Armature"], ["gear", "Equipaggiamento"], ["cyber", "Cyberware"], ["weapons", "Regole delle armi"], ["rules", "Munizioni e stati"], ["crit", "Critical Injury"], ["net", "NET"]];
-const SHOP_TABS = ["weapon", "armor", "gear", "cyber"];
+const GLOSS_TABS = [["weapon", "Armi"], ["armor", "Armature"], ["gear", "Equipaggiamento"], ["drug", "Droghe"], ["cyber", "Cyberware"], ["deck", "Cyberdeck"], ["weapons", "Regole delle armi"], ["rules", "Munizioni e stati"], ["crit", "Critical Injury"], ["net", "NET"]];
+const SHOP_TABS = ["weapon", "armor", "gear", "drug", "cyber", "deck"];
 const glossTab = () => { const t = ls.get("nc-gloss", "weapon"); return GLOSS_TABS.some(x => x[0] === t) ? t : "weapon"; };
 let glossQ = "", glossG = "";
 function viewGlossary() {
@@ -120,17 +120,18 @@ function viewGlossary() {
   return `
     <div class="page-head">
       <div><div class="kicker">// NIGHT_MARKET</div><h1>Night Market</h1><p>Armi, armature, equipaggiamento e cyberware da comprare, più i cataloghi delle regole. Scegli con chi entri e compra con un clic: l'oggetto va nella sua scheda. Le voci ★ sono custom.</p></div>
-      <div class="row-btns">${tab === "cyber" && Store.canEdit() ? `<button type="button" class="btn small yellow" data-action="cyhb-edit">★ + Cyberware custom</button>` : ""}</div>
+      <div class="row-btns">${Store.canEdit() ? ({ weapon: [["weapon", "Arma"]], armor: [["armor", "Armatura"]], gear: [["gear", "Oggetto"]], drug: [["drug", "Droga"]], deck: [["deck", "Cyberdeck"], ["deckprog", "Programma / hardware"]] }[tab] || [])
+        .map(([t, l]) => `<button type="button" class="btn small yellow" data-action="mk-custom" data-type="${t}">★ + ${l} custom</button>`).join("") + (tab === "cyber" ? `<button type="button" class="btn small yellow" data-action="cyhb-edit">★ + Cyberware custom</button>` : "") : ""}</div>
     </div>
     ${SHOP_TABS.includes(tab) ? marketBar() : ""}
     <div class="chips gl-tabs">${GLOSS_TABS.map(([id, l], i) => `${i === SHOP_TABS.length ? `<span class="gl-sep"></span>` : ""}<button type="button" class="chip ${id === tab ? "active" : ""}" data-action="gloss-tab" data-tab="${id}">${l}</button>`).join("")}</div>
     <div id="gloss-body">${glossBody(tab)}</div>`;
 }
 function glossBody(tab) {
-  if (["weapon", "armor", "gear"].includes(tab)) return shopBody(tab);
+  if (["weapon", "armor", "gear", "deck", "drug"].includes(tab)) return shopBody(tab);
   if (tab === "cyber") {
     const q = norm2(glossQ), buy = mkCanBuy();
-    const list = CW.all().filter(c => (isGm() || !mkHidden("cw:" + c.id)) && (!glossG || c.g === glossG) && (!glossP || MK.priceCat(num(c.cost)) === glossP) && (!q || norm2(`${c.name} ${c.desc} ${c.req || ""}`).includes(q)));
+    const list = CW.all().filter(c => (isGm() || !mkHidden("cw:" + c.id)) && (!glossG || c.g === glossG) && (!glossP || MK.priceCat(num(c.cost)) === glossP) && (!q || norm2(`${c.name} ${c.desc} ${c.req || ""} ${c.src || ""}`).includes(q)));
     return `<div class="gl-filters"><input type="search" data-gloss-q placeholder="cerca: nome, effetto, requisito…" value="${esc(glossQ)}">
         <select data-gloss-g><option value="">Tutti i tipi</option>${CW.GROUPS.map(g => `<option value="${g.id}" ${g.id === glossG ? "selected" : ""}>${esc(g.label)}</option>`).join("")}</select>
         <select data-gloss-p><option value="">Tutti i prezzi</option>${MK.PRICES.map(([l, v]) => `<option value="${esc(l)}" ${l === glossP ? "selected" : ""}>${esc(l)} (${v.toLocaleString("it-IT")} eb)</option>`).join("")}</select>
@@ -139,7 +140,7 @@ function glossBody(tab) {
         <thead><tr><th>Nome</th><th>Tipo</th><th>Installazione</th><th>Descrizione</th><th>Costo</th><th>PU</th>${buy ? "<th></th>" : ""}</tr></thead>
         <tbody>${CW.GROUPS.filter(g => list.some(c => c.g === g.id)).map(g => `<tr class="gl-grp"><th colspan="${buy ? 7 : 6}">${esc(g.label)}${g.note ? ` <small>${esc(g.note)}</small>` : ""}</th></tr>` +
           list.filter(c => c.g === g.id).map(c => `<tr class="${c.base ? "gl-base" : ""} ${mkHidden("cw:" + c.id) ? "mk-hid" : ""}">
-            <td><b>${c.custom ? "★ " : ""}${esc(c.name)}</b>${c.custom && Store.canEdit() ? ` <button type="button" class="gp-btn" data-action="cyhb-edit" data-id="${esc(c.id)}" aria-label="Modifica">✎</button>` : ""}${mkTools("cw:" + c.id, null)}${(c.fx || []).length ? ` <span class="gl-fx" title="Effetto applicato ai tiri">⚡</span>` : ""}</td>
+            <td><b>${c.custom ? "★ " : ""}${esc(c.name)}</b>${c.custom && Store.canEdit() ? ` <button type="button" class="gp-btn" data-action="cyhb-edit" data-id="${esc(c.id)}" aria-label="Modifica">✎</button>` : ""}${mkTools("cw:" + c.id, null)}${(c.fx || []).length ? ` <span class="gl-fx" title="Effetto applicato ai tiri">⚡</span>` : ""}${c.src ? `<small>${esc(c.src)}</small>` : ""}</td>
             <td>${esc(g.label)}</td><td>${esc(c.inst)}</td>
             <td>${esc(c.desc)}${c.req ? `<small>Richiede: ${esc(c.req)}${c.slots > 1 ? ` · ${c.slots} Slot` : ""}</small>` : c.slots === 0 ? `<small>Nessuno Slot</small>` : ""}</td>
             ${mkCostCell(c.cost)}<td class="gl-n">${c.pu}<small>${esc(c.dice || "")}</small></td>${buy ? mkBuyCell("cw:" + c.id, c.cost) : ""}</tr>`).join("")).join("")}</tbody></table></div>

@@ -244,7 +244,7 @@ document.addEventListener("click", async ev => {
     case "cy-weapon": {
       const e = state.entries.find(x => x.id === id), w = e && cyberFx(e).weapons.find(x => x.name === el.dataset.name); if (!w || !Store.canEdit()) break;
       const T = CPR.weaponType(w.cat) || {};
-      sheetPatch(id, s => { s.weapons = [...(s.weapons || []), { name: w.name, cat: w.cat, skill: T.skill || "melee", dmg: w.dmg, rof: w.rof || T.rof || 1, mag: "", note: [w.note, "cyberware"].filter(Boolean).join(" · ") }]; return s; });
+      sheetPatch(id, s => { s.weapons = [...(s.weapons || []), { name: w.name, cat: w.cat, skill: w.skill || T.skill || "melee", dmg: w.dmg, rof: w.rof || T.rof || 1, mag: "", note: [w.note, "cyberware"].filter(Boolean).join(" · ") }]; return s; });
       toast(`${w.name} aggiunta alle armi`, "ok"); break;
     }
     case "cyhb-edit": editCyberHb(id); break;
@@ -253,7 +253,13 @@ document.addEventListener("click", async ev => {
     case "mk-log": mkHistory(id); break;
     case "mk-undo": mkUndo(id); break;
     case "mk-import": mkImport(); break;
-    case "mk-edit": mkImport(el.dataset.key); break;
+    case "mk-edit": { const it = MK.byId(el.dataset.key); if (it && MK_FORMS[it.type]) editMkItem(it.type, it.id); else mkImport(el.dataset.key); break; }
+    case "mk-custom": editMkItem(el.dataset.type); break;
+    case "drug-take": drugTake(id, num(el.dataset.i)); break;
+    case "deck-install": { const sel = el.closest("li") && $(".g-deck", el.closest("li")); deckInstall(id, num(el.dataset.i), num(sel ? sel.value : el.dataset.deck)); break; }
+    case "deck-uninstall": deckUninstall(id, num(el.dataset.deck), num(el.dataset.i)); break;
+    case "drug-end": drugEnd(id, el.dataset.uid); break;
+    case "drug-cure": drugCure(id, num(el.dataset.i)); break;
     case "mk-hide": { const k = el.dataset.key, h = mkCfg().hide || []; mkSaveCfg({ hide: h.includes(k) ? h.filter(x => x !== k) : [...h, k] }); break; }
     case "cb-roll": cbRoll(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), el.dataset.mode || "single"); break;
     case "cb-dmg": cbDamage(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.mult)); break;

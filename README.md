@@ -32,6 +32,8 @@ Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del perso
 
 La **finestra della scheda** (dossier, scheda, combattimento, cyberware…) si sposta trascinandola dalla barra in alto e si ridimensiona dall'angolo in basso a destra; posizione e misura restano su quel dispositivo (doppio clic sulla barra o ⟲ la rimettono com'era). ⇱ la **sgancia**: resta aperta e la pagina dietro si può usare (mappa, dice log, altre pagine); 📌 la riaggancia. ⧉ la apre in una **finestra a parte** del browser, che mostra solo la scheda e si aggiorna in tempo reale con le modifiche fatte altrove. Su schermi stretti la finestra resta fissa.
 
+Nella sezione **Cyberdeck** dell'Equipaggiamento ci sono i deck con quello che hanno installato (⇩ Disinstalla lo rimette nell'inventario) e, sotto «Non installati», programmi, Black ICE e hardware sfusi con ⇧ Installa nel deck scelto; anche la tab Cyberdeck ha il riquadro «Nell'inventario» per installarli nel deck in uso. Se il deck è pieno l'installazione viene rifiutata.
+
 La scheda **Equipaggiamento** è l'inventario completo, diviso per categoria: eddies, armi (anche quelle della tab Combattimento), armature (con quelle indossate), cyberware, cyberdeck con programmi e hardware, oggetti e veicoli. Il cyberware si può **disinstallare** da qui (⇩) senza perderlo: resta nell'elenco come ⬚ disinstallato, non dà più effetti né toglie umanità massima, ma l'umanità già persa resta (torna solo con la terapia). Togliendo un Cyberbraccio, un Cyberocchio… escono con lui anche le opzioni che contiene, e ⇧ Reinstalla le rimette.
 
 #### ⚡ Catalogo del cyberware
@@ -93,12 +95,15 @@ La mappa per i combattimenti, condiviso **in tempo reale** tra tutti quelli che 
 
 ### ❖ Night Market — `// NIGHT_MARKET`
 Il negozio della campagna e tutti i cataloghi del sito (la pagina che prima era il Glossario).
-- **Negozio**: Armi (quelle del manuale e le 12 di *12 Days of Gunmas*), Armature, Equipaggiamento e Cyberware, con ricerca e filtro per categoria di prezzo.
+- **Negozio**: Armi, Armature, Equipaggiamento (diviso per tipo: droghe, accessori per armi, scudi, attrezzi…), Cyberware e Cyberdeck (deck, programmi, Black ICE, hardware), con ricerca e filtro per categoria di prezzo. Oltre al manuale base ci sono le voci di *12 Days of Gunmas / CutieMAS / CyberMAS / REDMAS / GEARMAS*, *Hornet's Pharmacy*, *Must Have Cyberware Deals* e *Midnight with the Upload*, con la fonte sotto il nome.
 - **Entra come**: scegli il personaggio (il giocatore entra col suo PG, il GM con chiunque). «Compra» scala gli eddies e mette l'oggetto nella scheda:
   - armi nella tab Combattimento, con categoria, tabella delle VD, autofire e qualità (Excellent dà +1 a colpire); lo speciale va nelle note;
   - armature nell'inventario, e se vuoi indossate subito su testa o corpo;
   - equipaggiamento nell'inventario, con la quantità;
   - cyberware nello slot scelto, con l'umanità persa tirata (⚄ per ritirarla) e il controllo degli slot opzioni; il cyberware fondamentale si attiva sullo slot.
+  - cyberdeck tra i deck del PG, con le sue regole nel campo «Regole del deck»; programmi, Black ICE e hardware nel deck che scegli (col conteggio degli slot) o nell'inventario.
+- **Voci custom in ogni sezione**: «★ + Arma / Armatura / Oggetto / Droga / Cyberdeck / Programma o hardware custom» apre un modulo con i campi giusti per quel tipo; ✎ lo riapre per modificarle o eliminarle. Chi può modificare il sito crea e cambia le sue voci custom; il GM può anche modificare le voci base (diventano custom e si possono ripristinare).
+- **Droghe**: tab con durata, effetto primario, VD ed effetto secondario. Le dosi comprate vanno nella categoria Droghe dell'Equipaggiamento: «💉 Assumi» toglie una dose, tira Resist Torture/Drugs contro la VD (nel Dice log), segna la droga «sotto effetto» e, se la prova fallisce, la dipendenza o l'effetto secondario. Un bonus della droga (es. Timewarp +3 all'iniziativa) si applica da solo finché non premi «Effetto finito»; «Curata» toglie la dipendenza.
 - **Storico** degli acquisti del personaggio e «Annulla l'ultimo» (restituisce gli eddies e toglie l'oggetto).
 - **GM**: mercato aperto o chiuso ai giocatori, prezzi in percentuale, 👁 per nascondere una voce, «Senza pagare» per regali e bottino, ✎ per modificare una voce (anche quelle base: «Ripristina l'originale» le riporta com'erano).
 - **⇪ Importa** (GM): incolli o carichi un file .txt / .md con le voci nel formato a blocchi qui sotto, vedi l'anteprima e salvi. Armi, armature ed equipaggiamento vanno nel catalogo custom del mercato, il cyberware nel cyberware custom. Una voce con lo stesso nome la aggiorna.

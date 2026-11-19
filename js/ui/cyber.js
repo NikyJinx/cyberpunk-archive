@@ -41,6 +41,8 @@ const GEAR_CATS = [
   { id: "armi",     label: "Armi",            color: "var(--red)",     hint: "es. 3d6 · ROF 1 · Caricatore 8" },
   { id: "armature", label: "Armature",        color: "var(--cyan)",    hint: "es. SP 11 · Testa / Corpo" },
   { id: "equip",    label: "Equipaggiamento", color: "var(--yellow)",  hint: "es. Agente, kit medico, grimaldelli" },
+  { id: "droghe",   label: "Droghe",          color: "#a98bff",   hint: "es. Synthcoke, 2 dosi" },
+  { id: "netrun",   label: "Programmi e hardware", color: "var(--green)", hint: "per il cyberdeck: si installano dalla tab Cyberdeck o da qui" },
   { id: "cyber",    label: "Cyberware",       color: "var(--magenta)", hint: "es. impianto da installare, preso come bottino" },
   { id: "veicoli",  label: "Veicoli",         color: "var(--magenta)", hint: "es. Supermoto potenziata" },
   { id: "altro",    label: "Altro",           color: "var(--muted)",   hint: "" },
@@ -194,7 +196,8 @@ function gearInner(e) {
   const rows = Object.fromEntries([...GEAR_CATS.map(c => c.id), "deck"].map(k => [k, []]));
   const go = (tab, label) => `<button type="button" class="g-src" data-action="open-entry-tab" data-id="${id}" data-tab="${tab}" title="Apri la tab ${label}">${label} ›</button>`;
   const cyBtn = (op, slot, i, label, tip) => edit ? `<button type="button" class="btn ghost small g-act" data-action="gear-cy" data-id="${id}" data-op="${op}" data-slot="${esc(slot)}" data-i="${i}" title="${tip}">${label}</button>` : "";
-  const fromGear = it => ({ qty: num(it.qty), name: it.name, detail: it.detail, note: it.note });
+  const fromGear = (it, gi) => ({ qty: num(it.qty), name: it.name, detail: it.detail, note: it.note,
+    ...(it.cat === "droghe" && edit ? { act: `<button type="button" class="btn ghost small g-act" data-action="drug-take" data-id="${id}" data-i="${gi}" title="Assumi una dose: tiro di Resist Torture/Drugs contro la VD">💉 Assumi</button>` } : {}) });
   // armi della tab Combattimento + quelle segnate solo nell'inventario
   (s.weapons || []).forEach(w => {
     const T = CPR.weaponType(w.cat || CPR.guessWeapon(w.name, w.skill)) || {};
@@ -203,9 +206,10 @@ function gearInner(e) {
   // armature: quelle indossate e quelle nell'inventario (con lo stesso nome sono la stessa armatura)
   const LOC = { head: "testa", body: "corpo" };
   const worn = ["head", "body"].map(l => ({ l, a: (s.armor || {})[l] || {} })).filter(x => x.a.name || num(x.a.sp));
-  items.forEach(it => {
+  items.forEach((it, gi) => {
     const cat = it.cat || "altro";
-    if (cat !== "armature") { rows[cat] && rows[cat].push(fromGear(it)); return; }
+    if (cat === NET_CAT) return;
+    if (cat !== "armature") { rows[cat] && rows[cat].push(fromGear(it, gi)); return; }
     const on = []; for (let k = 0; k < Math.max(1, num(it.qty)); k++) { const j = worn.findIndex(x => norm2(x.a.name) === norm2(it.name)); if (j < 0) break; on.push(LOC[worn[j].l]); worn.splice(j, 1); }
     rows.armature.push({ ...fromGear(it), tag: on.length ? `indossata: ${on.join(", ")}` : "" });
   });
@@ -224,21 +228,34 @@ function gearInner(e) {
     });
   });
   // cyberdeck con programmi e hardware
-  decksOf(e).forEach(d => rows.deck.push({ name: d.name || "Cyberdeck", detail: `${num(d.slots) || 7} slot · ${(d.items || []).length} tra programmi e hardware`,
-    note: (d.items || []).map(it => NET.itemInfo(it).label).join(", ") }));
-  const SECS = [...GEAR_CATS.slice(0, 2), GEAR_CATS.find(c => c.id === "cyber"), { id: "deck", label: "Cyberdeck", color: "var(--green)" }, ...GEAR_CATS.filter(c => !["armi", "armature", "cyber"].includes(c.id))];
+  const ds = decksOf(e), loose = netGearOf(e);
+  ds.forEach((d, di) => {
+    const S = NET.deckSlots(d);
+    rows.deck.push({ name: d.name || `Cyberdeck ${di + 1}`, tag: ds.length > 1 && di === deckIdx(e) ? "in uso" : "", detail: `slot ${S.used}/${S.total}`, note: d.note, cls: "deckhead" });
+    (d.items || []).forEach((it, ii) => { const I = NET.itemInfo(it); rows.deck.push({ name: I.label || I.name, detail: `${netKind(I)} · ${I.slots} slot`, cls: "sub",
+      act: edit ? `<button type="button" class="btn ghost small g-act" data-action="deck-uninstall" data-id="${id}" data-deck="${di}" data-i="${ii}" title="Lo togli dal deck: resta nell'inventario">⇩ Disinstalla</button>` : "" }); });
+    if (!(d.items || []).length) rows.deck.push({ name: "— vuoto —", cls: "sub none" });
+  });
+  if (loose.length) {
+    rows.deck.push({ name: "Non installati", cls: "subhead" });
+    loose.forEach(({ it, gi }) => rows.deck.push({ qty: num(it.qty), name: it.name, detail: it.detail, note: it.note, cls: "loose",
+      act: !edit ? "" : !ds.length ? `<span class="hint">nessun deck</span>` : `${ds.length > 1 ? `<select class="g-deck" data-deck-for="${gi}" aria-label="In quale deck">${ds.map((d, i) => `<option value="${i}" ${i === deckIdx(e) ? "selected" : ""}>${esc(d.name || `Cyberdeck ${i + 1}`)}</option>`).join("")}</select>` : ""}<button type="button" class="btn ghost small g-act" data-action="deck-install" data-id="${id}" data-i="${gi}" data-deck="${deckIdx(e)}">⇧ Installa</button>` }));
+  }
+  const SECS = [...GEAR_CATS.slice(0, 2), GEAR_CATS.find(c => c.id === "cyber"), { id: "deck", label: "Cyberdeck", color: "var(--green)" }, ...GEAR_CATS.filter(c => !["armi", "armature", "cyber", NET_CAT].includes(c.id))];
   const LINK = { armi: (s.weapons || []).length ? ["combat", "Combattimento"] : null, cyber: ["cyber", "Cyberware"], deck: ["deck", "Cyberdeck"] };
-  const total = SECS.reduce((t, c) => t + rows[c.id].length, 0);
-  if (!total && (money === "" || money == null)) return `<div class="empty"><div class="big">// INVENTARIO VUOTO</div>Nessun equipaggiamento registrato.</div>`;
+  const real = l => l.filter(x => !/subhead|none/.test(x.cls || "")).length;
+  const total = SECS.reduce((t, c) => t + real(rows[c.id]), 0);
+  if (!total && (money === "" || money == null) && !drugStatusHtml(e)) return `<div class="empty"><div class="big">// INVENTARIO VUOTO</div>Nessun equipaggiamento registrato.</div>`;
   return `
     <div class="cy-summary">${money !== "" && money != null ? `<div class="cy-stat"><span class="l">Eddies</span><span class="n">${fmtEb(num(money))}</span></div>` : ""}
       <div class="cy-stat"><span class="l">Voci</span><span class="n">${total}</span></div></div>
+    ${drugStatusHtml(e)}
     <p class="hint">Qui c'è tutto quello che il personaggio possiede: anche le armi della tab Combattimento, le armature indossate, il cyberware (pure quello disinstallato) e i cyberdeck. «Modifica» cambia solo gli oggetti dell'inventario; il resto si modifica nella sua tab.</p>
     <div class="gear-grid">
       ${SECS.map(c => {
         const list = rows[c.id]; if (!list.length) return "";
-        return `<section class="gear-sec ${c.id === "cyber" ? "wide" : ""}" style="--c:${c.color}">
-          <header>${esc(c.label)} <span>${list.length}</span>${LINK[c.id] ? go(...LINK[c.id]) : ""}</header>
+        return `<section class="gear-sec ${c.id === "cyber" || c.id === "deck" ? "wide" : ""}" style="--c:${c.color}">
+          <header>${esc(c.label)} <span>${real(list)}</span>${LINK[c.id] ? go(...LINK[c.id]) : ""}</header>
           <ul>${list.map(it => `<li class="${it.cls || ""}">
             <span class="g-qty">${num(it.qty) > 1 ? "×" + num(it.qty) : ""}</span>
             <span class="g-name">${esc(it.name)}${it.tag ? ` <i class="g-tag">${esc(it.tag)}</i>` : ""}${it.detail ? `<small>${esc(it.detail)}</small>` : ""}${it.note ? `<em>${esc(it.note)}</em>` : ""}</span>
@@ -304,6 +321,7 @@ const gearRow = (it = {}) => `
     <input data-f="qty" type="number" min="1" step="1" placeholder="Q.tà" value="${esc(it.qty ?? 1)}">
     <input data-f="detail" placeholder="Dettagli (danno, SP, ROF…)" value="${esc(it.detail)}">
     <input data-f="note" placeholder="Nota" value="${esc(it.note)}">
+    <input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button>
   </div>`;
 const readRows = (root, sel) => $$(sel, root).map(r => Object.fromEntries($$("[data-f]", r).map(i => [i.dataset.f, i.type === "checkbox" ? i.checked : i.value.trim()])));
@@ -498,7 +516,13 @@ function editGear(id) {
   });
   form.addEventListener("submit", async ev => {
     ev.preventDefault();
-    const items = readRows(form, ".gear-row").filter(it => it.name).map(it => ({ ...it, qty: Math.max(1, num(it.qty) || 1) }));
+    const items = readRows(form, ".gear-row").filter(it => it.name).map(({ item, ...it }) => {
+      const o = { ...it, qty: Math.max(1, num(it.qty) || 1) };
+      ["cost", "drug", "ref"].forEach(k => { if (!o[k]) delete o[k]; });
+      if (o.cost) o.cost = num(o.cost);
+      if (item) try { o.item = JSON.parse(item); } catch {}
+      return o;
+    });
     const money = form.money.value;
     try {
       const saved = await Store.save("entries", { ...e, gear: { ...(e.gear || {}), money: money === "" ? null : num(money), items } });

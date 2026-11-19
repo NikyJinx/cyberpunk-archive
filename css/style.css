@@ -2090,3 +2090,27 @@ body.popout > :not(dialog):not(#toasts):not(.dice-drawer) { display: none !impor
 .tabs-arrow.r { right: 0; background: linear-gradient(270deg, var(--panel) 55%, transparent); justify-content: flex-end; padding-right: 4px; }
 .tabs-arrow:hover { color: var(--yellow); text-shadow: 0 0 8px var(--cyan); }
 .tabs-wrap.can-l .tabs-arrow.l, .tabs-wrap.can-r .tabs-arrow.r { display: flex; }
+
+.nd-note { display: block; margin-top: 3px; font-style: normal; color: var(--yellow); font-size: 13px; }
+.mk-t td.mk-info { font-family: var(--font-mono); font-size: 12.5px; width: 160px; max-width: 200px; color: #c9c9dc; }
+.mk-deck td:nth-child(3) { min-width: 260px; }
+/* droghe */
+.drug-box { display: grid; gap: 10px; margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line); border-left: 3px solid #a98bff; background: var(--bg-2); }
+.drug-box ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.drug-box li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.drug-box li b { color: #c8b6ff; }
+.drug-box li.addict span { color: var(--yellow); font-size: 14px; }
+.mk-drug td:nth-child(3), .mk-drug td:nth-child(5) { min-width: 200px; }
+/* inventario: sezione Cyberdeck con i deck, quello che c'è dentro e le cose da installare */
+.gear-sec li.deckhead { border-top: 1px solid var(--line); background: rgba(61,255,154,.05); }
+.gear-sec li.deckhead .g-name { font-weight: 700; color: var(--green); }
+.gear-sec li.sub .g-name, .gear-sec li.loose .g-name { padding-left: 14px; border-left: 2px solid rgba(61,255,154,.35); }
+.gear-sec li.sub.none .g-name { color: var(--muted); font-style: italic; }
+.gear-sec li.subhead { padding-top: 10px; }
+.gear-sec li.subhead .g-name { font-family: var(--font-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--yellow); }
+.gear-sec li.loose .g-name { border-left-color: rgba(243,230,0,.45); }
+.g-side .g-deck { padding: 2px 4px; font-size: 12px; max-width: 150px; }
+.nd-inv { margin-top: 14px; padding: 10px 14px; border: 1px dashed rgba(243,230,0,.45); background: var(--bg-2); }
+.nd-inv ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.nd-inv li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.nd-inv small { color: var(--muted); }

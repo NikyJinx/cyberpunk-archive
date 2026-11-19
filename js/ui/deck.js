@@ -55,7 +55,7 @@ function deckHtml(deck, o) {
   const boostTxt = Object.entries(B).map(([k, l]) => `${k === "speed" ? "Speed" : (NET.ABILITIES.find(a => a.id === k) || {}).name} +${l.reduce((t, b) => t + b.v, 0)}`).join(" · ");
   return `<div class="nd">
     <div class="sh-sec-head"><h4>Cyberdeck</h4>
-      <span class="hint">${esc(deck.name || "Cyberdeck")} · Slot <b class="${S.over ? "pen" : ""}">${S.used}</b> / ${S.total} · Interface <b>${o.iface}</b> · <b>${CPR.netActions(o.iface)}</b> NET Actions${boostTxt ? ` · Rezzed: ${esc(boostTxt)}` : ""}</span>
+      <span class="hint">${esc(deck.name || "Cyberdeck")} · Slot <b class="${S.over ? "pen" : ""}">${S.used}</b> / ${S.total} · Interface <b>${o.iface}</b> · <b>${CPR.netActions(o.iface)}</b> NET Actions${boostTxt ? ` · Rezzed: ${esc(boostTxt)}` : ""}${deck.note ? `<em class="nd-note">${esc(deck.note)}</em>` : ""}</span>
       ${o.reset ? `<button type="button" class="btn ghost small" ${o.reset} title="Nuova Netrun: REZ piena, tutto disattivato, «una volta per Netrun» di nuovo disponibili">↺ Nuova Netrun</button>` : ""}</div>
     <div class="pc-rolls nd-abil">${btn("def", `Defense <b>${o.iface}</b>`, "chip y", "Interface + 1d10 contro un attacco NET")}${btn("speed", `Speed <b>${o.iface + bsum("speed")}</b>`, "chip y", "Agguato: Interface + bonus + 1d10 vs VEL + 1d10 del Black ICE")}${abil}</div>
     ${items.length ? `<div class="sh-weapons nd-list">${rows}</div>` : `<p class="hint">Deck vuoto: aggiungi programmi, Black ICE e hardware da «Modifica scheda».</p>`}
@@ -88,6 +88,7 @@ function deckTabHtml(e) {
     ${decks.length ? deckHtml(activeDeck(e), { iface: ifaceOf(e), roll: w => `data-action="sheet-roll" data-id="${id}" data-roll="deck:${w}"`,
       adj: edit ? (i, op) => `data-action="deck-adj" data-id="${id}" data-i="${i}" data-op="${op}"` : null, reset: edit ? `data-action="deck-adj" data-id="${id}" data-op="reset"` : "" })
       : `<div class="empty"><div class="big">// NESSUN CYBERDECK</div>${edit ? `<button class="btn" data-action="edit-decks" data-id="${id}">+ Aggiungi un Cyberdeck</button>` : ""}</div>`}
+    ${deckInvHtml(e)}
   </div>`;
 }
 function editDecks(id) {
@@ -219,6 +220,7 @@ function deckEditorHtml(deck) {
       <div class="field"><label>Slot</label><input data-nd="slots" type="number" min="1" max="20" value="${esc(d.slots ?? 7)}"><span class="hint">${NET.DECK_QUALITY.map(q => `${q.label} ${q.slots}`).join(" · ")}</span></div>
       <div class="field full"><label class="check"><input type="checkbox" data-nd="bodyweight" ${d.bodyweight ? "checked" : ""}> Tuta Bodyweight: +1 slot solo per l'hardware</label>
         <label class="check"><input type="checkbox" data-nd="cyberarm" ${d.cyberarm ? "checked" : ""}> Cyberdeck nel cyberbraccio: +1 slot</label></div>
+      <div class="field full"><label>Regole del deck</label><input data-nd="note" value="${esc(d.note || "")}" placeholder="es. solo programmi · un Jack Out non sicuro conta come sicuro"></div>
     </div>
     <div class="en-budget" data-nd-count></div>
     <div class="sh-rows nd-rows">${(d.items || []).map(deckRow).join("")}</div>
@@ -237,7 +239,7 @@ function readDeck(root, old = null) {
     const same = st.ref === r.ref && (r.ref !== "custom" || st.name === r.name);
     return same ? { ...base, cur: st.cur ?? null, on: !!st.on, used: !!st.used, dead: !!st.dead } : base;
   }).filter(it => it.ref !== "custom" || it.name);
-  return { name: val("name").value.trim(), slots: clamp(num(val("slots").value) || 7, 1, 20), bodyweight: val("bodyweight").checked, cyberarm: val("cyberarm").checked, items };
+  return { name: val("name").value.trim(), slots: clamp(num(val("slots").value) || 7, 1, 20), bodyweight: val("bodyweight").checked, cyberarm: val("cyberarm").checked, ...(val("note") && val("note").value.trim() ? { note: val("note").value.trim() } : {}), items };
 }
 // contatore degli slot e campi del personalizzato
 function bindDeckEditor(root) {
@@ -259,4 +261,64 @@ function bindDeckEditor(root) {
   });
   root.addEventListener("input", ev => { if (ev.target.closest(".nd-edit")) count(); });
   count();
+}
+
+
+// ---------- programmi, Black ICE e hardware nell'inventario: si installano nei deck e si tolgono ----------
+// e.gear.items { cat: "netrun", name, qty, ref ("prog:…" | "ice:…" | "hw:…" | "custom"), item (l'oggetto custom completo), detail }
+const NET_CAT = "netrun";
+const netGearOf = e => gearItems(e).map((it, gi) => ({ it, gi })).filter(x => x.it.cat === NET_CAT);
+const netKind = I => I.hw ? "Hardware" : I.ice ? "Black ICE" : "Programma";
+const netStrip = ({ cur, on, used, dead, ...rest }) => rest;
+// l'oggetto da mettere nel deck: dal catalogo (anche cercandolo per nome) o personalizzato
+function netGearItem(it) {
+  if (it.item && typeof it.item === "object") return { ...it.item };
+  if (it.ref && it.ref !== "custom") return { ref: it.ref };
+  const n = norm2(it.name);
+  const hit = [...NET.PROGRAMS.map(p => "prog:" + p.id), ...NET.allIce().map(c => "ice:" + c.id), ...NET.HARDWARE.map(h => "hw:" + h.id)]
+    .find(r => { const I = NET.itemInfo({ ref: r }); return norm2(I.name) === n || norm2(I.label) === n || norm2(I.alias) === n; });
+  return hit ? { ref: hit } : { ref: "custom", name: it.name, cls: "antipersonnel", slots: 1, eff: it.detail || "" };
+}
+const netSame = (a, b) => a.ref === b.ref && (a.ref !== "custom" || norm2(a.name) === norm2(b.name));
+function netGearEntry(di) {
+  const I = NET.itemInfo(di);
+  return { cat: NET_CAT, name: I.label || I.name, qty: 1, ref: di.ref, ...(di.ref === "custom" ? { item: netStrip(di) } : {}), detail: `${netKind(I)} · ${I.slots} slot${I.eff ? " · " + I.eff : ""}` };
+}
+// nell'inventario: se c'è già lo stesso oggetto ne aumento la quantità
+function netGearAdd(items, di) {
+  const g = items.find(x => x.cat === NET_CAT && netSame(netGearItem(x), di));
+  if (g) g.qty = (num(g.qty) || 1) + 1; else items.push(netGearEntry(di));
+}
+async function netEntrySave(e0, fn, msg) {
+  const e = JSON.parse(JSON.stringify(e0)); e.sheet = e.sheet || {}; e.gear = e.gear || {}; e.gear.items = e.gear.items || [];
+  if (fn(e) === false) return;
+  try { const saved = await Store.save("entries", e); upsert(state.entries, saved); liveSend("entries", saved); refreshSheetView(saved.id); refreshParty(); if (msg) toast(msg, "ok"); }
+  catch (err) { fail(err); }
+}
+function deckInstall(id, gi, di) {
+  const e = state.entries.find(x => x.id === id), g = gearItems(e)[gi]; if (!e || !g || !Store.canEdit()) return;
+  const d = decksOf(e)[di]; if (!d) return toast("Scegli un cyberdeck", "err");
+  const obj = netGearItem(g), S = NET.deckSlots({ ...d, items: [...(d.items || []), obj] });
+  if (S.over) return toast(`${d.name || "Il deck"} è pieno: servirebbero ${S.used} slot su ${S.total}`, "err");
+  netEntrySave(e, x => {
+    const s = migrateDecks(x.sheet), it = x.gear.items[gi]; if (!it || !s.decks[di]) return false;
+    it.qty = (num(it.qty) || 1) - 1; if (it.qty <= 0) x.gear.items.splice(gi, 1);
+    s.decks[di].items = [...(s.decks[di].items || []), obj];
+  }, `${g.name} installato in ${d.name || "Cyberdeck"}`);
+}
+function deckUninstall(id, di, ii) {
+  const e = state.entries.find(x => x.id === id); if (!e || !Store.canEdit()) return;
+  const d = decksOf(e)[di], it = d && (d.items || [])[ii]; if (!it) return;
+  netEntrySave(e, x => {
+    const s = migrateDecks(x.sheet), list = (s.decks[di] || {}).items || []; if (!list[ii]) return false;
+    const [out] = list.splice(ii, 1); netGearAdd(x.gear.items, netStrip(out));
+  }, `${NET.itemInfo(it).label} tolto dal deck: è nell'inventario`);
+}
+// riquadro della tab Cyberdeck: le cose dell'inventario da installare nel deck in uso
+function deckInvHtml(e) {
+  const loose = netGearOf(e), edit = Store.canEdit(), id = esc(e.id), ds = decksOf(e);
+  if (!loose.length) return "";
+  return `<div class="nd-inv"><span class="sh-k">Nell'inventario, non installati</span>
+    <ul>${loose.map(({ it, gi }) => `<li><span>${num(it.qty) > 1 ? `×${num(it.qty)} ` : ""}<b>${esc(it.name)}</b> <small>${esc(it.detail || "")}</small></span>
+      ${edit && ds.length ? `<button type="button" class="btn ghost small g-act" data-action="deck-install" data-id="${id}" data-i="${gi}" data-deck="${deckIdx(e)}">⇧ Installa in ${esc(activeDeck(e).name || "Cyberdeck")}</button>` : ""}</li>`).join("")}</ul></div>`;
 }
