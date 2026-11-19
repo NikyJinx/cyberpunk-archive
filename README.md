@@ -33,6 +33,8 @@ Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del perso
 La scheda **Equipaggiamento** raccoglie eddies, armi, armature, oggetti e veicoli.
 
 #### ⚡ Catalogo del cyberware
+Le parti con slot (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito) sono **cyberware fondamentale**: non si aggiungono dentro lo slot ma si **attivano** in testa allo slot, con costo, PU (⚄), umanità massima e **numero di slot** modificabile per gli upgrade; anche Fashionware, Impianti Interni ed Esterni hanno i loro 7 slot modificabili. Ogni slot mostra «opzioni usate/disponibili» e avvisa se è pieno o se manca la base. Il **resoconto** di costo e umanità è in fondo alla tab.
+
 Nella modifica del cyberware ogni slot ha «+ dal catalogo…»: tutti gli impianti del manuale base (Fashionware, Neuralware e Chipware, Cyberottiche, Cyberudito, Impianti Interni ed Esterni, Cyberbraccio, Cybergamba e coperture, Borgware), con le voci dello slot in cima. La riga si compila da sola con nome, costo, PU media e descrizione; ⚄ tira la PU con i dadi del manuale.
 - Gli effetti vanno da soli nei tiri: Mirino +1 ai colpi mirati, Kerenzikov +2 all'iniziativa, Tecnoscanner e Medscanner, Analizzatore di Stress, Filtro Antitossina, Chip Abilità (abilità scelta a livello 3), Laccio Osseo-Muscolare e Telai Lineari sul BODY (con PF e Death Save), Antidolorifico. Gli effetti «non cumulativi» non si sommano e si può avere un solo Speedware.
 - Quelli a comando (Sandevistan, Definitore d'Immagine con la vista, Udito Amplificato, TeleOttica oltre 51 m, Audiovox mentre canti) hanno un interruttore nelle tab Cyberware e Combattimento. Le armi integrate (Wolvers, Digitolame, Zanne…) si aggiungono alle armi con un clic.
@@ -162,7 +164,7 @@ Un sito **statico**, senza framework e senza fase di build: HTML, CSS e JavaScri
 └──────────────────────┘        └───────────────────────────────┘
 ```
 
-- **Frontend**: single page application con routing a hash (`#/database`, `#/calendario/2045-03-14`…). Tutta l'interfaccia è generata in `js/app.js`.
+- **Frontend**: single page application con routing a hash (`#/database`, `#/calendario/2045-03-14`…). Tutta l'interfaccia è generata dai file in `js/ui/`: sono script normali caricati in ordine, che condividono le costanti di primo livello (niente build, niente import). Se aggiungi un file, mettilo in `index.html` dopo quelli di cui usa le funzioni al caricamento.
 - **Dati**: un'unica tabella `records` con documenti JSON divisi per collezione. Immagini e audio caricati dal sito finiscono nello storage di Supabase. Le immagini vengono ridimensionate nel browser prima del caricamento.
 - **Permessi**: le regole di *Row Level Security* (`supabase/schema.sql`) consentono la **lettura a tutti** e la **scrittura solo agli utenti autenticati**. Le righe con `gm_only = true` le leggono e scrivono solo gli account elencati nella tabella `gm_users` (funzione `is_gm()`). La registrazione pubblica è disattivata: gli account vengono creati manualmente.
 - **Modalità locale**: senza configurazione Supabase il sito funziona interamente nel browser (IndexedDB). È utile per sviluppo e prove.
@@ -210,7 +212,23 @@ js/dice.js              STAT e abilità di Cyberpunk RED, motore dei dadi, gener
 js/net.js               Netrunning: programmi, Black ICE, hardware, Demoni, generatore di architetture
 js/roles.js             Ruoli e Capacità di Ruolo
 js/cyberware.js         catalogo del cyberware base con gli effetti
-js/app.js               interfaccia, routing e logica delle sezioni
+js/ui/                  interfaccia, un file per sezione (caricati in ordine da index.html):
+  core.js               costanti, stato, utilità, dati, menu, routing, Home e Database
+  cyber.js              tab Cyberware ed Equipaggiamento (sagoma, slot, umanità)
+  sheet.js              scheda del personaggio e modulo
+  roles.js              tab Ruoli
+  catalog.js            catalogo del cyberware nelle schede, cyberware custom, Glossario
+  ip.js                 Punti Miglioramento
+  combat.js             tab Combattimento e schede delle armi (PG e nemici)
+  rules.js              munizioni, stati, Critical Injury, modificatori, Regole della campagna
+  deck.js               Cyberdeck
+  dicelog.js            Dice log e pop-up dei tiri
+  records.js            dossier, galleria e modulo dei record
+  calendar.js · notes.js · diary.js · tracks.js · party.js   le altre pagine
+  enemies.js · gm.js    nemici e area GM
+  net.js                architetture NET e homebrew
+  map.js                pagina Mappa e tempo reale
+  settings.js · events.js · boot.js   impostazioni, eventi, avvio
 supabase/schema.sql     tabella, regole di accesso e storage
 tools/suno-import.js    importa le playlist Suno come tracce
 tools/lista-import.js   converte una lista di schede in testo in un file importabile
