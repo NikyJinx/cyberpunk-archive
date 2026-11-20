@@ -73,6 +73,8 @@ window.CPR = (() => {
   const hpMax = (body, will) => 10 + 5 * Math.ceil(((+body || 0) + (+will || 0)) / 2);
   const seriousAt = max => Math.ceil(max / 2);
   // stato delle ferite e malus a tutte le azioni
+  // Antidolorifico (Pain Editor): ignori gli effetti di Seriously Wounded; Mortally Wounded resta
+  const painFix = (w, on) => on && w.id === "serious" ? { ...w, pen: 0, label: w.label + " · Antidolorifico", pain: true } : w;
   function wound(hp, max) {
     if (hp <= 0) return { id: "mortal", label: "Mortally Wounded", pen: -4 };
     if (hp < seriousAt(max)) return { id: "serious", label: "Seriously Wounded", pen: -2 };
@@ -576,7 +578,7 @@ window.CPR = (() => {
     const initBonus = [...(ca && ca.reaction ? [{ l: "Reazione", v: +ca.reaction }] : []), ...(cfx ? cfx.mods.filter(m => m.target === "init").map(m => ({ l: m.name, v: m.value })) : [])];
     return {
       tier, level: E.level, T, L, role: R, stats: eff, pen, penRaw, penReduce: L.penReduce && penRaw ? Math.min(L.penReduce, -penRaw) : 0, noPen, armor, body, skills: skillRows, weapons, ability, initBonus,
-      hp, hpParts: parts, painImmune: tier >= 4 || !!(cfx && cfx.pain), cyberMods: cfx ? cfx.mods.filter(m => m.target !== "init") : [],
+      hp, hpParts: parts, painImmune: tier >= 4, painEditor: !!(cfx && cfx.pain), immune: cfx ? cfx.immune : [], cyberMods: cfx ? cfx.mods.filter(m => m.target !== "init") : [],
       picks, spent: picks.reduce((t, o) => t + o.cost, 0), budget: budgetOf(E), apexUsed: picks.filter(o => o.apex).length, apexLimit: apexLimit(E),
       twenty, comp, extraCyber: picks.filter(o => o.key.startsWith("cyber:") || o.key === "smart").map(o => o.label),
     };
@@ -773,7 +775,7 @@ window.CPR = (() => {
       cyber: E.cyber || "", gear: E.gear || "", notes: [E.notes, (E.buffs || []).length ? `Vecchi potenziamenti: ${E.buffs.join(", ")}` : "", ...notes].filter(Boolean).join("\n") };
   }
 
-  return { STATS, SKILL_GROUPS, SKILLS, skill, WEAPON_SKILLS, ROLE_ABILITIES, hpMax, seriousAt, wound, die, check, parse, rollExpr,
+  return { STATS, SKILL_GROUPS, SKILLS, skill, WEAPON_SKILLS, ROLE_ABILITIES, hpMax, seriousAt, wound, painFix, die, check, parse, rollExpr,
     WEAPON_TYPES, weaponType, guessWeapon, brawlDmg, RANGE_BANDS, RANGE_TABLES, AUTO_TABLES, rangeDefault, autoDefault, rangeById, autoById, rangeTable, autoTable, isMelee, AIMED, CRIT_BODY, CRIT_HEAD, rollCrit, MOD_TARGETS, DEFAULT_STATUS, ARMOR_TYPES, armorType, PEN_STATS, armorPen, BODY_IMPLANTS, bodyImplant, FIREARMS,
     TIERS, tierOf, levelOf, effMax, LEVEL_IDS, LEVEL_LABELS, ROLES, roleOf, roleRank, netActions, CA_USES, caCost, autoCA, autoMed, GARAGE_VEHICLES,
     eliteCatalog, canPick, rollElite, rollWeapons, budgetOf, apexLimit, deriveEnemy, validateEnemy, generateEnemy, normalizeEnemy };

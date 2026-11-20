@@ -11,16 +11,19 @@ const ammoOf = (cat, id) => ammoList(cat).find(a => a.id === id) || STD_AMMO;
 const statusList = () => rules().status || [];
 const statusOf2 = id => statusList().find(s => s.id === id);
 // malus degli stati di chi agisce (es. Accecato −4, se il GM lo imposta)
-const statusParts = ids => (ids || []).map(statusOf2).filter(st => st && num(st.atk)).map(st => ({ l: st.name, v: num(st.atk) }));
+// imm = stati a cui il cyberware rende immuni (es. Antiriflesso → Accecato): non penalizzano
+const statusParts = (ids, imm = []) => (ids || []).map(statusOf2).filter(st => st && num(st.atk) && !imm.some(i => norm(i.status) === norm(st.name))).map(st => ({ l: st.name, v: num(st.atk) }));
+const runOf = e => statEff(e, "MOVE") * 4 + (cyberItems(e).length ? cyberFx(e).run : 0);
 // modificatori speciali della scheda attivi per un certo tipo di tiro
 const modsFor = (mods, targets) => (mods || []).filter(m => m && m.on !== false && targets.includes(m.target) && num(m.value)).map(m => ({ l: m.name || "Modificatore", v: num(m.value), target: m.target }));
 
 // contesto del tiro per un'arma della scheda
 const sheetWeaponCat = w => w.cat || CPR.guessWeapon(w.name, w.skill);
 function sheetExtra(e) {
-  const s = sheetOf(e), w = woundOf(e), out = [];
-  if (w.pen && !(w.id === "serious" && cyberItems(e).length && cyberFx(e).pain)) out.push({ l: w.label, v: w.pen });
-  out.push(...statusParts(s.status), ...modsFor(s.mods, ["all"]));
+  const s = sheetOf(e), w = woundOf(e), out = [], fx = cyberItems(e).length ? cyberFx(e) : null;
+  if (w.pen) out.push({ l: w.label, v: w.pen });
+  // modificatori «tutte le prove»: quelli della scheda e quelli del cyberware (es. DeathTrance −4)
+  out.push(...statusParts(s.status, fx ? fx.immune : []), ...modsFor(s.mods, ["all"]), ...(fx ? modsFor(fx.mods, ["all"]) : []));
   if (sheetMod) out.push({ l: "MOD", v: sheetMod });
   return out;
 }

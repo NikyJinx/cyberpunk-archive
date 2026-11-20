@@ -6,7 +6,9 @@
 // ---------- CYBERWARE DAL CATALOGO: effetti, attivazioni, armi ----------
 // ogni impianto può avere ref (voce del catalogo), on (effetto a comando attivo), param (abilità del Chip Abilità)
 const rawBody = e => num((sheetOf(e).stats || {}).BODY);
-const cyberFx = e => CW.effects(cyberItems(e), rawBody(e));
+// quanti chip possono essere montati: gli slot dell'Alveolo attivo (più gli Alveoli delle schede vecchie, inseriti come impianto)
+const alveoliOf = e => alveoloSlots(e) + cyberItems(e).filter(it => it.installed !== false && (CW.byId(it.ref) || CW.byName(it.name) || {}).id === "chipslot").length;
+const cyberFx = e => CW.effects(cyberItems(e), rawBody(e), { chipCap: alveoliOf(e) });
 const skillBonusAll = (e, k) => k.custom ? [] : [...roleSkillBonus(e, k.id), ...CW.skillBonus(cyberFx(e), k.id, k.lvl)];
 const cwOf = it => CW.byId(it.ref) || CW.byName(it.name);
 // lista degli effetti del cyberware (tab Cyberware e Combattimento)
@@ -16,11 +18,14 @@ function cyberFxHtml(e, compact = false) {
   const conds = items.filter(x => (x.c.fx || []).some(f => f.cond));
   const lines = [];
   // abilità raggruppate per impianto (in Combattimento non servono)
-  if (!compact) { const by = {}; Object.entries(fx.skill).forEach(([sk, list]) => { const k = CPR.skill(sk); list.forEach(b => { (by[b.l] = by[b.l] || []).push(b.chip ? `${k ? k.label : sk} a livello 3` : `+${b.v} ${k ? k.label : sk}`); }); });
+  if (!compact) { const by = {}; Object.entries(fx.skill).forEach(([sk, list]) => { const k = CPR.skill(sk); list.forEach(b => { (by[b.l] = by[b.l] || []).push(b.chip ? `${k ? k.label : sk} a livello ${b.chip}` : `+${b.v} ${k ? k.label : sk}`); }); });
     Object.entries(by).forEach(([n, l]) => lines.push(`${esc(n)}: ${esc(l.join(", "))}`)); }
   fx.mods.forEach(m => lines.push(`${esc(m.name)}: ${m.value > 0 ? "+" : ""}${m.value} ${esc((CPR.MOD_TARGETS.find(t => t[0] === m.target) || [, m.target])[1])}`));
   if (fx.body !== rawBody(e)) lines.push(`BODY ${rawBody(e)} → <b>${fx.body}</b> (PF, soglie delle ferite e Death Save aggiornati)`);
-  if (fx.pain) lines.push("Antidolorifico: ignori i malus di Seriously Wounded");
+  if (fx.pain) lines.push("Antidolorifico: ignori il −2 di Seriously Wounded (Mortally Wounded resta)");
+  fx.immune.forEach(i => lines.push(`${esc(i.name)}: lo stato «${esc(i.status)}» non ti penalizza`));
+  if (fx.smart) lines.push("Smartgun: +1 a colpire con le armi che hanno lo Smartgun Link (scritto nel nome o nelle note dell'arma)");
+  if (fx.run) lines.push(`Corsa +${fx.run} m`);
   fx.armor.forEach(a => lines.push(`${esc(a.name)}: SP ${a.sp} sottopelle a testa e corpo, già combinata con l'armatura indossata (vale la più alta, si ablano insieme; 🛌 = +1 per giorno di riposo)`));
   const have = new Set((s.weapons || []).map(w => norm(w.name)));
   const wpn = fx.weapons.map(w => `${esc(w.name)} (${esc(w.dmg)})${have.has(norm(w.name)) ? " ✓ nelle armi" : edit ? ` <button type="button" class="btn ghost small" data-action="cy-weapon" data-id="${id}" data-name="${esc(w.name)}">+ alle armi</button>` : ""}`);
@@ -42,9 +47,10 @@ async function cyberPatch(id, fn) {
 // scelta dal catalogo nel modulo del cyberware: le voci del gruppo dello slot in cima
 const slotGroup = slotId => (CW.GROUPS.find(g => g.slot === slotId.replace(/_sx$/, "_dx")) || {}).id || "";
 const cwOptions = slotId => {
+  if (slotKind(slotId) === "alveolo") return `<option value="">+ chip dal catalogo…</option>` + CW.all().filter(c => c.chip).map(c => `<option value="${esc(c.id)}">${c.custom ? "★ " : ""}${esc(c.name)} · ${c.cost.toLocaleString("it-IT")} E$ · PU ${c.pu}${c.dice && c.dice !== "N/A" ? ` (${c.dice})` : ""}</option>`).join("");
   const g0 = slotGroup(slotId), groups = [...CW.GROUPS].sort((a, b) => (b.id === g0) - (a.id === g0) || (g0 === "arm" && b.id === "limbcover") - (g0 === "arm" && a.id === "limbcover"));
   return `<option value="">+ dal catalogo…</option>` + groups.map(g => {
-    const list = CW.all().filter(c => c.g === g.id && !c.base); if (!list.length) return "";   // la base si attiva sullo slot
+    const list = CW.all().filter(c => c.g === g.id && !c.base && !c.chip && c.id !== "chipslot"); if (!list.length) return "";   // la base si attiva sullo slot, i chip vanno nell'Alveolo
     return `<optgroup label="${esc(g.label)}">${list.map(c => `<option value="${esc(c.id)}">${c.custom ? "★ " : ""}${esc(c.name)} · ${c.cost.toLocaleString("it-IT")} E$ · PU ${c.pu}${c.dice && c.dice !== "N/A" ? ` (${c.dice})` : ""}</option>`).join("")}</optgroup>`;
   }).join("");
 };

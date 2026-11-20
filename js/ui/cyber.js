@@ -21,6 +21,7 @@ const CYBER_SLOTS = [
   { id: "gamba_sx",   label: "Cybergamba sinistra", col: "r",      zone: "leg_l",   max: 2 },
   { id: "fashion",    label: "Fashionware",         col: "r",      zone: "fashion", max: 0 },
   { id: "neural",     label: "Neuralware",          col: "bottom", zone: "brain",   max: 2 },
+  { id: "alveolo",    label: "Alveolo (Chipware)",  col: "bottom", zone: "brain",   max: 2 },
 ];
 const BODY_ZONES = [
   ["", "Nessuna"], ["brain", "Testa / cervello"], ["eye_r", "Occhio destro"], ["eye_l", "Occhio sinistro"], ["ears", "Orecchie"],
@@ -114,27 +115,38 @@ const BODY_SVG = `
   </svg>`;
 
 // slot opzioni di ogni parte del corpo: Cyberocchio 3, Cyberbraccio 4, Cybergamba 3, Collegamento Neurale 5,
-// Sistema Cyberudito 3; Fashionware, Impianti Interni ed Esterni 7. Il Chipware sta nell'Alveolo e non conta.
-const SLOT_BASE = { occhio: ["cybereye", 3, "Cyberocchio"], braccio: ["cyberarm", 4, "Cyberbraccio"], gamba: ["cyberleg", 3, "Cybergamba"], neural: ["neurallink", 5, "Collegamento Neurale"], audio: ["cyberaudio", 3, "Sistema Cyberudito"] };
+// Sistema Cyberudito 3; Fashionware, Impianti Interni ed Esterni 7.
+// Alveolo: si attiva sul suo slot e tiene 1 chip (Chip di Memoria, Chip Abilità, Antidolorifico…); gli slot si aumentano
+// installando altri Alveoli. Ogni slot dell'Alveolo occupa uno slot del Collegamento Neurale.
+const SLOT_BASE = { occhio: ["cybereye", 3, "Cyberocchio"], braccio: ["cyberarm", 4, "Cyberbraccio"], gamba: ["cyberleg", 3, "Cybergamba"], neural: ["neurallink", 5, "Collegamento Neurale"], audio: ["cyberaudio", 3, "Sistema Cyberudito"], alveolo: ["chipslot", 1, "Alveolo"] };
 const SLOT_FIXED = { fashion: 7, interni: 7, esterni: 7 };
-function slotUse(slotId, items, base) {
+function slotUse(slotId, items, base, extra = 0) {
   if (!base) return null;
-  const kind = slotKind(slotId), limb = kind === "braccio" || kind === "gamba";
-  const opts = (items || []).filter(it => it.installed !== false && it.name).map(it => CW.byId(it.ref) || CW.byName(it.name)).filter(c => !(c && (c.base || c.chip)));
-  const used = opts.reduce((t, c) => t + (c ? num(c.slots) : 1), 0);
+  const kind = slotKind(slotId), limb = kind === "braccio" || kind === "gamba", alv = kind === "alveolo";
+  const opts = (items || []).filter(it => it.installed !== false && it.name).map(it => CW.byId(it.ref) || CW.byName(it.name)).filter(c => !(c && (c.base || (c.chip && !alv))));
+  const used = opts.reduce((t, c) => t + (alv || !c ? 1 : num(c.slots)), 0) + extra;
   // senza l'arto artificiale c'è posto solo per un'opzione «installabile su un arto di carne»
   const cap = base.fixed || base.on ? base.slots : limb ? 1 : 0;
   const missing = !base.fixed && !base.on && used && !limb ? base.name : "";
-  return { used, cap, over: used > cap, missing, base: base.name || "", hasBase: base.fixed || base.on };
+  return { used, cap, over: used > cap, missing, base: base.name || "", hasBase: base.fixed || base.on, label: alv ? "chip" : "opzioni", extra };
 }
-const slotUseHtml = u => !u || (!u.used && !u.hasBase) ? "" : `<span class="cy-cap ${u.over || u.missing ? "over" : ""}" title="Slot opzioni usati / disponibili${u.base && !u.hasBase ? ` (senza ${u.base})` : ""}">${u.missing ? `⚠ manca il ${esc(u.missing)}` : `opzioni ${u.used}/${u.cap}${u.over ? " ⚠" : ""}`}</span>`;
+const slotUseHtml = u => !u || (!u.used && !u.hasBase) ? "" : `<span class="cy-cap ${u.over || u.missing ? "over" : ""}" title="Slot opzioni usati / disponibili${u.base && !u.hasBase ? ` (senza ${u.base})` : ""}">${u.missing ? `⚠ manca ${/^[aeiou]/i.test(u.missing) ? "l'" : "il "}${esc(u.missing)}` : `${u.label || "opzioni"} ${u.used}/${u.cap}${u.over ? " ⚠" : ""}`}</span>`;
+// slot dell'Alveolo attivo (occupano il Collegamento Neurale)
+const alveoloSlots = e => { const b = baseState(e, "alveolo"); return b && b.on ? b.slots : 0; };
+// chip installato ma oltre il numero di Alveoli (contati nell'ordine della scheda)
+function chipOff(e, it) {
+  const c = CW.byId(it.ref) || CW.byName(it.name); if (!c || !c.chip || it.installed === false) return false;
+  const chips = cyberItems(e).filter(x => x.installed !== false && (CW.byId(x.ref) || CW.byName(x.name) || {}).chip);
+  const i = chips.findIndex(x => x.slot === it.slot && x.name === it.name && x.ref === it.ref);
+  return i >= alveoliOf(e);
+}
 function slotCard(e, s) {
   const items = ((e.cyber && e.cyber.slots && e.cyber.slots[s.id]) || []).map(it => ({ ...it, slot: s.id })).filter(it => !isBaseItem(it));
   const inst = items.filter(it => it.installed !== false), b = baseState(e, s.id), bOn = b && !b.fixed && b.on;
   const sumC = inst.reduce((t, it) => t + num(it.cost), 0) + (bOn ? b.cost : 0), sumH = inst.reduce((t, it) => t + num(it.hl), 0) + (bOn ? b.hl : 0);
   return `
     <section class="cy-slot ${inst.length || bOn ? "has" : ""} ${items.length || bOn ? "" : "vacant"} ${s.custom ? "custom" : ""}" data-zone="${s.zone}">
-      <header><span class="cy-title">${esc(s.label)}</span>${slotUseHtml(slotUse(s.id, items, b))}
+      <header><span class="cy-title">${esc(s.label)}</span>${slotUseHtml(slotUse(s.id, items, b, s.id === "neural" ? alveoloSlots(e) : 0))}
         ${inst.length || bOn ? `<span class="cy-sum">${fmtEb(sumC)} · ${sumH} HL</span>` : ""}</header>
       ${b && !b.fixed ? `<div class="cy-base ${b.on ? "on" : ""}" title="Cyberware fondamentale: si attiva sullo slot">${b.on ? `◆ <b>${esc(b.name)}</b> · ${b.slots} slot${b.slots !== b.std ? ` (standard ${b.std})` : ""} <small>${b.cost.toLocaleString("it-IT")} eb · ${b.hl} HL · −${b.max}</small>` : b.stored ? `⬚ ${esc(b.name)} disinstallato <small>(in Equipaggiamento · ${b.hl} HL restano)</small>` : `○ ${esc(b.name)} non installato${slotKind(s.id) === "braccio" || slotKind(s.id) === "gamba" ? " <small>(arto di carne: 1 opzione)</small>" : ""}`}</div>`
         : b && b.slots !== b.std ? `<div class="cy-base on"><small>${b.slots} slot opzioni (standard ${b.std})</small></div>` : ""}
@@ -143,7 +155,7 @@ function slotCard(e, s) {
         return `
         <li class="${it.installed === false ? (it.stored ? "planned stored" : "planned") : ""}" ${it.note || cwOf(it) ? `title="${esc([(cwOf(it) || {}).desc, it.note].filter(Boolean).join(" · "))}"` : ""}>
           <span class="cy-chk" aria-label="${it.installed === false ? (it.stored ? "disinstallato" : "pianificato") : "installato"}">${it.installed === false ? (it.stored ? "⬚" : "◇") : "◆"}</span>
-          <span class="cy-name">${esc(it.name)}${cwOf(it) && (cwOf(it).fx || []).length ? ` <i class="gl-fx" title="Effetto applicato ai tiri">⚡</i>` : ""}${it.ref === "skillchip" && it.param ? ` <small>${esc((CPR.skill(it.param) || {}).label || "")}</small>` : ""}${it.note ? `<small>${esc(it.note)}</small>` : ""}</span>
+          <span class="cy-name">${esc(it.name)}${chipOff(e, it) ? ` <i class="cy-off" title="Non c'è posto nell'Alveolo: il chip non è montato e non ha effetto. Aumenta gli slot dell'Alveolo o installane un altro.">⚠ ${alveoliOf(e) ? "Alveolo pieno" : "senza Alveolo"}</i>` : ""}${cwOf(it) && (cwOf(it).fx || []).length ? ` <i class="gl-fx" title="Effetto applicato ai tiri">⚡</i>` : ""}${it.ref === "skillchip" && it.param ? ` <small>${esc((CPR.skill(it.param) || {}).label || "")} ${+it.lvl === 4 ? 4 : 3}</small>` : ""}${it.note ? `<small>${esc(it.note)}</small>` : ""}</span>
           <span class="cy-cost">${hasVal(it.cost) ? esc(num(it.cost).toLocaleString("it-IT")) : "—"}</span>
           <span class="cy-hl">${hasVal(it.hl) ? esc(it.hl) : "—"}</span>
           <span class="cy-max ${changed ? "changed" : ""}" title="Umanità massima tolta${changed ? " (modificata, standard " + s.max + ")" : ""}">${m ? "−" + m : "0"}</span>
@@ -158,7 +170,9 @@ function cyberInner(e) {
   const zonesOn = new Set([...st.inst.map(it => slotDef(e, it.slot).zone), ...st.bases.map(x => slotDef(e, x.slot).zone)].filter(Boolean));
   const pct = v => st.start ? Math.max(0, Math.min(100, (v / st.start) * 100)) : 0;
   const psycho = st.current != null && st.current <= 0;
-  const col = c => slots.filter(s => s.col === c).map(s => slotCard(e, s)).join("");
+  const alv = slots.find(s => s.id === "alveolo");
+  const card = s => s.id !== "neural" || !alv ? slotCard(e, s) : slotCard(e, s).replace(/<\/section>\s*$/, `<div class="cy-nest">${slotCard(e, alv)}</div></section>`);
+  const col = c => slots.filter(s => s.col === c && !(s.id === "alveolo" && slots.some(x => x.id === "neural"))).map(card).join("");
   const summary = `
     <h4 class="cy-res-h">Resoconto</h4>
     <div class="cy-summary ${psycho ? "psycho" : ""}">
@@ -278,7 +292,8 @@ const cyRow = (it = {}, def = 2) => `
     <label class="cy-inst" title="Installato (togli la spunta se è solo pianificato)"><input type="checkbox" data-f="installed" ${it.installed === false ? "" : "checked"}><span></span></label>
     <input data-f="name" placeholder="Nome impianto" list="dl-cyber" value="${esc(it.name)}">
     <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="stored" value="${it.stored ? "1" : ""}"><input type="hidden" data-f="withBase" value="${it.withBase ? "1" : ""}"><input type="hidden" data-f="on" value="${it.on ? "1" : ""}">
-    <select data-f="param" class="cy-param" title="Abilità del Chip Abilità (livello 3)"><option value="">abilità del chip…</option>${CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === it.param ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
+    <select data-f="lvl" class="cy-param cy-lvl" title="Livello a cui il chip porta l'abilità">${[3, 4].map(n => `<option value="${n}" ${+it.lvl === n ? "selected" : ""}>liv. ${n}</option>`).join("")}</select>
+    <select data-f="param" class="cy-param" title="Abilità del Chip Abilità"><option value="">abilità del chip…</option>${CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === it.param ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
     <input data-f="cost" type="number" min="0" step="1" placeholder="eb" title="Costo in eddies" value="${esc(it.cost ?? "")}">
     <input data-f="hl" type="number" min="0" step="1" placeholder="HL" title="Umanità persa (HL)" value="${esc(it.hl ?? "")}">
     <button type="button" class="gp-btn" data-cy-pu title="Tira la Perdita d'Umanità con i dadi del catalogo" aria-label="Tira la Perdita d'Umanità">⚄</button>
@@ -298,8 +313,8 @@ const cyBaseRow = b => !b ? "" : b.fixed ? `<div class="cy-base-edit" data-base>
     <label>Slot <input data-base-f="slots" type="number" min="0" max="20" value="${b.slots}" title="Standard ${b.std}; si possono aumentare con gli upgrade"></label>
   </div>`;
 const cyFieldset = (s, items, base = null) => `
-  <fieldset class="cy-edit ${s.custom ? "custom" : ""}" data-slot="${esc(s.id)}" data-max="${s.max}">
-    <legend>${s.custom ? "Slot personalizzato" : `${esc(s.label)} <small>· max standard ${s.max}</small>`} <span data-cy-cap></span></legend>
+  <fieldset class="cy-edit ${s.custom ? "custom" : ""} ${s.id === "alveolo" ? "nested" : ""}" data-slot="${esc(s.id)}" data-max="${s.max}">
+    <legend>${s.custom ? "Slot personalizzato" : s.id === "alveolo" ? `↳ Alveolo <small>· nel Collegamento Neurale: ogni slot tiene un chip</small>` : `${esc(s.label)} <small>· max standard ${s.max}</small>`} <span data-cy-cap></span></legend>
     ${cyBaseRow(base)}
     ${s.custom ? `<div class="cy-slot-head">
       <input data-slot-f="label" placeholder="Nome dello slot (es. Chipware, Opzioni occhi…)" value="${esc(s.label === "Slot personalizzato" ? "" : s.label)}">
@@ -447,7 +462,8 @@ function editCyber(id) {
       : { fixed: true, on: true, slots: num(f("slots").value) }; };
   const capCount = () => $$("fieldset[data-slot]", form).forEach(fs => {
     const items = readRows(fs, ".cy-row").map(r => ({ name: r.name, ref: r.ref, installed: r.installed }));
-    const el = $("[data-cy-cap]", fs); if (el) el.innerHTML = slotUseHtml(slotUse(fs.dataset.slot, items, readBase(fs)));
+    const alvFs = $('fieldset[data-slot="alveolo"]', form), alvB = alvFs && readBase(alvFs);
+    const el = $("[data-cy-cap]", fs); if (el) el.innerHTML = slotUseHtml(slotUse(fs.dataset.slot, items, readBase(fs), fs.dataset.slot === "neural" && alvB && alvB.on ? alvB.slots : 0));
   });
   ["change", "input"].forEach(t => form.addEventListener(t, () => setTimeout(capCount)));
   form.addEventListener("click", ev => { if (ev.target.closest("[data-row-del], [data-row-add]")) setTimeout(capCount); });
@@ -473,7 +489,7 @@ function editCyber(id) {
       const items = readRows(fs, ".cy-row").filter(it => it.name && !isBaseItem(it)).map(it => ({
         name: it.name, installed: it.installed, cost: it.cost === "" ? null : num(it.cost), hl: it.hl === "" ? null : num(it.hl),
         max: it.max === "" ? null : num(it.max), note: it.note,
-        ...(it.ref ? { ref: it.ref } : {}), ...(it.on ? { on: true } : {}), ...(it.stored && it.installed === false ? { stored: true, ...(it.withBase ? { withBase: true } : {}) } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param } : {}),
+        ...(it.ref ? { ref: it.ref } : {}), ...(it.on ? { on: true } : {}), ...(it.stored && it.installed === false ? { stored: true, ...(it.withBase ? { withBase: true } : {}) } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param, lvl: +it.lvl === 4 ? 4 : 3 } : {}),
       }));
       if (fs.classList.contains("custom")) {
         const label = $("[data-slot-f=label]", fs).value.trim();
