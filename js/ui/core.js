@@ -200,6 +200,7 @@ async function loadAll() {
     Object.assign(state, { maps, tokens, rolls }); sortRolls();
   } catch (e) { console.warn("tavolo", e); }
   try { state.gmnotes = isGm() ? await Store.list("gmnotes") : []; } catch (e) { state.gmnotes = []; console.warn("gm", e); }
+  try { state.mapgm = isGm() ? await Store.list("mapgm") : []; } catch (e) { state.mapgm = []; console.warn("mapgm", e); }
   // NET: le architetture sono del GM, le copie pubbliche (solo i piani rivelati) le vedono tutti
   try { state.netview = await Store.list("netview"); state.netarch = isGm() ? await Store.list("netarch") : []; } catch (e) { state.netview = state.netview || []; state.netarch = []; console.warn("net", e); }
 }

@@ -258,6 +258,8 @@ document.addEventListener("click", async ev => {
     case "drug-take": drugTake(id, num(el.dataset.i)); break;
     case "deck-install": { const sel = el.closest("li") && $(".g-deck", el.closest("li")); deckInstall(id, num(el.dataset.i), num(sel ? sel.value : el.dataset.deck)); break; }
     case "tt-tool": setTool(el.dataset.tool); break;
+    case "tt-layer": setLayer(el.dataset.layer); break;
+    case "tt-bg-fit": bgFit(); break;
     case "tt-color": tt.color = safeColor(el.dataset.c); ls.set("nc-draw-color", tt.color); renderDrawBar(); break;
     case "tt-draw-undo": drawUndo(); break;
     case "tt-draw-clear": drawClear(); break;
@@ -349,6 +351,16 @@ document.addEventListener("change", ev => {
     return;
   }
   if (t.matches("[data-gloss-g]")) { glossG = t.value; const b = $("#gloss-body"); if (b) b.innerHTML = glossBody(glossTab()); return; }
+  if (t.matches("[data-bg-keep]")) { ls.set("nc-bg-keep", t.checked); return; }
+  if (t.matches("[data-bg-snap]")) { ls.set("nc-bg-snap", t.checked); return; }
+  if (t.matches("[data-tok-layer]")) {   // layer del token: GM = nascosto ai giocatori
+    const tok = state.tokens.find(x => x.id === tt.sel); if (!tok || !gmTools()) return;
+    const L = t.value, { layer, ...rest } = tok;
+    saveToken({ ...rest, hidden: L === "gm", ...(L === "map" ? { layer: "map" } : {}) });
+    toast(L === "gm" ? `${tokName(tok)} è sul layer GM: i giocatori non lo vedono` : L === "map" ? `${tokName(tok)} è sul layer Map` : `${tokName(tok)} è sul layer Token`);
+    if (L !== curLayer()) tt.sel = null;
+    return;
+  }
   if (t.matches("[data-gloss-p]")) { glossP = t.value; const b = $("#gloss-body"); if (b) b.innerHTML = glossBody(glossTab()); return; }
   if (t.matches("[data-mk-who]")) { ls.set("nc-mk-who", t.value || "none"); route(); return; }
   if (t.matches("[data-mk-open]")) { mkSaveCfg({ open: t.checked }); return; }

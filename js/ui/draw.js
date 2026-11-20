@@ -18,6 +18,25 @@ let drawCur = null;
 const drawMe = () => { let id = ls.get("nc-draw-me", ""); if (!id) { id = NET.uid(); ls.set("nc-draw-me", id); } return id; };
 const canDraw = () => Store.canEdit();
 const drawMine = s => isGm() || s.by === drawMe();
+
+// ---------- LAYER (come Roll20): Token, Map, GM ----------
+// Token = i token e i disegni normali; Map = oggetti della mappa (sotto i token, si toccano solo da questo layer)
+// e immagine di sfondo da spostare e ridimensionare; GM = token nascosti (hidden) e disegni solo per i GM.
+// I giocatori sono sempre sul layer Token. I disegni del layer GM stanno in un record a parte ("mapgm", solo GM),
+// perché la mappa viaggia sul canale pubblico.
+const LAYERS = [["token", "🎲", "Layer Token: token e disegni"], ["map", "🗺", "Layer Map: oggetti della mappa e immagine di sfondo (spostala e ridimensionala)"], ["gm", "🔒", "Layer GM: token e disegni che vedono solo i GM"]];
+tt.layer = ls.get("nc-layer", "token");
+const curLayer = () => !gmTools() ? "token" : tt.layer === "gm" ? (isGm() && Store.gmReady ? "gm" : "token") : tt.layer === "map" ? "map" : "token";
+const tokLayer = t => t.hidden ? "gm" : t.layer === "map" ? "map" : "token";
+const shapeLayer = s => s.layer === "map" ? "map" : "token";
+const gmDrawRec = m => (state.mapgm || []).find(x => x.id === m.id) || { id: m.id, mapId: m.id, draw: [] };
+// le forme del layer attivo (sono le sole che gomma, annulla e cancella toccano)
+const layerShapes = (m, L = curLayer()) => !m ? [] : L === "gm" ? gmDrawRec(m).draw || [] : (m.draw || []).filter(s => shapeLayer(s) === L);
+function setLayer(l) {
+  tt.layer = LAYERS.some(x => x[0] === l) ? l : "token"; ls.set("nc-layer", tt.layer);
+  tt.sel = null; drawCur = null; drawTmp(null);
+  renderTokens(); renderSide(); renderDrawBar(); renderBgFrame();
+}
 const r2 = v => Math.round(v * 100) / 100;
 // in Cyberpunk RED la diagonale conta come una casella; 1 casella = 2 m
 const sqLabel = n => `${n} ${n === 1 ? "casella" : "caselle"} · ${n * 2} m`;
@@ -57,9 +76,14 @@ const shapeTxt = s => (s.k === "line" || s.k === "ruler") && s.label
   ? `<text class="d-txt" x="${s.x2 * CELL + 10}" y="${s.y2 * CELL - 10}">${esc(s.label)}</text>` : "";
 function renderDraw() {
   const m = curMap(), box = $("#tt-draw"); if (!m || !box) return;
-  const list = m.draw || [];
-  const sig = list.length + ":" + (list.length ? list[list.length - 1].id : "") + ":" + JSON.stringify(list).length;
-  if (box.dataset.sig !== sig) { box.innerHTML = list.map(s => shapeSvg(s) + shapeTxt(s)).join(""); box.dataset.sig = sig; }
+  const L = curLayer(), pub = m.draw || [], gm = isGm() ? gmDrawRec(m).draw || [] : [];
+  // prima il layer Map, poi il Token, poi (solo per i GM) il GM
+  const all = [...pub.filter(s => shapeLayer(s) === "map").map(s => [s, "map"]), ...pub.filter(s => shapeLayer(s) === "token").map(s => [s, "token"]), ...gm.map(s => [s, "gm"])];
+  const sig = L + ":" + all.length + ":" + JSON.stringify(all).length;
+  if (box.dataset.sig !== sig) {
+    box.innerHTML = all.map(([s, ly]) => `<g class="ly-${ly} ${ly === L ? "act" : ""}">${shapeSvg(s)}${shapeTxt(s)}</g>`).join("");
+    box.dataset.sig = sig;
+  }
   box.classList.toggle("erasing", tt.tool === "erase");
 }
 function drawTmp(s) {
@@ -75,39 +99,50 @@ function drawLabel(ev, text) {
 
 // barra degli strumenti sopra la mappa
 function drawBarHtml() {
-  const draw = canDraw(), m = curMap(), mine = ((m && m.draw) || []).some(drawMine);
-  return `${DRAW_TOOLS.filter(([k]) => draw || k === "move" || k === "ruler").map(([k, ic, tip]) => `<button type="button" class="tt-tool ${tt.tool === k ? "on" : ""}" data-action="tt-tool" data-tool="${k}" title="${esc(tip)}" aria-label="${esc(tip)}">${ic}</button>`).join("")}
+  const draw = canDraw(), m = curMap(), L = curLayer(), mine = layerShapes(m, L).some(drawMine);
+  const layers = gmTools() ? `<span class="tt-layers" role="group" aria-label="Layer">${LAYERS.filter(([k]) => k !== "gm" || (isGm() && Store.gmReady)).map(([k, ic, tip]) => `<button type="button" class="tt-tool tt-ly ${L === k ? "on" : ""}" data-action="tt-layer" data-layer="${k}" title="${esc(tip)}" aria-label="${esc(tip)}">${ic}<small>${k === "token" ? "Token" : k === "map" ? "Map" : "GM"}</small></button>`).join("")}</span><span class="tt-sep"></span>` : "";
+  const bgCtl = L === "map" && m && m.image ? `<span class="tt-sep"></span><button type="button" class="tt-tool tt-txt" data-action="tt-bg-fit" title="Rimetti l'immagine a coprire tutta la mappa">↺ Adatta</button>
+    <label class="tt-chk" title="Acceso: l'immagine si sposta e si ridimensiona di casella in casella. Spento: libera"><input type="checkbox" data-bg-snap ${ls.get("nc-bg-snap", true) ? "checked" : ""}> griglia</label>
+    <label class="tt-chk" title="Ridimensionando, l'immagine tiene le sue proporzioni"><input type="checkbox" data-bg-keep ${ls.get("nc-bg-keep", true) ? "checked" : ""}> proporzioni</label>` : "";
+  return `${layers}${DRAW_TOOLS.filter(([k]) => draw || k === "move" || k === "ruler").map(([k, ic, tip]) => `<button type="button" class="tt-tool ${tt.tool === k ? "on" : ""}" data-action="tt-tool" data-tool="${k}" title="${esc(tip)}" aria-label="${esc(tip)}">${ic}</button>`).join("")}
     ${draw ? `<span class="tt-sep"></span>${DRAW_COLORS.map(c => `<button type="button" class="tt-color ${c === tt.color ? "on" : ""}" data-action="tt-color" data-c="${c}" style="--c:${c}" aria-label="Colore ${c}"></button>`).join("")}
       <span class="tt-sep"></span><button type="button" class="tt-tool" data-action="tt-draw-undo" title="Annulla la mia ultima forma" ${mine ? "" : "disabled"}>↶</button>
-      <button type="button" class="tt-tool" data-action="tt-draw-clear" title="${isGm() ? "Cancella tutti i disegni della mappa" : "Cancella i miei disegni"}" ${mine ? "" : "disabled"}>🗑</button>` : ""}`;
+      <button type="button" class="tt-tool" data-action="tt-draw-clear" title="${isGm() ? "Cancella tutti i disegni di questo layer" : "Cancella i miei disegni"}" ${mine ? "" : "disabled"}>🗑</button>` : ""}${bgCtl}`;
 }
 function renderDrawBar() {
   const bar = $("#tt-drawbar"), wrap = $("#tt-wrap");
   if (bar) bar.innerHTML = drawBarHtml();
-  if (wrap) wrap.classList.toggle("drawing", tt.tool !== "move");
-  renderDraw();
+  if (wrap) { wrap.classList.toggle("drawing", tt.tool !== "move"); ["token", "map", "gm"].forEach(l => wrap.classList.toggle("lay-" + l, curLayer() === l)); }
+  renderDraw(); renderBgFrame();
 }
 function setTool(k) {
   tt.tool = DRAW_TOOLS.some(t => t[0] === k) ? k : "move";
   drawCur = null; drawTmp(null); drawLabel(null, "");
   renderDrawBar();
 }
-async function saveDraw(fn) {
+// fn riceve e restituisce le forme del layer attivo; le altre restano come sono
+async function saveDraw(fn, L = curLayer()) {
   const m = curMap(); if (!m) return;
-  // riparto dalla versione più recente della mappa, così non cancello le forme appena aggiunte da altri
-  const cur = state.maps.find(x => x.id === m.id) || m;
-  await saveMap({ ...cur, draw: fn([...(cur.draw || [])]) });
+  if (L === "gm") {
+    const rec = gmDrawRec(m);
+    await saveRec("mapgm", { ...rec, gmOnly: true, draw: fn([...(rec.draw || [])]) });
+  } else {
+    // riparto dalla versione più recente della mappa, così non cancello le forme appena aggiunte da altri
+    const cur = state.maps.find(x => x.id === m.id) || m, all = cur.draw || [];
+    await saveMap({ ...cur, draw: [...all.filter(s => shapeLayer(s) !== L), ...fn(all.filter(s => shapeLayer(s) === L))] });
+  }
   renderDrawBar();
 }
 async function drawUndo() {
-  const list = (curMap() || {}).draw || [], me = drawMe();
+  const list = layerShapes(curMap()), me = drawMe();
   let i = -1; for (let k = list.length - 1; k >= 0; k--) if (list[k].by === me || (isGm() && k === list.length - 1)) { i = k; break; }
-  if (i >= 0) saveDraw(l => { l.splice(i, 1); return l; });
+  if (i >= 0) { const id = list[i].id; saveDraw(l => l.filter(s => s.id !== id)); }
 }
 async function drawClear() {
-  const gm = isGm(), list = (curMap() || {}).draw || [];
+  const gm = isGm(), list = layerShapes(curMap());
   const n = gm ? list.length : list.filter(drawMine).length; if (!n) return;
-  if (!(await askConfirm(gm ? `Cancellare tutti i disegni della mappa (${n})?` : `Cancellare i tuoi disegni (${n})?`))) return;
+  const name = { token: "Token", map: "Map", gm: "GM" }[curLayer()];
+  if (!(await askConfirm(gm ? `Cancellare tutti i disegni del layer ${name} (${n})?` : `Cancellare i tuoi disegni (${n})?`))) return;
   saveDraw(l => gm ? [] : l.filter(s => !drawMine(s)));
 }
 
@@ -137,7 +172,7 @@ function drawDown(ev, cellAt) {
   ev.preventDefault();
   if (tt.tool === "erase") {
     // la forma cliccata o, se le linee sono sottili da prendere, la più vicina entro mezza casella
-    const el = ev.target.closest && ev.target.closest("[data-shape]"), list = (curMap() || {}).draw || [];
+    const el = ev.target.closest && ev.target.closest(".act [data-shape]"), list = layerShapes(curMap());
     const s = el ? list.find(x => x.id === el.dataset.shape) : nearShape(list, cellAt(ev));
     if (s && drawMine(s)) saveDraw(l => l.filter(x => x.id !== s.id)); else if (s) toast("Puoi cancellare solo le tue forme", "err");
     return true;
@@ -168,6 +203,72 @@ function drawUp(ev, cancel) {
   if (empty) return true;
   // la matita tiene al massimo 400 punti
   if (s.pts && s.pts.length > 400) { const step = Math.ceil(s.pts.length / 400); s.pts = s.pts.filter((_, i) => i % step === 0 || i === s.pts.length - 1); }
-  saveDraw(l => [...l, { ...s, id: NET.uid(), c: tt.color, by: drawMe() }]);
+  const L = curLayer();
+  saveDraw(l => [...l, { ...s, id: NET.uid(), c: tt.color, by: drawMe(), ...(L === "map" ? { layer: "map" } : {}) }], L);
   return true;
+}
+
+
+// ---------- immagine di sfondo: posizione e misura (m.bg = { x, y, w, h } in caselle) ----------
+// Sul layer Map, con ✋, l'immagine ha una cornice: trascinala per spostarla, tira gli angoli per ridimensionarla.
+const bgOf = m => { const { W, H } = mapSize(m), b = m.bg || {}; return b.w > 0 && b.h > 0 ? { x: num(b.x), y: num(b.y), w: num(b.w), h: num(b.h) } : { x: 0, y: 0, w: W, h: H }; };
+function placeBg(img, b) {
+  if (!img) return;
+  Object.assign(img.style, { position: "absolute", left: b.x * CELL + "px", top: b.y * CELL + "px", width: b.w * CELL + "px", height: b.h * CELL + "px" });
+}
+function renderBgFrame() {
+  const m = curMap(), board = $("#tt-board"); if (!m || !board) return;
+  let f = $("#tt-bgframe");
+  const on = curLayer() === "map" && tt.tool === "move" && !!m.image && gmTools();
+  if (!on) { if (f) f.remove(); return; }
+  if (!f) {
+    f = document.createElement("div"); f.id = "tt-bgframe"; f.className = "tt-bgframe";
+    f.innerHTML = ["nw", "ne", "sw", "se"].map(h => `<span class="bg-h ${h}" data-h="${h}"></span>`).join("") + `<span class="bg-size"></span>`;
+    board.appendChild(f);
+  }
+  const b = tt.bgDrag ? tt.bgDrag.b : bgOf(m);
+  Object.assign(f.style, { left: b.x * CELL + "px", top: b.y * CELL + "px", width: b.w * CELL + "px", height: b.h * CELL + "px" });
+  $(".bg-size", f).textContent = `${r2(b.w)} × ${r2(b.h)} caselle`;
+}
+function bgDown(ev, cellAt) {
+  const f = ev.target.closest && ev.target.closest("#tt-bgframe"); if (!f) return false;
+  if (ev.pointerType === "mouse" && ev.button !== 0) return false;
+  ev.preventDefault();
+  const m = curMap(), img = $("#tt-bg img"), b = bgOf(m), h = ev.target.dataset && ev.target.dataset.h;
+  const ratio = img && img.naturalWidth ? img.naturalHeight / img.naturalWidth : b.h / b.w;
+  tt.bgDrag = { h: h || "move", p0: cellAt(ev), b0: b, b: { ...b }, ratio };
+  try { $("#tt-wrap").setPointerCapture(ev.pointerId); } catch {}
+  return true;
+}
+function bgMove(ev, cellAt) {
+  const d = tt.bgDrag; if (!d) return false;
+  const p = cellAt(ev), dx = p.x - d.p0.x, dy = p.y - d.p0.y, o = d.b0;
+  // griglia: posizione e lati agganciati alle caselle intere; altrimenti liberi
+  const snap = ls.get("nc-bg-snap", true), S = v => snap ? Math.round(v) : v;
+  if (d.h === "move") d.b = { ...o, x: S(o.x + dx), y: S(o.y + dy) };
+  else {
+    // l'angolo opposto resta fermo
+    let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h;
+    if (d.h.includes("w")) x1 = S(x1 + dx); else x2 = S(x2 + dx);
+    if (d.h.includes("n")) y1 = S(y1 + dy); else y2 = S(y2 + dy);
+    let w = Math.max(1, x2 - x1), h = Math.max(1, y2 - y1);
+    if (ls.get("nc-bg-keep", true)) h = Math.max(1, snap ? Math.round(w * d.ratio) : w * d.ratio);
+    d.b = { x: d.h.includes("w") ? o.x + o.w - w : o.x, y: d.h.includes("n") ? o.y + o.h - h : o.y, w, h };
+  }
+  placeBg($("#tt-bg img"), d.b); renderBgFrame();
+  return true;
+}
+function bgUp(ev, cancel) {
+  const d = tt.bgDrag; if (!d) return false;
+  tt.bgDrag = null;
+  const m = curMap();
+  if (cancel || !m) { placeBg($("#tt-bg img"), bgOf(m)); renderBgFrame(); return true; }
+  const b = { x: r2(d.b.x), y: r2(d.b.y), w: r2(d.b.w), h: r2(d.b.h) };
+  saveMap({ ...(state.maps.find(x => x.id === m.id) || m), bg: b });
+  return true;
+}
+function bgFit() {
+  const m = curMap(); if (!m) return;
+  const { bg, ...rest } = state.maps.find(x => x.id === m.id) || m;
+  saveMap(rest);
 }
