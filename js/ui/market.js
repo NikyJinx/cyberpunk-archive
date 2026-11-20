@@ -118,7 +118,7 @@ function deckShopBody(q, name, desc, buyTh) {
 // slot adatti al gruppo del cyberware (le parti doppie destra e sinistra)
 const mkCySlots = (e, c) => {
   const pairs = { optics: ["occhio_dx", "occhio_sx"], arm: ["braccio_dx", "braccio_sx"], leg: ["gamba_dx", "gamba_sx"], limbcover: ["braccio_dx", "braccio_sx", "gamba_dx", "gamba_sx"] };
-  const g = CW.GROUPS.find(x => x.id === c.g) || {}, want = pairs[c.g] || [g.slot].filter(Boolean);
+  const g = CW.GROUPS.find(x => x.id === c.g) || {}, want = c.chip || c.id === "chipslot" ? ["alveolo"] : pairs[c.g] || [g.slot].filter(Boolean);
   const all = slotsOf(e), fit = all.filter(s => want.includes(s.id));
   return { fit: fit.length ? fit : all, other: all.filter(s => !fit.includes(s)) };
 };
@@ -149,12 +149,13 @@ function mkBuy(key) {
   }
   if (it.type === "gear") extra = `<div class="field"><label>Quantità</label><input name="qty" type="number" min="1" max="99" value="1"></div>`;
   if (it.type === "cyber") {
-    const { fit, other } = mkCySlots(e, it), base = !!it.base;
-    const opt = s => { const b = base ? baseState(e, s.id) : null, on = b && !b.fixed && b.on; return `<option value="${esc(s.id)}" ${on ? "disabled" : ""}>${esc(s.label)}${on ? " (già attivo)" : ""}</option>`; };
+    const { fit, other } = mkCySlots(e, it), base = !!it.base || it.id === "chipslot";
+    const opt = s => { const b = base ? baseState(e, s.id) : null, on = b && !b.fixed && b.on, more = on && it.id === "chipslot";
+      return `<option value="${esc(s.id)}" ${on && !more ? "disabled" : ""}>${esc(s.label)}${more ? ` (ne hai già ${b.slots}: +1 slot)` : on ? " (già attivo)" : ""}</option>`; };
     const pu = CW.rollPu(it);
     extra = `<div class="field"><label>${base ? "Si attiva su" : "Slot"}</label><select name="slot">${fit.map(opt).join("")}${other.length && !base ? `<optgroup label="Altri slot">${other.map(opt).join("")}</optgroup>` : ""}</select></div>
       <div class="field"><label>Umanità persa (HL)</label><div class="mk-hl"><input name="hl" type="number" min="0" value="${pu.total}"><button type="button" class="gp-btn" data-mk-pu title="Tira ${esc(it.dice)}">⚄</button></div><span class="hint">${it.dice && it.dice !== "N/A" ? `${esc(it.dice)}, media ${it.pu}` : "nessuna"}${pu.dice.length ? ` · tirato: ${pu.dice.join(" + ")}` : ""}</span></div>
-      ${it.id === "skillchip" ? `<div class="field"><label>Abilità del chip</label><select name="param">${CPR.SKILLS.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join("")}</select></div>` : ""}
+      ${it.id === "skillchip" ? `<div class="field"><label>Livello del chip</label><select name="lvl"><option value="3">3</option><option value="4">4</option></select></div><div class="field"><label>Abilità del chip</label><select name="param">${CPR.SKILLS.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join("")}</select></div>` : ""}
       ${it.req ? `<p class="hint field full">Richiede: ${esc(it.req)}</p>` : ""}
       <p class="mk-warn field full" data-mk-cap></p>`;
   }
@@ -175,7 +176,9 @@ function mkBuy(key) {
       <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button type="submit" class="btn" data-mk-ok>Compra</button></div>
     </form>`, true);
   const form = $("#mk-form"), F = n => form.elements[n];
-  const total = () => F("free") && F("free").checked ? 0 : price * (F("qty") ? Math.max(1, Math.trunc(num(F("qty").value)) || 1) : 1);
+  // Chip Abilità: 1.000 eb per le abilità ×2, 500 per le altre
+  const unit = () => it.id === "skillchip" && F("param") && (CPR.skill(F("param").value) || {}).x2 ? mkPrice(1000) : price;
+  const total = () => F("free") && F("free").checked ? 0 : unit() * (F("qty") ? Math.max(1, Math.trunc(num(F("qty").value)) || 1) : 1);
   const upd = () => {
     const t = total(), left = money - t;
     $("[data-mk-tot]", form).textContent = fmtEb(t); $("[data-mk-left]", form).textContent = fmtEb(left);
@@ -192,7 +195,9 @@ function mkBuy(key) {
     if (cap && it.type === "cyber") {
       const sl = F("slot").value, items = (((e.cyber || {}).slots || {})[sl]) || [];
       if (it.base) cap.textContent = "";
-      else { const u = slotUse(sl, [...items, { name: it.name, ref: it.id }], baseState(e, sl)); cap.textContent = !u ? "" : u.missing ? `Manca il ${u.missing}: attivalo prima o insieme.` : u.over ? `Slot pieno: opzioni ${u.used}/${u.cap}.` : `Opzioni dopo l'acquisto: ${u.used}/${u.cap}.`; }
+      else if (it.id === "chipslot") { const b = baseState(e, "alveolo"); cap.textContent = b && b.on ? `Hai già un Alveolo da ${b.slots} slot: questo ne aggiunge uno (${b.slots + 1} chip).` : "Attiva l'Alveolo: tiene 1 chip e occupa 1 slot del Collegamento Neurale."; }
+      else { const u = slotUse(sl, [...items, { name: it.name, ref: it.id }], baseState(e, sl)), art = n => /^[aeiou]/i.test(n) ? "l'" : "il ";
+        cap.textContent = !u ? "" : u.missing ? `Manca ${art(u.missing)}${u.missing}: attivalo prima o insieme.` : u.over ? `Slot pieno: ${u.label} ${u.used}/${u.cap}.` : `${u.label === "chip" ? "Chip" : "Opzioni"} dopo l'acquisto: ${u.used}/${u.cap}.`; }
     }
   };
   form.addEventListener("input", upd); form.addEventListener("change", upd); upd();
@@ -202,7 +207,7 @@ function mkBuy(key) {
     ev.preventDefault();
     const paid = total(), qty = F("qty") ? Math.max(1, Math.trunc(num(F("qty").value)) || 1) : 1;
     if (money - paid < 0 && !gm) return;
-    mkCommit(e, it, paid, qty, { loc: F("loc") ? F("loc").value : "", slot: F("slot") ? F("slot").value : "", hl: F("hl") ? num(F("hl").value) : 0, param: F("param") ? F("param").value : "", deck: F("deck") ? F("deck").value : "" });
+    mkCommit(e, it, paid, qty, { loc: F("loc") ? F("loc").value : "", slot: F("slot") ? F("slot").value : "", hl: F("hl") ? num(F("hl").value) : 0, param: F("param") ? F("param").value : "", lvl: F("lvl") ? F("lvl").value : "", deck: F("deck") ? F("deck").value : "" });
   });
 }
 
@@ -241,13 +246,15 @@ async function mkCommit(e0, it, paid, qty, o) {
   }
   if (it.type === "cyber") {
     const cy = e.cyber = e.cyber || {};
-    if (it.base) {
+    if (it.base || it.id === "chipslot") {
       cy.bases = cy.bases || {}; undo = { k: "base", slot: o.slot, prev: cy.bases[o.slot] || null };
-      const B = SLOT_BASE[slotKind(o.slot)];
-      cy.bases[o.slot] = { ...(cy.bases[o.slot] || {}), on: true, slots: (cy.bases[o.slot] || {}).slots ?? (B ? B[1] : 3), cost: paid || it.cost, hl: o.hl, max: 2 };
+      const B = SLOT_BASE[slotKind(o.slot)], was = baseState(e0, o.slot);
+      // un altro Alveolo: +1 slot, e costo, umanità persa e umanità massima si sommano
+      if (it.id === "chipslot" && was && was.on) cy.bases[o.slot] = { on: true, slots: was.slots + 1, cost: was.cost + (paid || num(it.cost)), hl: was.hl + o.hl, max: was.max + 2 };
+      else cy.bases[o.slot] = { ...(cy.bases[o.slot] || {}), on: true, slots: (cy.bases[o.slot] || {}).slots ?? (B ? B[1] : 3), cost: paid || it.cost, hl: o.hl, max: 2 };
     } else {
       cy.slots = cy.slots || {};
-      cy.slots[o.slot] = [...(cy.slots[o.slot] || []), { name: it.name, ref: it.id, cost: paid || num(it.cost), hl: o.hl, installed: true, ...(o.param ? { param: o.param } : {}) }];
+      cy.slots[o.slot] = [...(cy.slots[o.slot] || []), { name: it.name, ref: it.id, cost: paid || num(it.cost), hl: o.hl, installed: true, ...(o.param ? { param: o.param, lvl: +o.lvl === 4 ? 4 : 3 } : {}) }];
       undo = { k: "cyber", slot: o.slot };
     }
   }

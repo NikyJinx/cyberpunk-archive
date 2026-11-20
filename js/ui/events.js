@@ -244,7 +244,7 @@ document.addEventListener("click", async ev => {
     case "cy-weapon": {
       const e = state.entries.find(x => x.id === id), w = e && cyberFx(e).weapons.find(x => x.name === el.dataset.name); if (!w || !Store.canEdit()) break;
       const T = CPR.weaponType(w.cat) || {};
-      sheetPatch(id, s => { s.weapons = [...(s.weapons || []), { name: w.name, cat: w.cat, skill: w.skill || T.skill || "melee", dmg: w.dmg, rof: w.rof || T.rof || 1, mag: "", note: [w.note, "cyberware"].filter(Boolean).join(" · ") }]; return s; });
+      sheetPatch(id, s => { s.weapons = [...(s.weapons || []), { name: w.name, cat: w.cat, skill: w.skill || T.skill || "melee", dmg: w.dmg, rof: w.rof || T.rof || 1, mag: "", ...(w.quality ? { quality: w.quality } : {}), note: [w.note, "cyberware"].filter(Boolean).join(" · ") }]; return s; });
       toast(`${w.name} aggiunta alle armi`, "ok"); break;
     }
     case "cyhb-edit": editCyberHb(id); break;
@@ -257,6 +257,18 @@ document.addEventListener("click", async ev => {
     case "mk-custom": editMkItem(el.dataset.type); break;
     case "drug-take": drugTake(id, num(el.dataset.i)); break;
     case "deck-install": { const sel = el.closest("li") && $(".g-deck", el.closest("li")); deckInstall(id, num(el.dataset.i), num(sel ? sel.value : el.dataset.deck)); break; }
+    case "tt-tool": setTool(el.dataset.tool); break;
+    case "tt-color": tt.color = safeColor(el.dataset.c); ls.set("nc-draw-color", tt.color); renderDrawBar(); break;
+    case "tt-draw-undo": drawUndo(); break;
+    case "tt-draw-clear": drawClear(); break;
+    case "tt-dsp": {   // penalità del Death Save dal pannello del token
+      const t = state.tokens.find(x => x.id === tt.sel); if (!t || !Store.canEdit()) break;
+      const e = tokEntry(t), d = num(el.dataset.d);
+      if (e && isPerson(e) && hasSheet(e)) sheetPatch(e.id, s => { s.dsp = Math.max(0, num(s.dsp) + d); return s; });
+      else saveToken({ ...t, dsp: Math.max(0, num(t.dsp) + d) });
+      setTimeout(renderSel, 50);
+      break;
+    }
     case "deck-uninstall": deckUninstall(id, num(el.dataset.deck), num(el.dataset.i)); break;
     case "drug-end": drugEnd(id, el.dataset.uid); break;
     case "drug-cure": drugCure(id, num(el.dataset.i)); break;

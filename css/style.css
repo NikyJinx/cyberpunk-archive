@@ -1327,7 +1327,9 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .tt-token.turn::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--yellow); animation: tt-pulse 1.4s ease-in-out infinite; pointer-events: none; }
 @keyframes tt-pulse { 50% { transform: scale(1.08); opacity: .4; } }
 .tt-token.dead .tt-face { filter: grayscale(1) brightness(.6); }
-.tt-token.dead::after { content: "✕"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; color: var(--red); text-shadow: 0 0 8px #000; pointer-events: none; }
+.tt-token.dead::after { content: ""; position: absolute; inset: -6%; z-index: 2; pointer-events: none;
+  background: linear-gradient(45deg, transparent 43%, var(--red) 43%, var(--red) 57%, transparent 57%), linear-gradient(-45deg, transparent 43%, var(--red) 43%, var(--red) 57%, transparent 57%);
+  filter: drop-shadow(0 0 2px #000) drop-shadow(0 0 6px rgba(255,42,61,.8)); }
 .tt-hp { position: absolute; left: 10%; right: 10%; bottom: 2px; height: 5px; background: rgba(0,0,0,.8); border: 1px solid rgba(255,255,255,.2); }
 .tt-hp i { display: block; height: 100%; background: var(--green); }
 .tt-name {
@@ -2114,3 +2116,40 @@ body.popout > :not(dialog):not(#toasts):not(.dice-drawer) { display: none !impor
 .nd-inv ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
 .nd-inv li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
 .nd-inv small { color: var(--muted); }
+
+.tt-death { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 8px; padding: 6px 8px; border: 1px solid rgba(255,42,61,.5); background: rgba(255,42,61,.08); }
+.tt-death span b { color: var(--yellow); }
+
+/* ---------- mappa: disegno, righello e forme ---------- */
+.tt-draw { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 1; }
+.tt-draw.tmp { z-index: 4; }
+.tt-draw [data-shape], .tt-draw.tmp > * { stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.tt-draw .d-free, .tt-draw .d-line line { fill: none; }
+.tt-draw .d-area { fill-opacity: .14; }
+.tt-draw .d-line circle { stroke-width: 0; }
+.tt-draw .d-ruler line { stroke-dasharray: 10 8; }
+.tt-draw .d-txt { font: 600 18px var(--font-mono); fill: #fff; paint-order: stroke; stroke: #000; stroke-width: 4px; }
+.tt-draw.erasing [data-shape] { pointer-events: visiblePainted; cursor: not-allowed; }
+.tt-draw.erasing [data-shape]:hover { stroke-dasharray: 6 6; filter: drop-shadow(0 0 6px #fff); }
+.tt-wrap.drawing { cursor: crosshair; touch-action: none; }
+.tt-drawbar { position: absolute; left: 10px; top: 10px; right: 10px; width: max-content; max-width: calc(100% - 20px); z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 4px; background: rgba(7,7,11,.88); border: 1px solid var(--line); }
+.tt-tool { width: 32px; height: 32px; display: grid; place-items: center; background: none; border: 1px solid transparent; color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
+.tt-tool:hover:not([disabled]) { border-color: var(--cyan); }
+.tt-tool.on { border-color: var(--yellow); background: rgba(243,230,0,.12); }
+.tt-tool[disabled] { opacity: .3; cursor: default; }
+.tt-color { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); background: var(--c); cursor: pointer; padding: 0; }
+.tt-color.on { border-color: #fff; box-shadow: 0 0 0 2px var(--c); }
+.tt-sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; }
+@media (max-width: 640px) { .tt-tool { width: 30px; height: 30px; } }
+
+.cy-off { font-style: normal; font-family: var(--font-mono); font-size: 11px; color: var(--yellow); }
+
+/* Alveolo dentro il Collegamento Neurale */
+.cy-nest { margin: 8px 10px 10px 22px; border-left: 2px solid rgba(255,43,214,.45); }
+.cy-nest .cy-slot { margin: 0; border-left: 0; }
+fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px solid rgba(255,43,214,.55); }
+
+/* riga del Chip Abilità: livello e abilità accanto al nome */
+.cy-row.chip { grid-template-columns: 30px minmax(120px, 2fr) 86px minmax(110px, 1.3fr) 76px 58px 32px 64px minmax(100px, 1.5fr) 30px; }
+@media (max-width: 640px) { .cy-row.chip .cy-lvl, .cy-row.chip [data-f=param] { grid-row: 2; } .cy-row.chip [data-f=cost], .cy-row.chip [data-f=hl], .cy-row.chip [data-f=max] { grid-row: 3; } .cy-row.chip [data-f=note] { grid-row: 4; } }
+.cy-row .cy-lvl { padding: 6px 4px; font-size: 14px; }

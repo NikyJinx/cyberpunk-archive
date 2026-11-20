@@ -65,8 +65,9 @@ function viewTable() {
     <div class="tt">
       <div class="tt-main">
         <div class="tt-wrap" id="tt-wrap"><div class="tt-sizer" id="tt-sizer"><div class="tt-board" id="tt-board">
-          <div class="tt-bg" id="tt-bg"></div><div class="tt-grid"></div><svg class="tt-arrows" id="tt-arrows" aria-hidden="true"></svg><div class="tt-tokens" id="tt-tokens"></div>
+          <div class="tt-bg" id="tt-bg"></div><div class="tt-grid"></div><svg class="tt-draw" id="tt-draw" aria-hidden="true"></svg><svg class="tt-arrows" id="tt-arrows" aria-hidden="true"></svg><div class="tt-tokens" id="tt-tokens"></div><svg class="tt-draw tmp" id="tt-draw-tmp" aria-hidden="true"></svg>
         </div></div><div class="tt-ruler" id="tt-ruler" hidden></div></div>
+        <div class="tt-drawbar" id="tt-drawbar" role="toolbar" aria-label="Strumenti della mappa">${drawBarHtml()}</div>
         <div class="tt-zoom">
           <button type="button" class="gp-btn" data-action="tt-zoom" data-d="-1" aria-label="Riduci">−</button>
           <span id="tt-zl"></span>
@@ -207,7 +208,7 @@ function renderTokens() {
     if (!dragging && !tt.remote[t.id]) { el.style.left = num(t.x) * CELL + "px"; el.style.top = num(t.y) * CELL + "px"; }
   }
   for (const el of els.values()) if (!(tt.drag && tt.drag.el === el)) el.remove();
-  drawArrows();
+  drawArrows(); renderDraw();
 }
 function renderSide() { renderSel(); renderInit(); }
 // stati del token: quelli della scheda per PG e NPC con scheda, altrimenti i suoi
@@ -226,7 +227,8 @@ function renderSel() {
     return;
   }
   const e = tokEntry(t), hp = tokHp(t), edit = Store.canEdit(), gmt = gmTools();
-  const w = hp && CPR.wound(hp.hp, hp.max), enemy = e && e.kind === "nemico" && e.enemy;
+  const enemy = e && e.kind === "nemico" && e.enemy, sh = tokSheet(t), ED = enemy ? enemyD(e) : null;
+  const w = hp && (sh ? woundOf(sh) : ED && ED.painImmune ? (w0 => w0.pen ? { ...w0, pen: 0, label: w0.label + " · ignora le ferite" } : w0)(CPR.wound(hp.hp, hp.max)) : CPR.painFix(CPR.wound(hp.hp, hp.max), !!(ED && ED.painEditor)));
   const sp = loc => { const a = tokArmor(t, loc); return a ? spBar(loc === "head" ? "Head SP" : "Body SP", a, edit && (d => `data-action="tt-sp" data-loc="${loc}" data-d="${d}"`)) : ""; };
   box.innerHTML = `
     <h4 style="color:${safeColor(t.color)}">${t.hidden ? "🔒 " : ""}${esc(tokName(t))}</h4>
@@ -235,6 +237,7 @@ function renderSel() {
       <div class="tt-hpline"><span>HP <b>${hp.hp}</b> / ${hp.max}</span><span class="hint">${esc(w.label)}${w.pen ? ` · ${w.pen}` : ""}</span></div>
       <span class="sh-hpbar"><i style="width:${clamp(hp.hp / hp.max * 100, 0, 100)}%"></i><b style="left:${clamp(CPR.seriousAt(hp.max) / hp.max * 100, 0, 100)}%"></b></span>
       ${edit ? `<span class="sh-adj">${[-5, -1, 1, 5].map(d => `<button type="button" class="gp-btn" data-action="tt-hp" data-d="${d}">${d > 0 ? "+" : "−"}${Math.abs(d) === 1 ? "" : Math.abs(d)}</button>`).join("")}</span>` : ""}
+      ${hp.hp <= 0 ? tokDeathHtml(t, e, enemy, edit) : ""}
     </div>` : ""}
     ${sp("head")}${sp("body")}
     <div class="tt-st"><span class="sh-k">Stati</span>${statusChips(tokStatusIds(t), edit ? (op, st) => `${op === "add" ? "" : `data-action="tok-status" `}data-st-tok="${esc(t.id)}" data-st-op="${op}" data-st="${esc(st)}"` : null)}</div>
@@ -247,6 +250,18 @@ function renderSel() {
         <button type="button" class="btn ghost small" data-action="tt-edit-token">Modifica</button>
         <button type="button" class="btn ghost small danger" data-action="tt-del-token">Rimuovi</button>` : ""}
     </div>`;
+}
+// Death Save dal token quando è Mortally Wounded: ogni tiro alza di 1 la penalità del successivo
+// (nemici: penalità sul token; PG e NPC con scheda: quella della scheda)
+const tokDsp = (t, e) => e && isPerson(e) && hasSheet(e) ? num(sheetOf(e).dsp) : num(t.dsp);
+function tokDeathHtml(t, e, enemy, edit) {
+  const pc = e && isPerson(e) && hasSheet(e);
+  if (!pc && !(enemy && isGm())) return "";
+  const body = pc ? statBase(e, "BODY") : enemyD(e).body, pen = tokDsp(t, e);
+  const roll = pc ? `data-action="sheet-roll" data-id="${esc(e.id)}" data-roll="death"` : `data-action="enemy-roll" data-id="${esc(e.id)}" data-roll="death" data-tok="${esc(t.id)}"`;
+  return `<div class="tt-death"><button type="button" class="btn small danger" ${roll} title="1d10 + penalità: riesce se il totale è ≤ BODY ${body}; un 10 naturale fallisce sempre">☠ Death Save</button>
+    <span>BODY <b>${body}</b> · penalità <b>+${pen}</b></span>
+    ${edit ? `<span class="sh-adj"><button type="button" class="gp-btn" data-action="tt-dsp" data-d="-1" aria-label="Penalità −1">−</button><button type="button" class="gp-btn" data-action="tt-dsp" data-d="1" aria-label="Penalità +1">+</button></span>` : ""}</div>`;
 }
 // strumenti del master (mappe, token, turni): solo i GM; se il ruolo GM non è ancora attivo, chiunque abbia fatto l'accesso
 const gmTools = () => Store.canEdit() && (isGm() || !Store.gmReady);
@@ -310,7 +325,9 @@ function bindTable() {
   const board = $("#tt-board"), ruler = $("#tt-ruler");
   const cellAt = ev => { const r = board.getBoundingClientRect(); return { x: (ev.clientX - r.left) / (CELL * tt.zoom), y: (ev.clientY - r.top) / (CELL * tt.zoom) }; };
   let pan = null, lastSend = 0;
+  wrap.classList.toggle("drawing", tt.tool !== "move");
   wrap.addEventListener("pointerdown", ev => {
+    if (drawDown(ev, cellAt)) return;
     if (ev.pointerType === "mouse" && ev.button !== 0) return;
     const el = ev.target.closest(".tt-token");
     if (el) {
@@ -328,6 +345,7 @@ function bindTable() {
     try { wrap.setPointerCapture(ev.pointerId); } catch {} wrap.classList.add("panning");
   });
   wrap.addEventListener("pointermove", ev => {
+    if (drawMove(ev, cellAt)) return;
     const d = tt.drag;
     if (d) {
       const m = curMap(), { W, H } = mapSize(m), size = tokSize(d.t), p = cellAt(ev);
@@ -351,6 +369,7 @@ function bindTable() {
     }
   });
   const end = (ev, cancel) => {
+    if (drawUp(ev, cancel)) return;
     const d = tt.drag;
     if (d) {
       tt.drag = null; ruler.hidden = true; d.el.classList.remove("drag");

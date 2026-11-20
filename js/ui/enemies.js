@@ -36,9 +36,10 @@ function enemyToken(e, m, extra = {}) {
 // i tiri dal modello o da un token nascosto sono segreti.
 function rollEnemy(e, what, t) {
   const D = enemyD(e), pen = D.pen, ca = D.ability && D.ability.ca;
-  const hp = t && tokHp(t), w = hp && !D.painImmune ? CPR.wound(hp.hp, hp.max) : null;
+  const hp = t && tokHp(t), w = hp && !D.painImmune ? CPR.painFix(CPR.wound(hp.hp, hp.max), D.painEditor) : null;
   const wound = w && w.pen ? [{ l: w.label, v: w.pen }] : [];
-  if (t) wound.push(...statusParts(t.status));   // stati del token (es. Accecato)
+  if (t) wound.push(...statusParts(t.status, D.immune));   // stati del token (es. Accecato), salvo immunità del cyberware
+  wound.push(...modsFor(D.cyberMods, ["all"]));
   const arm = stat => pen && CPR.PEN_STATS.includes(stat) ? [{ l: "Armor", v: pen }] : [];
   const meta = { who: t ? tokName(t) : e.name, enemyId: e.id, gmOnly: !t || tokHidden(t) };
   if (String(what).startsWith("deck:")) {
@@ -104,7 +105,7 @@ function enemyHtml(e) {
         <span class="en-lvl" title="${esc(D.T.label)} · ${esc(D.T.ratio)}">${tierBadge(E)}</span>
         <span class="hint">${esc(D.T.label)} · ${esc(D.T.ratio)}</span>
         ${pen ? `<span class="en-pen">Armatura: ${pen} a REF, DEX, MOVE${D.penReduce ? ` (${D.penRaw} ridotto di ${D.penReduce}: Boss Elite)` : ""}</span>` : D.penReduce ? `<span class="en-pen ok">Armatura: malus ${D.penRaw} annullato (Boss Elite: −2 di serie)</span>` : D.noPen && armorPenOf(D.armor) ? `<span class="en-pen ok">Armatura senza malus (Tech Upgrade)</span>` : ""}
-        ${D.painImmune ? `<span class="en-pen ok">Antidolorifico: ignora i malus delle ferite</span>` : ""}
+        ${D.painImmune ? `<span class="en-pen ok">Ignora i malus delle ferite</span>` : D.painEditor ? `<span class="en-pen ok">Antidolorifico: ignora Seriously Wounded</span>` : ""}
         ${E.migrated ? `<span class="en-pen">Scheda convertita: controllala e salvala</span>` : ""}
       </div>
       <div class="en-stats">${CPR.STATS.map(s => {
@@ -273,7 +274,7 @@ function editEnemy(id, preset = null) {
   let cwRefs = JSON.parse(JSON.stringify(E0.cyberRefs || []));
   const renderCw = () => {
     $("#en-cw", form).innerHTML = `<div class="st-chips">${cwRefs.map((x, k) => { const c = CW.byId(x.ref) || { name: x.ref }; const cond = (c.fx || []).find(f => f.cond);
-      return `<span class="st-chip" title="${esc(c.desc || "")}">${esc(c.name)}${c.id === "skillchip" ? ` <select data-cw-param="${k}" class="st-add">${CPR.SKILLS.map(s => `<option value="${s.id}" ${s.id === x.param ? "selected" : ""}>${esc(s.label)}</option>`).join("")}</select>` : ""}${cond ? ` <label class="check" title="${esc(cond.cond)}"><input type="checkbox" data-cw-on="${k}" ${x.on ? "checked" : ""}> attivo</label>` : ""} <button type="button" class="gp-btn del" data-cw-del="${k}" aria-label="Togli">✕</button></span>`; }).join("")}
+      return `<span class="st-chip" title="${esc(c.desc || "")}">${esc(c.name)}${c.id === "skillchip" ? ` <select data-cw-lvl="${k}" class="st-add" title="Livello del chip">${[3, 4].map(n => `<option value="${n}" ${+x.lvl === n ? "selected" : ""}>liv. ${n}</option>`).join("")}</select> <select data-cw-param="${k}" class="st-add">${CPR.SKILLS.map(s => `<option value="${s.id}" ${s.id === x.param ? "selected" : ""}>${esc(s.label)}</option>`).join("")}</select>` : ""}${cond ? ` <label class="check" title="${esc(cond.cond)}"><input type="checkbox" data-cw-on="${k}" ${x.on ? "checked" : ""}> attivo</label>` : ""} <button type="button" class="gp-btn del" data-cw-del="${k}" aria-label="Togli">✕</button></span>`; }).join("")}
       <select class="st-add" data-cw-add aria-label="Aggiungi cyberware">${cwOptions("")}</select></div>`;
   };
   const readForm = () => {
@@ -311,6 +312,7 @@ function editEnemy(id, preset = null) {
     const t = ev.target;
     if (t.matches("[data-cw-add]") && t.value) { cwRefs.push({ ref: t.value, ...(t.value === "skillchip" ? { param: "perception" } : {}) }); renderCw(); refresh(); }
     if (t.matches("[data-cw-param]")) { cwRefs[num(t.dataset.cwParam)].param = t.value; refresh(); }
+    if (t.matches("[data-cw-lvl]")) { cwRefs[num(t.dataset.cwLvl)].lvl = num(t.value); refresh(); }
     if (t.matches("[data-cw-on]")) { cwRefs[num(t.dataset.cwOn)].on = t.checked; refresh(); }
     ev.stopPropagation();
   });

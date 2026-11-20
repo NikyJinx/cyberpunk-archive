@@ -25,6 +25,8 @@ function finishSrc(X) {
 }
 // qualità Excellent: +1 a colpire (le armi del Night Market la salvano nell'arma)
 const qualBonus = w => w.quality === "excellent" ? [{ l: "Excellent", v: 1 }] : [];
+const isSmartgun = w => /smart\s*gun|smartgun/i.test(`${w.name || ""} ${w.note || ""}`);
+const smartBonus = (e, w) => isSmartgun(w) && cyberItems(e).length && cyberFx(e).smart ? [{ l: "Smartgun Link", v: 1 }] : [];
 function pcSrc(e, i) {
   const s = sheetOf(e), w = (s.weapons || [])[i]; if (!w) return null;
   const k = skillByKey(e, weaponSkillKey(w.skill)) || skillByKey(e, "skill:handgun"), af = skillByKey(e, "skill:autofire");
@@ -32,8 +34,8 @@ function pcSrc(e, i) {
     kind: "pc", id: e.id, i, key: `pc:${e.id}:${i}`, w, cat: sheetWeaponCat(w), mods: [...(s.mods || []), ...roleMods(e), ...cyberFx(e).mods], skillLabel: k.label,
     weakness: num((caOf(e) || {}).weakness),
     fix: r => { const ca = caOf(e); if (ca && num(ca.recover) && CPR.FIREARMS.includes(sheetWeaponCat(w)) && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il dado conta come 1)"; } },
-    single: [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...qualBonus(w)],
-    auto: [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: af ? af.lvl : 0 }, ...qualBonus(w)], afLvl: af ? af.lvl : 0,
+    single: [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...qualBonus(w), ...smartBonus(e, w)],
+    auto: [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: af ? af.lvl : 0 }, ...qualBonus(w), ...smartBonus(e, w)], afLvl: af ? af.lvl : 0,
     extra: () => sheetExtra(e), edit: Store.canEdit(),
     post: r => postRoll({ ...r, who: e.name, entryId: e.id }),
     save: (f, v) => sheetPatch(e.id, x => { if (x.weapons && x.weapons[i]) x.weapons[i][f] = v; return x; }),
@@ -46,8 +48,8 @@ function enSrc(id, i, tokId) {
   const D = enemyD(e), wp = D.weapons[i]; if (!wp) return null;
   const t = tokId ? state.tokens.find(x => x.id === tokId) : null;
   const pen = D.pen, arm = stat => pen && CPR.PEN_STATS.includes(stat) ? [{ l: "Armor", v: pen }] : [];
-  const hp = t && tokHp(t), wd = hp && !D.painImmune ? CPR.wound(hp.hp, hp.max) : null;
-  const extra = [...(wd && wd.pen ? [{ l: wd.label, v: wd.pen }] : []), ...(t ? statusParts(t.status) : [])];
+  const hp = t && tokHp(t), wd = hp && !D.painImmune ? CPR.painFix(CPR.wound(hp.hp, hp.max), D.painEditor) : null;
+  const extra = [...(wd && wd.pen ? [{ l: wd.label, v: wd.pen }] : []), ...(t ? statusParts(t.status, D.immune) : [])];
   const af = D.skills.find(s => s.id === "autofire"), ca = D.ability && D.ability.ca;
   const raw = (enemyOf(e).weapons || [])[i] || {};
   return finishSrc({
@@ -203,7 +205,7 @@ function combatHtml(e) {
           ${roll("death", `<span class="n">${statBase(e, "BODY")}</span><span class="sh-sub">BODY · penalty +${num(s.dsp)}</span>`, "sh-rollbox", "Tira 1d10 + penalità contro BODY")}
           ${edit ? adjBtns(e.id, "dsp", [-1, 1]) : ""}
         </div>
-        <div class="sh-box"><span class="l">Move</span><span class="n">${statEff(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statEff(e, "MOVE")} squares · Run ${statEff(e, "MOVE") * 4} m</span></div>
+        <div class="sh-box"><span class="l">Move</span><span class="n">${statEff(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statEff(e, "MOVE")} squares · Run ${runOf(e)} m</span></div>
         <div class="sh-box"><span class="l">Evasion</span>${(() => { const k = skillByKey(e, "skill:evasion"); return roll("skill:evasion", `<span class="n">${statEff(e, "DEX") + (k ? k.lvl : 0)}</span><span class="sh-sub">DEX + Evasion${statEff(e, "REF") >= 8 ? " · schivi anche i proiettili" : ""}</span>`, "sh-rollbox", "Tira DEX + Evasion + 1d10"); })()}</div>
       </div>
       ${pcPen(e) ? `<div class="en-pen">Armatura pesante: ${pcPen(e)} a REF, DEX e MOVE (già calcolato nei valori e nei tiri)</div>` : ""}

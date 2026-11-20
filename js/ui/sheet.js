@@ -20,7 +20,7 @@ function statEff(e, id) {
 }
 const hpMaxOf = e => { const s = sheetOf(e); return hasVal(s.hpMax) ? num(s.hpMax) : CPR.hpMax(statBase(e, "BODY"), statBase(e, "WILL")); };
 const hpOf = e => { const s = sheetOf(e); return hasVal(s.hp) ? num(s.hp) : hpMaxOf(e); };
-const woundOf = e => CPR.wound(hpOf(e), hpMaxOf(e));
+const woundOf = e => CPR.painFix(CPR.wound(hpOf(e), hpMaxOf(e)), cyberItems(e).length > 0 && cyberFx(e).pain);
 const luckOf = e => { const s = sheetOf(e); return hasVal(s.luck) ? num(s.luck) : statBase(e, "LUCK"); };
 const wornOf = (e, loc) => { const a = (sheetOf(e).armor || {})[loc] || {}; const sp = num(a.sp); return { name: a.name || "", sp, cur: hasVal(a.cur) ? num(a.cur) : sp }; };
 // Armatura Subdermale / Skin Weave: SP sottopelle a testa e corpo (vale la più alta, ma si ablano tutte insieme;
@@ -207,7 +207,7 @@ function sheetHtml(e) {
         </div>
         <div class="sh-box"><span class="l">Luck</span><span class="n">${luckOf(e)}<small> / ${statBase(e, "LUCK")}</small></span>
           ${edit ? `<span class="sh-adj"><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="-1" title="Spendi 1 punto">−</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="1">+</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="reset" title="Ripristina (nuova sessione)">↺</button></span>` : ""}</div>
-        <div class="sh-box"><span class="l">Move</span><span class="n">${statEff(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statEff(e, "MOVE")} squares · Run ${statEff(e, "MOVE") * 4} m</span></div>
+        <div class="sh-box"><span class="l">Move</span><span class="n">${statEff(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statEff(e, "MOVE")} squares · Run ${runOf(e)} m</span></div>
       </div>
       ${pcPen(e) ? `<div class="en-pen">Armatura pesante: ${pcPen(e)} a REF, DEX e MOVE (già calcolato nei valori e nei tiri)</div>` : ""}
       ${(s.status || []).length ? `<div class="sh-status"><span class="sh-k">Stati</span>${statusChips(s.status, null)}</div>` : ""}
