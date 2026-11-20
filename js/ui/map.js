@@ -44,7 +44,8 @@ function tokArmor(t, loc) {
   const a = (t.armor || {})[loc]; if (!a || !num(a.sp)) return null;
   return { name: a.name || "", sp: num(a.sp), cur: hasVal(a.cur) ? num(a.cur) : num(a.sp) };
 }
-const canMove = () => Store.canEdit();
+// si toccano solo i token del layer attivo (i giocatori sono sempre sul layer Token)
+const canMove = t => Store.canEdit() && (!t || tokLayer(t) === curLayer());
 const initList = m => (m.init || []).map(it => { const t = state.tokens.find(x => x.id === it.tokenId); return t ? { ...it, name: tokName(t) } : null; })
   .filter(Boolean).sort((a, b) => b.v - a.v || a.name.localeCompare(b.name, "it"));
 // il turno è salvato come id del token (turnId): così chi non vede i token nascosti non sbaglia il conto
@@ -156,6 +157,8 @@ function renderBoard() {
     bg.innerHTML = m.image ? `<img data-ref="${esc(m.image)}" alt="" draggable="false">` : "";
     hydrate(bg);
   }
+  if (!tt.bgDrag) placeBg($("img", bg), bgOf(m));
+  renderBgFrame();
   applyZoom(); renderTokens(); renderSide();
 }
 function applyZoom() {
@@ -184,7 +187,7 @@ function fitZoom() {
 function tokenParts(t, m) {
   const hp = tokHp(t), img = tokImage(t), dead = hp && hp.hp <= 0;
   return {
-    cls: ["tt-token", tt.sel === t.id && "sel", dead && "dead", turnToken(m) === t.id && "turn", canMove(t) && "mov", t.hidden && "hid"].filter(Boolean).join(" "),
+    cls: ["tt-token", tt.sel === t.id && "sel", dead && "dead", turnToken(m) === t.id && "turn", canMove(t) && "mov", t.hidden && "hid", "layer-" + tokLayer(t), tokLayer(t) !== curLayer() && "inactive"].filter(Boolean).join(" "),
     inner: `<div class="tt-face">${img ? `<img data-ref="${esc(img)}" alt="" draggable="false">` : `<span>${esc(initials(tokName(t)))}</span>`}</div>
       ${hp ? `<div class="tt-hp"><i style="width:${clamp(hp.hp / hp.max * 100, 0, 100)}%"></i></div>` : ""}
       <div class="tt-name">${esc(tokName(t))}</div>
@@ -246,7 +249,7 @@ function renderSel() {
       ${e && isPerson(e) ? `<button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="sheet">Scheda</button>` : ""}
       ${enemy && isGm() ? `<button type="button" class="btn ghost small cyan" data-action="enemy-open" data-id="${esc(e.id)}">Scheda nemico</button>` : ""}
       ${edit ? `<button type="button" class="btn ghost small" data-action="tt-init-one">Iniziativa</button>` : ""}
-      ${gmt ? `${isGm() && Store.gmReady ? `<button type="button" class="btn ghost small yellow" data-action="tt-toggle-hidden">${t.hidden ? "👁 Rivela" : "🔒 Nascondi"}</button>` : ""}
+      ${gmt ? `<label class="tt-lysel" title="Layer del token: GM = nascosto ai giocatori">Layer <select data-tok-layer>${[["token", "Token"], ["map", "Map"], ...(isGm() && Store.gmReady ? [["gm", "GM (nascosto)"]] : [])].map(([v, l]) => `<option value="${v}" ${tokLayer(t) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <button type="button" class="btn ghost small" data-action="tt-edit-token">Modifica</button>
         <button type="button" class="btn ghost small danger" data-action="tt-del-token">Rimuovi</button>` : ""}
     </div>`;
@@ -327,6 +330,7 @@ function bindTable() {
   let pan = null, lastSend = 0;
   wrap.classList.toggle("drawing", tt.tool !== "move");
   wrap.addEventListener("pointerdown", ev => {
+    if (curLayer() === "map" && tt.tool === "move" && bgDown(ev, cellAt)) return;
     if (drawDown(ev, cellAt)) return;
     if (ev.pointerType === "mouse" && ev.button !== 0) return;
     const el = ev.target.closest(".tt-token");
@@ -345,6 +349,7 @@ function bindTable() {
     try { wrap.setPointerCapture(ev.pointerId); } catch {} wrap.classList.add("panning");
   });
   wrap.addEventListener("pointermove", ev => {
+    if (bgMove(ev, cellAt)) return;
     if (drawMove(ev, cellAt)) return;
     const d = tt.drag;
     if (d) {
@@ -369,6 +374,7 @@ function bindTable() {
     }
   });
   const end = (ev, cancel) => {
+    if (bgUp(ev, cancel)) return;
     if (drawUp(ev, cancel)) return;
     const d = tt.drag;
     if (d) {
@@ -471,7 +477,7 @@ function addTokens() {
           <div class="field"><label for="tk-hp">HP max (facoltativo)</label><input id="tk-hp" name="hpMax" type="number" min="0"></div>
           <div class="field"><label for="tk-sp">SP armatura (facoltativa)</label><input id="tk-sp" name="sp" type="number" min="0" placeholder="es. 7 Kevlar, 11 Light Armorjack"></div>
           <div class="field"><label for="tk-c">Colore</label><input id="tk-c" name="color" type="color" value="#ff2a3d"></div>
-          ${isGm() && Store.gmReady ? `<label class="check field full gm-check"><input type="checkbox" name="hidden"> 🔒 Aggiungi nascosti ai giocatori (li riveli poi con un clic)</label>` : ""}
+          ${isGm() && Store.gmReady ? `<label class="check field full gm-check"><input type="checkbox" name="hidden" ${curLayer() === "gm" ? "checked" : ""}> 🔒 Aggiungi sul layer GM (nascosti ai giocatori)</label>` : ""}
         </div>
       </div>
       <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button type="submit" class="btn">Aggiungi</button></div>
@@ -480,16 +486,16 @@ function addTokens() {
   form.addEventListener("submit", async ev => {
     ev.preventDefault();
     const taken = new Set(mapTokens(m).map(t => num(t.x) + "," + num(t.y)));
-    const out = [], hidden = !!(form.elements["hidden"] && form.elements["hidden"].checked);
+    const out = [], hidden = !!(form.elements["hidden"] && form.elements["hidden"].checked), onMap = !hidden && curLayer() === "map" ? { layer: "map" } : {};
     for (const id of $$("input[name=ent]:checked", form).map(i => i.value)) {
       const e = state.entries.find(x => x.id === id);
       // nome e immagine copiati: chi non vede la scheda (NPC segreto) vede comunque il token
-      if (e.kind === "nemico") { out.push(enemyToken(e, m, { hidden, ...freeCell(m, taken) })); continue; }
-      out.push({ mapId: m.id, entryId: id, snapName: e.name, snapImage: imagesOf(e)[0] || "", color: e.kind === "pg" ? "#3dff9a" : "#00f0ff", size: 1, hidden, ...freeCell(m, taken) });
+      if (e.kind === "nemico") { out.push(enemyToken(e, m, { hidden, ...onMap, ...freeCell(m, taken) })); continue; }
+      out.push({ mapId: m.id, entryId: id, snapName: e.name, snapImage: imagesOf(e)[0] || "", color: e.kind === "pg" ? "#3dff9a" : "#00f0ff", size: 1, hidden, ...onMap, ...freeCell(m, taken) });
     }
     const name = form.elements["name"].value.trim(), n = clamp(num(form.count.value) || 1, 1, 20);
     const gsp = form.elements["sp"].value === "" ? null : num(form.elements["sp"].value);
-    if (name) for (let i = 0; i < n; i++) out.push({ mapId: m.id, name: n > 1 ? `${name} ${i + 1}` : name, color: safeColor(form.color.value), size: 1, hidden,
+    if (name) for (let i = 0; i < n; i++) out.push({ mapId: m.id, name: n > 1 ? `${name} ${i + 1}` : name, color: safeColor(form.color.value), size: 1, hidden, ...onMap,
       hpMax: form.hpMax.value === "" ? null : num(form.hpMax.value), armor: gsp ? { head: { sp: gsp }, body: { sp: gsp } } : undefined, ...freeCell(m, taken) });
     if (!out.length) return toast("Scegli almeno un personaggio o scrivi un nome", "err");
     closeModal();
@@ -592,7 +598,7 @@ async function tableAction(a, el) {
     case "tt-init-all": {
       if (!m) return;
       let cur = { ...m };
-      for (const x of mapTokens(m)) cur = { ...cur, init: await initFor(cur, x) };
+      for (const x of mapTokens(m).filter(x => tokLayer(x) !== "map")) cur = { ...cur, init: await initFor(cur, x) };
       const first = initList(cur)[0];
       return saveMap({ ...cur, turn: 0, turnId: first ? first.tokenId : null, round: 1 });
     }
@@ -675,7 +681,7 @@ function onLive(msg) {
   }
   // riga diventata segreta: i giocatori la tolgono, i GM la rileggono dal database (sul canale non viaggia)
   if (msg.t === "gm") {
-    if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes", "netarch"].includes(col) || !msg.id) return;
+    if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes", "netarch", "mapgm"].includes(col) || !msg.id) return;
     const id = String(msg.id);
     if (isGm()) { Store.get(col, id).then(rec => rec && applyLive(col, rec, true)).catch(e => console.warn(e)); return; }
     return removeLive(col, id);
@@ -687,7 +693,9 @@ function onLive(msg) {
 
 // trusted = letto dal database (non dal canale pubblico)
 function applyLive(col, rec, trusted) {
-  if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes", "netarch", "netview"].includes(col)) return;
+  if (!["rolls", "tokens", "maps", "entries", "notes", "gmnotes", "netarch", "netview", "mapgm"].includes(col)) return;
+  if (col === "mapgm" && !trusted) return;
+  if (col === "mapgm") { state.mapgm = state.mapgm || []; upsert(state.mapgm, rec); if (onTable()) renderDraw(); return; }
   if (!trusted && (rec.gmOnly || ["notes", "gmnotes", "netarch"].includes(col))) return;
   // tiro nuovo di qualcun altro: pop-up se il log è chiuso (sempre sulla mappa)
   if (col === "rolls" && !state.rolls.some(x => x.id === rec.id) && (onTable() || !drawer || drawer.hidden)) setTimeout(() => popRoll(rec));

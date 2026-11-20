@@ -2153,3 +2153,26 @@ fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px 
 .cy-row.chip { grid-template-columns: 30px minmax(120px, 2fr) 86px minmax(110px, 1.3fr) 76px 58px 32px 64px minmax(100px, 1.5fr) 30px; }
 @media (max-width: 640px) { .cy-row.chip .cy-lvl, .cy-row.chip [data-f=param] { grid-row: 2; } .cy-row.chip [data-f=cost], .cy-row.chip [data-f=hl], .cy-row.chip [data-f=max] { grid-row: 3; } .cy-row.chip [data-f=note] { grid-row: 4; } }
 .cy-row .cy-lvl { padding: 6px 4px; font-size: 14px; }
+
+/* ---------- layer della mappa ---------- */
+.tt-layers { display: inline-flex; gap: 2px; }
+.tt-tool.tt-ly { width: auto; min-width: 44px; padding: 0 6px; gap: 3px; grid-auto-flow: column; }
+.tt-tool.tt-ly small { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .04em; }
+.tt-tool.tt-txt { width: auto; padding: 0 8px; font-size: 12px; font-family: var(--font-mono); }
+.tt-chk { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); padding: 0 4px; }
+.tt-token.layer-map { z-index: 0; }
+.tt-token.inactive { pointer-events: none; }
+.tt-wrap.lay-map .tt-token:not(.layer-map), .tt-wrap.lay-gm .tt-token:not(.layer-gm) { opacity: .4; }
+.tt-wrap.lay-token .tt-token.layer-map { filter: saturate(.7); }
+.tt-draw .ly-gm { opacity: .75; }
+.tt-draw .ly-gm [data-shape] { stroke-dasharray: 10 6; }
+.tt-draw.erasing g:not(.act) [data-shape] { pointer-events: none; }
+.tt-wrap.lay-map .tt-draw g:not(.ly-map), .tt-wrap.lay-gm .tt-draw g:not(.ly-gm) { opacity: .35; }
+.tt-bg img { position: absolute; left: 0; top: 0; }
+.tt-bgframe { position: absolute; z-index: 5; border: 2px dashed var(--yellow); cursor: move; box-shadow: 0 0 0 1px rgba(0,0,0,.6); }
+.tt-bgframe .bg-h { position: absolute; width: 18px; height: 18px; background: var(--yellow); border: 2px solid #07070b; }
+.tt-bgframe .bg-h.nw { left: -10px; top: -10px; cursor: nwse-resize; } .tt-bgframe .bg-h.se { right: -10px; bottom: -10px; cursor: nwse-resize; }
+.tt-bgframe .bg-h.ne { right: -10px; top: -10px; cursor: nesw-resize; } .tt-bgframe .bg-h.sw { left: -10px; bottom: -10px; cursor: nesw-resize; }
+.tt-bgframe .bg-size { position: absolute; left: 6px; top: 6px; font: 600 16px var(--font-mono); color: #07070b; background: var(--yellow); padding: 2px 6px; pointer-events: none; }
+.tt-lysel { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.tt-lysel select { width: auto; padding: 4px 6px; }
