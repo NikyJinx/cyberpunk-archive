@@ -97,8 +97,12 @@ document.addEventListener("click", async ev => {
           // le opzioni dentro l'arto o l'occhio escono e rientrano con la base
           (cy.slots && cy.slots[slot] || []).forEach(it => { if (out && it.installed !== false) { it.installed = false; it.stored = true; it.withBase = true; } else if (!out && it.withBase) { it.installed = true; delete it.stored; delete it.withBase; } });
           return cy; });
-      } else cyberPatch(id, cy => { const it = ((cy.slots || {})[slot] || [])[i]; if (!it) return cy; if (out) { it.installed = false; it.stored = true; } else { it.installed = true; delete it.stored; delete it.withBase; } return cy; });
-      toast(out ? `Disinstallato${i < 0 ? " con le sue opzioni" : ""}: resta in Equipaggiamento (l'umanità persa non torna)` : `Reinstallato${i < 0 ? " con le sue opzioni" : ""}`, "ok");
+      } else cyberPatch(id, cy => { const list = (cy.slots || {})[slot] || [], it = list[i]; if (!it) return cy;
+        // un'opzione tolta va in idle: da lì si installa in qualsiasi slot
+        if (out) { list.splice(i, 1); cy.slots.idle = [...(cy.slots.idle || []), { ...it, installed: false, stored: true, from: slot }]; }
+        else { it.installed = true; delete it.stored; delete it.withBase; }
+        return cy; });
+      toast(out ? (i < 0 ? "Disinstallato con le sue opzioni: resta in Equipaggiamento (l'umanità persa non torna)" : "Disinstallato: è in idle, lo puoi installare in qualsiasi slot (l'umanità persa non torna)") : `Reinstallato${i < 0 ? " con le sue opzioni" : ""}`, "ok");
       break;
     }
     case "edit-cyber": editCyber(id); break;
@@ -273,6 +277,16 @@ document.addEventListener("click", async ev => {
     case "tt-color": tt.color = safeColor(el.dataset.c); ls.set("nc-draw-color", tt.color); renderDrawBar(); break;
     case "tt-draw-undo": drawUndo(); break;
     case "tt-draw-clear": drawClear(); break;
+    case "cy-install": cyInstall(id, num(el.dataset.i)); break;
+    case "wd-wear": wdWear(id, num(el.dataset.i)); break;
+    case "wd-style-wear": wdStyleWear(id, el.dataset.style || ""); break;
+    case "wd-off-all": wdOffAll(id); break;
+    case "edit-wardrobe": editWardrobe(id); break;
+    case "agent-toggle": agentToggle(id, el.dataset.app); break;
+    case "edit-agent": editAgent(id); break;
+    case "exp-toggle": expToggle(id, el.dataset.app); break;
+    case "exp-pay": expPay(id); break;
+    case "edit-expenses": editExpenses(id); break;
     case "armor-wear": wearArmor(id, num(el.dataset.i), el.dataset.loc === "both" ? "head" : el.dataset.loc); break;
     case "armor-off": takeOffArmor(id, String(el.dataset.loc || "").split(",").filter(Boolean)); break;
     case "wpn-away": {   // arma lasciata a casa / portata con sé

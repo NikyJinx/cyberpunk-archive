@@ -10,7 +10,7 @@ const rawBody = e => num((sheetOf(e).stats || {}).BODY);
 const alveoliOf = e => alveoloSlots(e) + cyberItems(e).filter(it => it.installed !== false && (CW.byId(it.ref) || CW.byName(it.name) || {}).id === "chipslot").length;
 const cyberFx = e => CW.effects(cyberItems(e), rawBody(e), { chipCap: alveoliOf(e) });
 // bonus di un'abilità: Ruolo e cyberware (automatici) + quelli manuali e degli oggetti del riquadro «Bonus»
-const skillBonusAll = (e, k) => [...(k.custom ? [] : [...roleSkillBonus(e, k.id), ...CW.skillBonus(cyberFx(e), k.id, k.lvl)]), ...(k.key ? extraBonus(e, k.key) : [])];
+const skillBonusAll = (e, k) => [...(k.custom ? [] : [...roleSkillBonus(e, k.id), ...CW.skillBonus(cyberFx(e), k.id, k.lvl)]), ...(k.key ? [...extraBonus(e, k.key), ...agentBonus(e, k.key)] : [])];
 const cwOf = it => CW.byId(it.ref) || CW.byName(it.name);
 // lista degli effetti del cyberware (tab Cyberware e Combattimento)
 function cyberFxHtml(e, compact = false) {

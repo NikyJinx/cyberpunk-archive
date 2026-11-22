@@ -138,6 +138,7 @@ function sheetPatch(id, fn) {
 }
 function refreshSheetView(id) {
   const e = state.entries.find(x => x.id === id); if (!e) return;
+  if (refreshLifeTab(e)) return;   // Wardrobe, Agent, Spese mensili
   const box = $(`#modal .sh[data-sheet="${CSS.escape(id)}"]`), dt = $(`#modal .nd-tab[data-deck-tab="${CSS.escape(id)}"]`), cb = $(`#modal .cb[data-combat="${CSS.escape(id)}"]`), rt = $(`#modal .rl-tab[data-roles-tab="${CSS.escape(id)}"]`);
   const cw = $(`#modal .cy-wrap[data-cyber="${CSS.escape(id)}"]`), gw = $(`#modal .gear-wrap[data-gear="${CSS.escape(id)}"]`);
   if (!box && !dt && !cb && !rt && !cw && !gw) return;

@@ -258,7 +258,7 @@ window.MK = (() => {
         if (!num(f.slots)) return err("manca «Slot:»");
         items.push({ ...base, type, id: "mk-" + slug(b.name), slots: num(f.slots), special: f.rules || f.special || "" });
       } else if (type === "gear") {
-        items.push({ ...base, type, id: "mk-" + slug(b.name), gcat: /veicol|vehicle/.test(norm(f.cat)) ? "veicoli" : "equip", ...(f.cat ? { label: f.cat } : {}) });
+        items.push({ ...base, type, id: "mk-" + slug(b.name), gcat: /veicol|vehicle/.test(norm(f.cat)) ? "veicoli" : /vestit|cloth|fashion|abbigliam/.test(norm(f.cat)) ? "vestiti" : "equip", ...(f.cat ? { label: f.cat } : {}) });
       } else {
         const g = findGroup(f.group || f.cat); if (!g) return err(`gruppo del cyberware non riconosciuto («${f.group || f.cat || ""}»): usa ad es. Neuralware, Cyberottiche, Impianti Interni`);
         const pu = String(f.pu || "");
