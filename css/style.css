@@ -2176,3 +2176,43 @@ fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px 
 .tt-bgframe .bg-size { position: absolute; left: 6px; top: 6px; font: 600 16px var(--font-mono); color: #07070b; background: var(--yellow); padding: 2px 6px; pointer-events: none; }
 .tt-lysel { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .tt-lysel select { width: auto; padding: 4px 6px; }
+
+/* ---------- HQ ---------- */
+.hq-lost { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--red); background: rgba(255,42,61,.1); color: var(--yellow); }
+.hq-notes { white-space: pre-wrap; color: #c9c9dc; }
+.hq-ip { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 12px 16px; margin: 6px 0 18px; border: 1px solid var(--line); border-left: 3px solid var(--cyan); background: var(--bg-2); }
+.hq-ip-n { display: grid; }
+.hq-ip-n .l { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; color: var(--muted); }
+.hq-ip-n b { font-family: var(--font-head); font-size: 30px; color: var(--cyan); line-height: 1; }
+.hq-ip-sum { display: grid; font-family: var(--font-mono); font-size: 12.5px; color: #c9c9dc; }
+.hq-earn { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 320px; }
+.hq-earn input[name=n] { width: 90px; } .hq-earn input[name=why] { flex: 1 1 160px; }
+.hq-floors { margin: 6px 0 10px; }
+.hq-floor { margin-bottom: 18px; }
+.hq-floor-img { display: block; cursor: zoom-in; border: 1px solid var(--line); background: #050508; }
+.hq-floor-img img { display: block; width: 100%; max-height: 70vh; object-fit: contain; }
+.hq-t td:nth-child(2), .hq-t td:nth-child(3) { min-width: 220px; }
+.hq-t tr.own td:first-child b { color: var(--yellow); }
+.hq-t.off { opacity: .5; }
+.hq-st { display: block; font-family: var(--font-mono); font-size: 12px; }
+.hq-st.no { color: var(--muted); } .hq-st.ok { color: var(--green); } .hq-st.up { color: var(--yellow); }
+.hq-lose { display: block; margin-top: 4px; background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.hq-lose:hover { color: var(--red); }
+.hq-lv { margin-top: 6px; font-size: 13.5px; }
+.hq-lv summary { cursor: pointer; color: var(--cyan); }
+.hq-lv ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 3px; }
+.hq-lv li { color: var(--muted); }
+.hq-lv li.got { color: var(--text); }
+.hq-lv li.got::marker { color: var(--green); }
+
+.hq-own td:nth-child(3) { min-width: 300px; }
+.hq-own td p { margin: 0 0 4px; }
+.hq-own .hq-upg { color: var(--yellow); }
+.hq-own .hq-got { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 3px; color: var(--yellow); }
+
+/* armi lasciate a casa */
+.cb-away { margin-top: 12px; padding: 8px 12px; border: 1px dashed var(--line); background: rgba(255,255,255,.02); }
+.cb-away .sh-sec-head h4 { color: var(--muted); }
+.cb-away ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.cb-away li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; opacity: .75; }
+.cb-away li small { color: var(--muted); font-family: var(--font-mono); }

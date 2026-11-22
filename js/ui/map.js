@@ -672,6 +672,7 @@ function onLive(msg) {
   if (col === "meta") {
     const r = msg.rec; if (!r) return;
     if (r.id === "site") applySharedMap(r.tableMap);
+    if (r.id === "hq") { state.hq = r; HQ.setHomebrew(r.items); if (!$("#modal form") && /^#\/hq/.test(location.hash)) route(); return; }
     if (["rules", "nethb", "cyberhb", "markethb", "market"].includes(r.id)) {
       if (r.id === "rules") state.rules = r; else if (r.id === "cyberhb") { state.cyberhb = r; CW.setHomebrew(r); }
       else if (r.id === "markethb") { state.markethb = r; MK.setHomebrew(r); } else if (r.id === "market") state.market = r; else { state.nethb = r; NET.setHomebrew(r); }

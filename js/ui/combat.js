@@ -28,7 +28,7 @@ const qualBonus = w => w.quality === "excellent" ? [{ l: "Excellent", v: 1 }] : 
 const isSmartgun = w => /smart\s*gun|smartgun/i.test(`${w.name || ""} ${w.note || ""}`);
 const smartBonus = (e, w) => isSmartgun(w) && cyberItems(e).length && cyberFx(e).smart ? [{ l: "Smartgun Link", v: 1 }] : [];
 function pcSrc(e, i) {
-  const s = sheetOf(e), w = (s.weapons || [])[i]; if (!w) return null;
+  const s = sheetOf(e), w = (s.weapons || [])[i]; if (!w || w.away) return null;   // lasciata a casa: niente tiri
   const k = skillByKey(e, weaponSkillKey(w.skill)) || skillByKey(e, "skill:handgun"), af = skillByKey(e, "skill:autofire");
   return finishSrc({
     kind: "pc", id: e.id, i, key: `pc:${e.id}:${i}`, w, cat: sheetWeaponCat(w), mods: [...(s.mods || []), ...roleMods(e), ...cyberFx(e).mods], skillLabel: k.label,
@@ -167,6 +167,15 @@ const cbQuick = (X, cls = "chip") => !X ? "" : `<button type="button" class="${c
   + (X.autoMax ? `<button type="button" class="${cls}" data-action="cb-roll" ${X.attrs} data-mode="auto" title="Autofire">AF <b>${X.afBase}</b></button>` : "")
   + `<button type="button" class="${cls} y" data-action="cb-dmg" ${X.attrs}>${esc(X.dmg)}</button>`;
 
+// armi lasciate a casa: in fondo alla tab Combattimento, senza tiri finché non le porti con te
+function awayBox(e, edit) {
+  const list = (sheetOf(e).weapons || []).map((w, i) => ({ w, i })).filter(x => x.w.away);
+  if (!list.length) return "";
+  return `<div class="cb-away"><div class="sh-sec-head"><h4>🏠 A casa</h4><span class="hint">non si possono usare finché non le porti con te</span></div>
+    <ul>${list.map(({ w, i }) => { const T = CPR.weaponType(sheetWeaponCat(w)) || {};
+      return `<li><span><b>${esc(w.name || T.label || "Arma")}</b> <small>${esc([T.label && T.label !== w.name ? T.label : "", w.dmg || T.dmg, w.mag ? `Car. ${w.mag}` : ""].filter(Boolean).join(" · "))}</small></span>
+        ${edit ? `<button type="button" class="btn ghost small g-act" data-action="wpn-away" data-id="${esc(e.id)}" data-i="${i}">🎒 Porta con sé</button>` : ""}</li>`; }).join("")}</ul></div>`;
+}
 function combatHtml(e) {
   const s = sheetOf(e), edit = Store.canEdit(), id = esc(e.id);
   if (!hasSheet(e)) return `<div class="cb" data-combat="${id}"><div class="empty"><div class="big">// SCHEDA VUOTA</div>Compila prima la scheda.
@@ -213,7 +222,9 @@ function combatHtml(e) {
       ${mods.length ? `<div class="sh-mods"><span class="sh-k">Modificatori speciali</span>${mods.map(m => `<span class="st-chip" title="${esc(m.note || "")}">${esc(m.name || "Modificatore")} <b>${num(m.value) > 0 ? "+" : ""}${num(m.value)}</b> <small>${esc((CPR.MOD_TARGETS.find(t => t[0] === m.target) || [, ""])[1])}</small></span>`).join("")}</div>` : ""}
       ${cyberFxHtml(e, true)}
       <div class="sh-sec-head"><h4>Weapons</h4></div>
-      ${weapons.length ? `<div class="sh-weapons">${weapons.map((_, i) => cbCard(pcSrc(e, i))).join("")}</div>` : `<p class="hint">Nessuna arma: aggiungile da «Modifica scheda».</p>`}
+      ${weapons.some(w => !w.away) ? `<div class="sh-weapons">${weapons.map((w, i) => w.away ? "" : cbCard(pcSrc(e, i))).join("")}</div>`
+        : `<p class="hint">${weapons.length ? "Tutte le armi sono a casa: portane una con te qui sotto o dall'Equipaggiamento." : "Nessuna arma: aggiungile da «Modifica scheda»."}</p>`}
+      ${awayBox(e, edit)}
       ${critBlock(e, edit)}
     </div>`;
 }
@@ -238,7 +249,7 @@ function editSheet(id) {
     <input data-f="afDmg" placeholder="Autofire 2d6" title="Danno dell'autofire (vuoto = 2d6). Vale anche 3d6kh2 = tira 3d6 e tieni i 2 più alti" value="${esc(w.afDmg || "")}">
     <input data-f="auto" type="number" min="0" max="10" placeholder="× max" title="Moltiplicatore massimo dell'autofire (vuoto = quello della categoria: SMG 3, fucile d'assalto 4; 0 o vuoto su armi senza autofire)" value="${esc(w.auto ?? "")}">
     <input data-f="note" placeholder="Note (Smartgun, Excellent…)" value="${esc(w.note)}">
-    <input type="hidden" data-f="quality" value="${esc(w.quality || "")}"><input type="hidden" data-f="market" value="${esc(w.market || "")}"><input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}">
+    <input type="hidden" data-f="away" value="${w.away ? "1" : ""}"><input type="hidden" data-f="quality" value="${esc(w.quality || "")}"><input type="hidden" data-f="market" value="${esc(w.market || "")}"><input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
   const modRow = (m = {}) => `<div class="sh-row mod-row">
     <label class="check" title="Attivo"><input type="checkbox" data-f="on" ${m.on === false ? "" : "checked"}></label>
@@ -333,7 +344,7 @@ function editSheet(id) {
     for (const st of CPR.STATS) { const x = nv("st-" + st.id); if (x != null) stats[st.id] = x; }
     for (const k of CPR.SKILLS) { const x = nv("sk-" + k.id); if (x) skills[k.id] = x; }
     const custom = readRows(form, "#sh-cus .sh-row").filter(c => c.name).map(c => ({ ...c, lvl: num(c.lvl) }));
-    const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name).map(w => ({ ...w, auto: w.auto === "" ? "" : num(w.auto) }));
+    const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name).map(({ away, ...w }) => ({ ...w, auto: w.auto === "" ? "" : num(w.auto), ...(away ? { away: true } : {}) }));
     const badW = weapons.filter(w => (w.dmg && !CPR.parse(w.dmg)) || (w.afDmg && !CPR.parse(w.afDmg)));
     if (badW.length) return toast(`Danno non valido in: ${badW.map(w => w.name).join(", ")} (es. 3d6, 2d6+2, 3d6kh2)`, "err");
     const mods = readRows(form, "#sh-mods .sh-row").filter(m => m.name || num(m.value)).map(m => ({ ...m, value: num(m.value) }));

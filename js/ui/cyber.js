@@ -213,9 +213,11 @@ function gearInner(e) {
   const fromGear = (it, gi) => ({ qty: num(it.qty), name: it.name, detail: it.detail, note: it.note,
     ...(it.cat === "droghe" && edit ? { act: `<button type="button" class="btn ghost small g-act" data-action="drug-take" data-id="${id}" data-i="${gi}" title="Assumi una dose: tiro di Resist Torture/Drugs contro la VD">💉 Assumi</button>` } : {}) });
   // armi della tab Combattimento + quelle segnate solo nell'inventario
-  (s.weapons || []).forEach(w => {
+  (s.weapons || []).forEach((w, i) => {
     const T = CPR.weaponType(w.cat || CPR.guessWeapon(w.name, w.skill)) || {};
-    rows.armi.push({ name: w.name || T.label || "Arma", detail: [T.label && T.label !== w.name ? T.label : "", w.dmg || T.dmg, w.rof ? `ROF ${w.rof}` : "", w.mag ? `Car. ${w.mag}` : ""].filter(Boolean).join(" · "), note: w.note });
+    rows.armi.push({ name: w.name || T.label || "Arma", detail: [T.label && T.label !== w.name ? T.label : "", w.dmg || T.dmg, w.rof ? `ROF ${w.rof}` : "", w.mag ? `Car. ${w.mag}` : ""].filter(Boolean).join(" · "), note: w.note,
+      tag: w.away ? "🏠 a casa" : "🎒 con sé", cls: w.away ? "stored" : "",
+      act: edit ? `<button type="button" class="btn ghost small g-act" data-action="wpn-away" data-id="${id}" data-i="${i}" title="${w.away ? "La porti con te: torna nella tab Combattimento" : "La lasci a casa: va in fondo alla tab Combattimento e non si può usare"}">${w.away ? "🎒 Porta con sé" : "🏠 Lascia a casa"}</button>` : "" });
   });
   // armature: quelle indossate e quelle nell'inventario (con lo stesso nome sono la stessa armatura)
   const LOC = { head: "testa", body: "corpo" };

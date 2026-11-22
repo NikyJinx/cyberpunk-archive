@@ -32,6 +32,8 @@ Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del perso
 
 La **finestra della scheda** (dossier, scheda, combattimento, cyberware…) si sposta trascinandola dalla barra in alto e si ridimensiona dall'angolo in basso a destra; posizione e misura restano su quel dispositivo (doppio clic sulla barra o ⟲ la rimettono com'era). ⇱ la **sgancia**: resta aperta e la pagina dietro si può usare (mappa, dice log, altre pagine); 📌 la riaggancia. ⧉ la apre in una **finestra a parte** del browser, che mostra solo la scheda e si aggiorna in tempo reale con le modifiche fatte altrove. Su schermi stretti la finestra resta fissa.
 
+Nella sezione **Armi** dell'Equipaggiamento ogni arma ha **🏠 Lascia a casa** / **🎒 Porta con sé**: un'arma lasciata a casa sparisce dalle schede delle armi del Combattimento (e dai tiri rapidi del Party), finisce nel riquadro «🏠 A casa» in fondo alla tab Combattimento e non si può tirare finché non la riporti con te (da lì o dall'Equipaggiamento).
+
 Nella sezione **Cyberdeck** dell'Equipaggiamento ci sono i deck con quello che hanno installato (⇩ Disinstalla lo rimette nell'inventario) e, sotto «Non installati», programmi, Black ICE e hardware sfusi con ⇧ Installa nel deck scelto; anche la tab Cyberdeck ha il riquadro «Nell'inventario» per installarli nel deck in uso. Se il deck è pieno l'installazione viene rifiutata.
 
 La scheda **Equipaggiamento** è l'inventario completo, diviso per categoria: eddies, armi (anche quelle della tab Combattimento), armature (con quelle indossate), cyberware, cyberdeck con programmi e hardware, oggetti e veicoli. Il cyberware si può **disinstallare** da qui (⇩) senza perderlo: resta nell'elenco come ⬚ disinstallato, non dà più effetti né toglie umanità massima, ma l'umanità già persa resta (torna solo con la terapia). Togliendo un Cyberbraccio, un Cyberocchio… escono con lui anche le opzioni che contiene, e ⇧ Reinstalla le rimette.
@@ -132,6 +134,14 @@ Descrizione: Revolver enorme in titanio.
 ```
 
 Armatura: `SP`, `Malus`. Cyberware: `Gruppo` (Fashionware, Neuralware, Cyberottiche, Cyberudito, Impianti Interni, Impianti Esterni, Cyberbraccio, Cybergamba, Borgware), `Installazione`, `PU` (es. `2d6 (7)`), `Slot`, `Richiede`. Tutti: `Fonte`.
+
+### ⌂ HQ — `// SAFEHOUSE`
+La base della crew (regole dei Headquarters).
+- **Piani**: ognuno con nome, piantina e note; si passa da uno all'altro con le schede, la piantina si apre a tutto schermo e il GM può aprirla come mappa tattica («🗺 Apri sulla Mappa», nascosta ai giocatori finché non la mostra).
+- **HQ IP**: la crew ne riceve tanti quanti IP riceve dalla colonna Group dopo una missione. «+ Aggiungi» con il motivo, storico e «Annulla l'ultimo».
+- **Migliorie**: Evidence Wall, Garage, Lockup, Lounge, Medbay, Morale Boost, Rent Reduction, Server Room, Studio, Training Area, Workshop, Workstation, con effetto, upgrade, livello e costo (40 HQ IP). «Compra» e «Upgrade» spendono gli HQ IP; ogni miglioria si compra e si potenzia una volta, il Morale Boost fino a 10 (con la tabella dei benefici, quelli raggiunti evidenziati), la Rent Reduction finché i letti non raddoppiano. «✕ persa» la toglie senza restituire gli HQ IP.
+- **★ Migliorie custom** e modifica di quelle esistenti (costi, upgrade massimi, effetti, benefici livello per livello); le migliorie del manuale modificate si possono ripristinare.
+- «Accesso perso» segnala che la crew non può usare l'HQ: i benefici sono sospesi finché non lo riprende.
 
 ### ⌬ NET — `// NET_ARCHITECTURE`
 Le Architetture di Rete che il GM sta mostrando: compaiono piano per piano mentre il Netrunner scende, con Password, File, Nodi e Black ICE (REZ compresi), aggiornate in tempo reale. I piani non ancora raggiunti e le note del GM non arrivano ai giocatori.
@@ -254,6 +264,7 @@ js/net.js               Netrunning: programmi, Black ICE, hardware, Demoni, gene
 js/roles.js             Ruoli e Capacità di Ruolo
 js/cyberware.js         catalogo del cyberware base con gli effetti
 js/market.js            catalogo del Night Market (armi, armature, equipaggiamento) e lettore del formato a blocchi
+js/hq.js                migliorie dell'HQ (Headquarters)
 js/ui/                  interfaccia, un file per sezione (caricati in ordine da index.html):
   core.js               costanti, stato, utilità, dati, menu, routing, Home e Database
   cyber.js              tab Cyberware ed Equipaggiamento (sagoma, slot, umanità)
@@ -261,6 +272,7 @@ js/ui/                  interfaccia, un file per sezione (caricati in ordine da 
   roles.js              tab Ruoli
   catalog.js            catalogo del cyberware nelle schede, cyberware custom, pagina Night Market
   market.js             Night Market: acquisti, storico, impostazioni del GM, importazione
+  hq.js                 pagina HQ: piani, migliorie, HQ IP
   ip.js                 Punti Miglioramento
   combat.js             tab Combattimento e schede delle armi (PG e nemici)
   rules.js              munizioni, stati, Critical Injury, modificatori, Regole della campagna
