@@ -194,6 +194,7 @@ async function loadAll() {
   state.cyberhb = meta.find(m => m.id === "cyberhb") || null; CW.setHomebrew(state.cyberhb);
   state.markethb = meta.find(m => m.id === "markethb") || null; MK.setHomebrew(state.markethb);
   state.market = meta.find(m => m.id === "market") || null;
+  state.hq = meta.find(m => m.id === "hq") || null; HQ.setHomebrew(state.hq && state.hq.items);
   // tavolo di gioco: se qualcosa va storto qui, il resto del sito funziona lo stesso
   try {
     const [maps, tokens, rolls] = await Promise.all([Store.list("maps"), Store.list("tokens"), Store.list("rolls", { limit: 100 })]);
@@ -228,7 +229,7 @@ function renderChrome() {
 const MENU_INFO = {
   home: ["⌂", "Pagina iniziale"], database: ["▤", "PG, NPC, fazioni, luoghi"], diario: ["✎", "Cronaca e quest"],
   calendario: ["▦", "Eventi e meteo"], appunti: ["✉", "Note della campagna"], tracce: ["♫", "Colonna sonora"],
-  party: ["◈", "Schede dei PG"], mappa: ["⬡", "Mappa, token e iniziativa"], net: ["⌬", "Architetture di Rete"], glossario: ["❖", "Negozio: armi, cyberware, regole"], gm: ["🔒", "Solo per i GM"],
+  party: ["◈", "Schede dei PG"], mappa: ["⬡", "Mappa, token e iniziativa"], net: ["⌬", "Architetture di Rete"], glossario: ["❖", "Negozio: armi, cyberware, regole"], hq: ["⌂", "Base della crew, migliorie, HQ IP"], gm: ["🔒", "Solo per i GM"],
 };
 function renderSideMenu() {
   const box = $("#side-nav"); if (!box) return;
@@ -300,6 +301,7 @@ function route() {
   else if (page === "party") app.innerHTML = viewParty();
   else if (page === "net") app.innerHTML = viewNet();
   else if (page === "glossario") app.innerHTML = viewGlossary();
+  else if (page === "hq") app.innerHTML = viewHq();
   else if (page === "gm") {
     if (!isGm()) { location.replace("#/home"); return; }
     app.innerHTML = viewGm();

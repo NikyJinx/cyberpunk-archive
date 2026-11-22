@@ -42,7 +42,7 @@ function partyCard(e) {
       <div class="pc-rolls">
         ${roll("init", "Initiative", "chip y")}${roll("death", "Death Save", "chip r")}
         ${top.map(k => roll(k.key, `${esc(k.label)} <b>${k.base}</b>`)).join("")}
-        ${(sheetOf(e).weapons || []).slice(0, 2).map((_, i) => cbQuick(pcSrc(e, i))).join("")}
+        ${(sheetOf(e).weapons || []).map((w, i) => ({ w, i })).filter(x => !x.w.away).slice(0, 2).map(x => cbQuick(pcSrc(e, x.i))).join("")}
         ${isNetrunner(e) ? netQuick(activeDeck(e), ifaceOf(e), (w, l, c) => roll("deck:" + w, l, c)) : ""}
       </div>
       <div class="pc-foot">

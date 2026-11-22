@@ -258,11 +258,27 @@ document.addEventListener("click", async ev => {
     case "drug-take": drugTake(id, num(el.dataset.i)); break;
     case "deck-install": { const sel = el.closest("li") && $(".g-deck", el.closest("li")); deckInstall(id, num(el.dataset.i), num(sel ? sel.value : el.dataset.deck)); break; }
     case "tt-tool": setTool(el.dataset.tool); break;
+    case "hq-buy": hqBuy(el.dataset.id); break;
+    case "hq-lose": hqLose(el.dataset.id); break;
+    case "hq-log": hqLog(); break;
+    case "hq-undo": hqUndo(); break;
+    case "hq-edit": hqEdit(); break;
+    case "hq-item": hqItemEdit(el.dataset.id); break;
+    case "hq-floor": hqFloorEdit(el.dataset.id); break;
+    case "hq-floor-go": hqFloor = el.dataset.id; ls.set("nc-hq-floor", hqFloor); route(); break;
+    case "hq-floor-map": hqFloorMap(el.dataset.id); break;
+    case "hq-floor-zoom": { const f = (hqRec().floors || []).find(x => x.id === el.dataset.id); if (f && f.image) openLightbox([f.image], 0); break; }
     case "tt-layer": setLayer(el.dataset.layer); break;
     case "tt-bg-fit": bgFit(); break;
     case "tt-color": tt.color = safeColor(el.dataset.c); ls.set("nc-draw-color", tt.color); renderDrawBar(); break;
     case "tt-draw-undo": drawUndo(); break;
     case "tt-draw-clear": drawClear(); break;
+    case "wpn-away": {   // arma lasciata a casa / portata con sé
+      if (!Store.canEdit()) break;
+      const i = num(el.dataset.i);
+      sheetPatch(id, s => { const w = (s.weapons || [])[i]; if (!w) return s; if (w.away) delete w.away; else w.away = true; return s; });
+      break;
+    }
     case "tt-dsp": {   // penalità del Death Save dal pannello del token
       const t = state.tokens.find(x => x.id === tt.sel); if (!t || !Store.canEdit()) break;
       const e = tokEntry(t), d = num(el.dataset.d);

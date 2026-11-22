@@ -12,7 +12,7 @@ function openEntry(id, tab = "dossier") {
   const edit = Store.canEdit();
   const tabs = isPerson(e) ? `
     <div class="dossier-tabs" role="tablist">
-      ${[["dossier", "Dossier"], ["sheet", `Scheda${hasSheet(e) ? ` <span>${hpOf(e)}/${hpMaxOf(e)}</span>` : ""}`], ["roles", `Ruoli${rolesOf(e).length > 1 ? ` <span>${rolesOf(e).length}</span>` : ""}`], ["combat", `Combattimento${(sheetOf(e).weapons || []).length ? ` <span>${sheetOf(e).weapons.length}</span>` : ""}`], ["cyber", `Cyberware${cyberCount(e) ? ` <span>${cyberCount(e)}</span>` : ""}`], ["gear", `Equipaggiamento${gearItems(e).length ? ` <span>${gearItems(e).length}</span>` : ""}`], ...(isNetrunner(e) ? [["deck", `Cyberdeck${decksOf(e).length > 1 ? ` <span>${decksOf(e).length}</span>` : ""}`]] : [])]
+      ${[["dossier", "Dossier"], ["sheet", `Scheda${hasSheet(e) ? ` <span>${hpOf(e)}/${hpMaxOf(e)}</span>` : ""}`], ["roles", `Ruoli${rolesOf(e).length > 1 ? ` <span>${rolesOf(e).length}</span>` : ""}`], ["combat", `Combattimento${(sheetOf(e).weapons || []).filter(w => !w.away).length ? ` <span>${sheetOf(e).weapons.filter(w => !w.away).length}</span>` : ""}`], ["cyber", `Cyberware${cyberCount(e) ? ` <span>${cyberCount(e)}</span>` : ""}`], ["gear", `Equipaggiamento${gearItems(e).length ? ` <span>${gearItems(e).length}</span>` : ""}`], ...(isNetrunner(e) ? [["deck", `Cyberdeck${decksOf(e).length > 1 ? ` <span>${decksOf(e).length}</span>` : ""}`]] : [])]
         .map(([t, l]) => `<button type="button" role="tab" class="${t === tab ? "active" : ""}" aria-selected="${t === tab}" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="${t}">${l}</button>`).join("")}
     </div>` : "";
   if (tab !== "dossier") {

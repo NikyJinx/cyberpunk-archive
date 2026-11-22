@@ -9,9 +9,9 @@ Questo file spiega **come lavorare** su Night City Archive. Cosa fa il sito e co
 - Testi del sito, commenti e messaggi di commit **in italiano**. I nomi delle regole del manuale (Handgun, Death Save, Black ICE…) restano in inglese, come nel resto del sito.
 
 ## Come sono fatti i file
-- `index.html` carica gli script **in ordine**: `js/config.js`, `store.js`, `dice.js` (CPR), `net.js` (NET), `roles.js` (RL), `cyberware.js` (CW), `market.js` (MK), poi i file di `js/ui/` da `core.js` a `boot.js`.
+- `index.html` carica gli script **in ordine**: `js/config.js`, `store.js`, `dice.js` (CPR), `net.js` (NET), `roles.js` (RL), `cyberware.js` (CW), `market.js` (MK), `hq.js` (HQ), poi i file di `js/ui/` da `core.js` a `boot.js`.
 - I file di `js/ui/` condividono costanti e funzioni nello scope globale: una `const` definita in `core.js` si usa in `map.js`. **Non trasformarli in moduli** e non cambiare l'ordine senza motivo. Un file nuovo va aggiunto a `index.html` nel punto giusto.
-- I cataloghi (armi, cyberware, droghe, programmi…) sono in `js/market.js`, `js/cyberware.js` e `js/net.js`. Le voci custom degli utenti stanno invece nel database (record meta `markethb`, `cyberhb`, `nethb`).
+- I cataloghi (armi, cyberware, droghe, programmi…) sono in `js/market.js`, `js/cyberware.js` e `js/net.js`. Le voci custom degli utenti stanno invece nel database (record meta `markethb`, `cyberhb`, `nethb`; l'HQ della crew nel record meta `hq`; i disegni del layer GM della mappa nella collezione `mapgm`, solo GM).
 - **Cache**: ogni volta che cambi un file JS o CSS, alza il numero `?v=NN` in **tutte** le righe di `index.html` (anche il CSS), altrimenti i browser dei giocatori tengono i file vecchi.
 
 ## Regole che non si toccano

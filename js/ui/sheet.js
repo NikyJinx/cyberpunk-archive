@@ -214,7 +214,7 @@ function sheetHtml(e) {
 
       <div class="sh-stats">${CPR.STATS.map(st => roll("stat:" + st.id, `<span class="k">${st.id}</span><span class="v">${statEff(e, st.id)}</span>${statEff(e, st.id) !== statBase(e, st.id) ? `<small>base ${statBase(e, st.id)}</small>` : ""}`, "sh-stat", `${st.label}: ${st.id} + 1d10`)).join("")}</div>
 
-      <div class="sh-sec-head"><h4>Combat</h4><span class="hint">${weapons.length} arm${weapons.length === 1 ? "a" : "i"} · HP, armatura, iniziativa, stati e Critical Injury</span>
+      <div class="sh-sec-head"><h4>Combat</h4><span class="hint">${weapons.filter(w => !w.away).length} arm${weapons.filter(w => !w.away).length === 1 ? "a" : "i"}${weapons.some(w => w.away) ? ` (+${weapons.filter(w => w.away).length} a casa)` : ""} · HP, armatura, iniziativa, stati e Critical Injury</span>
         <button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="combat">Apri Combattimento →</button></div>
       ${isNetrunner(e) ? `<div class="sh-sec-head"><h4>Cyberdeck</h4><span class="hint">${esc(activeDeck(e).name || "Cyberdeck")} · Interface ${ifaceOf(e)} · ${CPR.netActions(ifaceOf(e))} NET Actions</span>
         <button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="deck">Apri il Cyberdeck →</button></div>` : ""}
