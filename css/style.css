@@ -2354,3 +2354,20 @@ fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px 
   .cy-idle li { grid-template-columns: 1fr auto; }
   .cy-idle li .cy-cost, .cy-idle li .cy-hl { display: none; }
 }
+
+/* nome sotto l'alias: un po' più grande dell'alias di prima */
+.handle { font-size: 15px; }
+.card-body .handle { font-size: 14px; }
+.dossier .handle { font-size: 19px; }
+.tab-title .handle { font-size: 17px; }
+.pc-name { font-family: var(--font-mono); color: var(--yellow); font-size: 14px; }
+/* fazioni multiple */
+.tag-in { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; border: 1px solid var(--line); background: var(--bg-2); padding: 4px; min-height: 40px; cursor: text; }
+.tag-chips { display: contents; }
+.tag-in input:not([type=hidden]) { flex: 1 1 120px; min-width: 100px; border: 0; background: none; padding: 4px; }
+.tag-in input:not([type=hidden]):focus { outline: none; }
+.tag-in:focus-within { border-color: var(--cyan); }
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--red); color: var(--text); padding: 1px 2px 1px 8px; font-size: 14px; }
+.tag-chip button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
+.tag-chip button:hover { color: var(--red); }
+.tag-chip.party, .badge.faction.party { border-color: var(--green); color: var(--green); }

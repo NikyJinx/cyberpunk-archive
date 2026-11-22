@@ -159,11 +159,20 @@ function sunoEmbed(url) {
 
 // trova la scheda per nome o per alias (campo alias, anche più alias separati da virgola)
 const findEntry = name => { const n = norm(name); return state.entries.find(e => norm(e.name) === n) || state.entries.find(e => String(e.handle || "").split(/[,/]/).some(a => a.trim() && norm(a) === n)); };
+// fazioni: più di una, separate da virgola nel campo faction («Arasaka, Party»)
+const factionsOf = e => String((e && e.faction) || "").split(",").map(s => s.trim()).filter(Boolean);
+const inFaction = (e, name) => factionsOf(e).some(f => norm(f) === norm(name));
+// nel Party: i PG e gli NPC con la fazione «Party»
+const isPartyMember = e => e.kind === "pg" || (e.kind === "npc" && inFaction(e, "party"));
+// titolo del record: l'alias se c'è, con il nome sotto
+const titleOf = e => (e.handle || "").trim() || e.name || "Senza nome";
+const subNameOf = e => (e.handle || "").trim() && e.name ? e.name : "";
+const factionBadges = e => factionsOf(e).map(f => `<span class="badge faction ${norm(f) === "party" ? "party" : ""}">${esc(f)}</span>`).join("");
 const factionEntry = name => state.entries.find(e => e.kind === "fazione" && norm(e.name) === norm(name));
 const factions = () => {
   const set = new Map();
   for (const e of state.entries) {
-    if (e.faction) set.set(norm(e.faction), e.faction.trim());
+    factionsOf(e).forEach(f => set.set(norm(f), f));
     if (e.kind === "fazione" && e.name) set.set(norm(e.name), e.name.trim());
   }
   return [...set.values()].sort((a, b) => a.localeCompare(b, "it"));
@@ -376,7 +385,7 @@ function filteredEntries() {
   const f = state.filter, q = norm(f.q);
   let list = state.entries.filter(e =>
     (f.kind === "all" || e.kind === f.kind) &&
-    (!f.faction || norm(e.faction) === norm(f.faction) || (e.kind === "fazione" && norm(e.name) === norm(f.faction))) &&
+    (!f.faction || inFaction(e, f.faction) || (e.kind === "fazione" && norm(e.name) === norm(f.faction))) &&
     (!f.status || e.status === f.status) &&
     (!q || [e.name, e.handle, e.faction, e.role, e.location, e.description, e.notes, (e.tags || []).join(" "),
             ...(e.custom || []).map(c => c.k + " " + c.v)].some(v => norm(v).includes(q)))
@@ -434,11 +443,11 @@ function cardEntry(e) {
         ${imgs.length > 1 ? `<span class="img-count">▣ ${imgs.length}</span>` : ""}
       </div>
       <div class="card-body">
-        <h3>${esc(e.name || "Senza nome")}</h3>
-        ${e.handle ? `<div class="handle">“${esc(e.handle)}”</div>` : ""}
+        <h3>${esc(titleOf(e))}</h3>
+        ${subNameOf(e) ? `<div class="handle">${esc(subNameOf(e))}</div>` : ""}
         <div class="meta">
           ${gmBadge(e)}
-          ${e.faction ? `<span class="badge faction">${esc(e.faction)}</span>` : ""}
+          ${factionBadges(e)}
           ${e.role ? `<span class="badge">${esc(e.role)}</span>` : ""}
           ${st && isPerson(e) ? `<span class="status s-${st.id}">${esc(st.label)}</span>` : ""}
           ${cyberCount(e) ? `<span class="badge cyber" title="Cyberware installato">◈ ${cyberCount(e)}</span>` : ""}
