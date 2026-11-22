@@ -14,9 +14,12 @@ const statBase = (e, id) => id === "BODY" && cyberItems(e).length ? CW.effects(c
 // l'armatura pesante toglie a REF, DEX e MOVE (−2 Medium/Heavy Armorjack, −4 Flak/Metalgear), salvo armatura migliorata
 const sheetArmorType = a => a.type || ((CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(a.name)) || {}).id) || "custom";
 const pcPen = e => { const s = sheetOf(e), ar = s.armor || {}; return CPR.armorPen({ head: { type: sheetArmorType(ar.head || {}) }, body: { type: sheetArmorType(ar.body || {}) } }, s.armorNoPen); };
+// + i bonus manuali e degli oggetti alla STAT (riquadro «Bonus a STAT e abilità»); non cambiano HP e Death Save
 function statEff(e, id) {
-  if (id === "EMP") { const cs = cyberStats(e); if (cs.current != null) return Math.max(0, Math.floor(cs.current / 10)); }
-  return CPR.PEN_STATS.includes(id) ? Math.max(0, statBase(e, id) + pcPen(e)) : statBase(e, id);
+  let v = null;
+  if (id === "EMP") { const cs = cyberStats(e); if (cs.current != null) v = Math.max(0, Math.floor(cs.current / 10)); }
+  if (v == null) v = CPR.PEN_STATS.includes(id) ? Math.max(0, statBase(e, id) + pcPen(e)) : statBase(e, id);
+  return Math.max(0, v + statExtra(e, id));
 }
 const hpMaxOf = e => { const s = sheetOf(e); return hasVal(s.hpMax) ? num(s.hpMax) : CPR.hpMax(statBase(e, "BODY"), statBase(e, "WILL")); };
 const hpOf = e => { const s = sheetOf(e); return hasVal(s.hp) ? num(s.hp) : hpMaxOf(e); };
@@ -176,7 +179,7 @@ function sheetHtml(e) {
     const list = skills.filter(k => k.group === g && (showAll || k.lvl > 0));
     if (!list.length) return "";
     return `<section class="sk-group"><header>${esc(g)}</header>${list.map(k => roll(k.key, `
-      <span class="sk-n">${esc(k.label)}${k.x2 ? ` <i title="Costo doppio">×2</i>` : ""}</span><span class="sk-s">${k.stat}</span><span class="sk-l">${k.lvl}</span><span class="sk-b">${(() => { const rb = skillBonusAll(e, k).reduce((t, b) => t + b.v, 0); return statEff(e, k.stat) + k.lvl + rb + (rb ? `<i class="sk-rb" title="Bonus di Ruolo e cyberware">+${rb}</i>` : ""); })()}</span>`,
+      <span class="sk-n">${esc(k.label)}${k.x2 ? ` <i title="Costo doppio">×2</i>` : ""}</span><span class="sk-s">${k.stat}</span><span class="sk-l">${k.lvl}</span><span class="sk-b">${(() => { const rb = skillBonusAll(e, k).reduce((t, b) => t + b.v, 0); return statEff(e, k.stat) + k.lvl + rb + (rb ? `<i class="sk-rb" title="Bonus di Ruolo, cyberware e del riquadro Bonus">${rb > 0 ? "+" : ""}${rb}</i>` : ""); })()}</span>`,
       "sk " + (k.lvl ? "" : "zero"), `Tira ${k.label}: ${k.stat} + livello + 1d10`)).join("")}</section>`;
   }).join("");
   const weapons = s.weapons || [];
@@ -213,6 +216,7 @@ function sheetHtml(e) {
       ${(s.status || []).length ? `<div class="sh-status"><span class="sh-k">Stati</span>${statusChips(s.status, null)}</div>` : ""}
 
       <div class="sh-stats">${CPR.STATS.map(st => roll("stat:" + st.id, `<span class="k">${st.id}</span><span class="v">${statEff(e, st.id)}</span>${statEff(e, st.id) !== statBase(e, st.id) ? `<small>base ${statBase(e, st.id)}</small>` : ""}`, "sh-stat", `${st.label}: ${st.id} + 1d10`)).join("")}</div>
+      ${bonusBoxHtml(e, edit)}
 
       <div class="sh-sec-head"><h4>Combat</h4><span class="hint">${weapons.filter(w => !w.away).length} arm${weapons.filter(w => !w.away).length === 1 ? "a" : "i"}${weapons.some(w => w.away) ? ` (+${weapons.filter(w => w.away).length} a casa)` : ""} · HP, armatura, iniziativa, stati e Critical Injury</span>
         <button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="combat">Apri Combattimento →</button></div>

@@ -220,7 +220,11 @@ async function mkCommit(e0, it, paid, qty, o) {
     if (old) old.qty = Math.max(1, num(old.qty) || 1) + n; else gear.items.push({ cat, name, qty: n, ...(detail ? { detail } : {}), ...(cost ? { cost } : {}) });
   };
   if (it.type === "weapon") { s.weapons = [...(s.weapons || []), MK.toSheetWeapon(it)]; undo = { k: "weapon" }; }
-  if (it.type === "gear") { addGear(it.gcat || "equip", it.name, "", qty, mkPrice(it.cost)); undo = { k: "gear", cat: it.gcat || "equip", qty }; }
+  if (it.type === "gear") {
+    addGear(it.gcat || "equip", it.name, "", qty, mkPrice(it.cost)); undo = { k: "gear", cat: it.gcat || "equip", qty };
+    // il bonus dell'oggetto va nel riquadro «Bonus a STAT e abilità», legato all'oggetto (una volta sola)
+    (it.bonus || []).forEach(b => { if (!(s.bonuses || []).some(x => x.item === it.name && x.target === b.target)) s.bonuses = [...(s.bonuses || []), { id: NET.uid(), ...b, item: it.name, market: it.id }]; });
+  }
   if (it.type === "armor") {
     addGear("armature", it.name, `SP ${it.sp}${it.pen ? ` · ${it.pen} REF/DEX/MOVE` : ""}`, 1, mkPrice(it.cost));
     undo = { k: "armor", loc: o.loc, prevs: {} };
@@ -286,7 +290,10 @@ async function mkUndo(id) {
   const dropGear = (cat, n) => { const g = (gear.items || []).find(x => norm2(x.name) === norm2(last.name) && (x.cat || "altro") === cat); if (!g) return; g.qty = (num(g.qty) || 1) - n; if (g.qty <= 0) gear.items = gear.items.filter(x => x !== g); };
   const lastIdx = (arr, f) => { for (let i = arr.length - 1; i >= 0; i--) if (f(arr[i])) return i; return -1; };
   if (u.k === "weapon") { const w = s.weapons || [], i = lastIdx(w, x => x.market === last.id || norm2(x.name) === norm2(last.name)); if (i >= 0) w.splice(i, 1); }
-  if (u.k === "gear") dropGear(u.cat || "equip", u.qty || 1);
+  if (u.k === "gear") {
+    dropGear(u.cat || "equip", u.qty || 1);
+    if (!(gear.items || []).some(x => norm2(x.name) === norm2(last.name))) s.bonuses = (s.bonuses || []).filter(b => !(b.market && b.item === last.name));
+  }
   if (u.k === "armor") {
     dropGear("armature", 1); s.armor = s.armor || {};
     const prevs = u.prevs || (u.loc ? { [u.loc]: u.prev || null } : {});
