@@ -40,6 +40,8 @@ Nella sezione **Cyberdeck** dell'Equipaggiamento ci sono i deck con quello che h
 
 La scheda **Equipaggiamento** è l'inventario completo, diviso per categoria: eddies, armi (anche quelle della tab Combattimento), armature (con quelle indossate), cyberware, cyberdeck con programmi e hardware, oggetti e veicoli. Il cyberware si può **disinstallare** da qui (⇩) senza perderlo: resta nell'elenco come ⬚ disinstallato, non dà più effetti né toglie umanità massima, ma l'umanità già persa resta (torna solo con la terapia). Togliendo un Cyberbraccio, un Cyberocchio… escono con lui anche le opzioni che contiene, e ⇧ Reinstalla le rimette.
 
+Le **armature** si indossano da qui. Ogni armatura è **per la testa o per il corpo**: si sceglie quando la si compra al Night Market (le tute intere, come l'Esporma, sono per testa e corpo) e da lì si può indossare solo in quella zona, con «🛡 Indossa»; quelle indossate hanno «Togli». Per avere la stessa armatura su testa e corpo ne servono due, una per zona. Un'armatura senza zona (comprata prima di questa regola o scritta a mano) la prende la prima volta che si indossa. Indossata, l'armatura porta SP piena e il suo malus a REF, DEX e MOVE. Anche in **Modifica scheda** la testa e il corpo offrono solo le armature dell'Equipaggiamento per quella zona (o «nessuna»); un'armatura indossata da prima ma non nell'inventario resta finché non la cambi. Se si cambia armatura la SP riparte piena, se resta la stessa l'ablazione si conserva.
+
 #### ⚡ Catalogo del cyberware
 Le parti con slot (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito) sono **cyberware fondamentale**: non si aggiungono dentro lo slot ma si **attivano** in testa allo slot, con costo, PU (⚄), umanità massima e **numero di slot** modificabile per gli upgrade; anche Fashionware, Impianti Interni ed Esterni hanno i loro 7 slot modificabili. Ogni slot mostra «opzioni usate/disponibili» e avvisa se è pieno o se manca la base. Il **resoconto** di costo e umanità è in fondo alla tab.
 
@@ -105,7 +107,7 @@ Il negozio della campagna e tutti i cataloghi del sito (la pagina che prima era 
 - **Negozio**: Armi, Armature, Equipaggiamento (diviso per tipo: droghe, accessori per armi, scudi, attrezzi…), Cyberware e Cyberdeck (deck, programmi, Black ICE, hardware), con ricerca e filtro per categoria di prezzo. Oltre al manuale base ci sono le voci di *12 Days of Gunmas / CutieMAS / CyberMAS / REDMAS / GEARMAS*, *Hornet's Pharmacy*, *Must Have Cyberware Deals* e *Midnight with the Upload*, con la fonte sotto il nome.
 - **Entra come**: scegli il personaggio (il giocatore entra col suo PG, il GM con chiunque). «Compra» scala gli eddies e mette l'oggetto nella scheda:
   - armi nella tab Combattimento, con categoria, tabella delle VD, autofire e qualità (Excellent dà +1 a colpire); lo speciale va nelle note;
-  - armature nell'inventario, e se vuoi indossate subito su testa o corpo;
+  - armature nell'inventario, per la testa o per il corpo (si sceglie all'acquisto), e se vuoi indossate subito;
   - equipaggiamento nell'inventario, con la quantità;
   - cyberware nello slot scelto, con l'umanità persa tirata (⚄ per ritirarla) e il controllo degli slot opzioni; il cyberware fondamentale si attiva sullo slot.
   - cyberdeck tra i deck del PG, con le sue regole nel campo «Regole del deck»; programmi, Black ICE e hardware nel deck che scegli (col conteggio degli slot) o nell'inventario.

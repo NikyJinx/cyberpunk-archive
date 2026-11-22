@@ -137,8 +137,10 @@ function mkBuy(key) {
   if (it.type === "weapon") extra = `<p class="hint">Va nella tab Combattimento: ${esc(MK.weaponStats(it).dmg)} · ROF ${MK.weaponStats(it).rof}${it.special ? ` · ${esc(it.special)}` : ""}</p>`;
   if (it.type === "armor") {
     const s = sheetOf(e), cur = l => { const a = (s.armor || {})[l] || {}; return a.name ? `${a.name} SP ${num(a.sp)}` : "niente"; };
-    extra = `<div class="field"><label>Indossala</label><select name="loc">${it.both ? `<option value="both">su testa e corpo (ora: ${esc(cur("head"))} · ${esc(cur("body"))})</option>`
-      : `<option value="body">sul corpo (ora: ${esc(cur("body"))})</option><option value="head">sulla testa (ora: ${esc(cur("head"))})</option>`}<option value="">no, solo nell'inventario</option></select></div>`;
+    extra = `<div class="field"><label>Per</label><select name="loc">${it.both ? `<option value="both">testa e corpo (tuta intera)</option>`
+      : `<option value="body">il corpo (ora: ${esc(cur("body"))})</option><option value="head">la testa (ora: ${esc(cur("head"))})</option>`}</select>
+      <span class="hint">Si potrà indossare solo lì.</span></div>
+      <div class="field"><label class="check"><input type="checkbox" name="wear" checked> Indossala subito</label></div>`;
   }
   if (it.type === "deck") extra = `<p class="hint">Si aggiunge ai cyberdeck di ${esc(e.name)}: ${it.slots} slot · ${esc(it.special || "")}</p>`;
   if (it.type === "drug") extra = `<div class="field"><label>Dosi</label><input name="qty" type="number" min="1" max="99" value="1"></div><p class="hint field full">${it.dur ? `Dura ${esc(it.dur)} · ` : ""}VD ${it.dv || "—"} · ${esc(it.primary || "")}</p>`;
@@ -207,7 +209,7 @@ function mkBuy(key) {
     ev.preventDefault();
     const paid = total(), qty = F("qty") ? Math.max(1, Math.trunc(num(F("qty").value)) || 1) : 1;
     if (money - paid < 0 && !gm) return;
-    mkCommit(e, it, paid, qty, { loc: F("loc") ? F("loc").value : "", slot: F("slot") ? F("slot").value : "", hl: F("hl") ? num(F("hl").value) : 0, param: F("param") ? F("param").value : "", lvl: F("lvl") ? F("lvl").value : "", deck: F("deck") ? F("deck").value : "" });
+    mkCommit(e, it, paid, qty, { loc: F("loc") ? F("loc").value : "", wear: F("wear") ? F("wear").checked : false, slot: F("slot") ? F("slot").value : "", hl: F("hl") ? num(F("hl").value) : 0, param: F("param") ? F("param").value : "", lvl: F("lvl") ? F("lvl").value : "", deck: F("deck") ? F("deck").value : "" });
   });
 }
 
@@ -226,12 +228,16 @@ async function mkCommit(e0, it, paid, qty, o) {
     (it.bonus || []).forEach(b => { if (!(s.bonuses || []).some(x => x.item === it.name && x.target === b.target)) s.bonuses = [...(s.bonuses || []), { id: NET.uid(), ...b, item: it.name, market: it.id }]; });
   }
   if (it.type === "armor") {
-    addGear("armature", it.name, `SP ${it.sp}${it.pen ? ` · ${it.pen} REF/DEX/MOVE` : ""}`, 1, mkPrice(it.cost));
-    undo = { k: "armor", loc: o.loc, prevs: {} };
+    const gl = it.both ? "both" : o.loc === "head" ? "head" : "body";
+    // stessa armatura per la stessa zona: una copia in più; per l'altra zona: una voce a parte
+    const old = gear.items.find(x => x.cat === "armature" && norm2(x.name) === norm2(it.name) && x.loc === gl);
+    if (old) old.qty = Math.max(1, num(old.qty) || 1) + 1;
+    else gear.items.push({ cat: "armature", name: it.name, qty: 1, detail: `SP ${it.sp}${it.pen ? ` · ${it.pen} REF/DEX/MOVE` : ""} · per ${ARMOR_LOC[gl]}`, ...(mkPrice(it.cost) ? { cost: mkPrice(it.cost) } : {}), sp: it.sp, pen: num(it.pen), loc: gl, ...(it.both ? { both: true } : {}) });
+    undo = { k: "armor", loc: o.wear ? gl : "", gloc: gl, prevs: {} };
     const T = CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(it.name));
-    (o.loc === "both" ? ["head", "body"] : o.loc ? [o.loc] : []).forEach(l => {
+    (!o.wear ? [] : gl === "both" ? ["head", "body"] : [gl]).forEach(l => {
       s.armor = s.armor || {}; undo.prevs[l] = s.armor[l] || null;
-      s.armor[l] = { name: it.name, sp: it.sp, cur: it.sp, type: T ? T.id : "custom" };
+      s.armor[l] = { name: it.name, sp: it.sp, cur: it.sp, type: T ? T.id : "custom", pen: num(it.pen) };
     });
   }
   if (it.type === "deck") {
@@ -295,7 +301,9 @@ async function mkUndo(id) {
     if (!(gear.items || []).some(x => norm2(x.name) === norm2(last.name))) s.bonuses = (s.bonuses || []).filter(b => !(b.market && b.item === last.name));
   }
   if (u.k === "armor") {
-    dropGear("armature", 1); s.armor = s.armor || {};
+    if (u.gloc) { const g = (gear.items || []).find(x => x.cat === "armature" && norm2(x.name) === norm2(last.name) && x.loc === u.gloc); if (g) { g.qty = (num(g.qty) || 1) - 1; if (g.qty <= 0) gear.items = gear.items.filter(x => x !== g); } }
+    else dropGear("armature", 1);
+    s.armor = s.armor || {};
     const prevs = u.prevs || (u.loc ? { [u.loc]: u.prev || null } : {});
     Object.entries(prevs).forEach(([l, p]) => { if (p) s.armor[l] = p; else delete s.armor[l]; });
   }

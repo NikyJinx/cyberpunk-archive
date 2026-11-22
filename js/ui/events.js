@@ -273,6 +273,8 @@ document.addEventListener("click", async ev => {
     case "tt-color": tt.color = safeColor(el.dataset.c); ls.set("nc-draw-color", tt.color); renderDrawBar(); break;
     case "tt-draw-undo": drawUndo(); break;
     case "tt-draw-clear": drawClear(); break;
+    case "armor-wear": wearArmor(id, num(el.dataset.i), el.dataset.loc === "both" ? "head" : el.dataset.loc); break;
+    case "armor-off": takeOffArmor(id, String(el.dataset.loc || "").split(",").filter(Boolean)); break;
     case "wpn-away": {   // arma lasciata a casa / portata con sé
       if (!Store.canEdit()) break;
       const i = num(el.dataset.i);

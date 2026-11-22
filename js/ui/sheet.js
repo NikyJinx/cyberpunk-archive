@@ -13,7 +13,12 @@ const statBase = (e, id) => id === "BODY" && cyberItems(e).length ? CW.effects(c
 // l'EMP segue l'umanità del cyberware: EMP = umanità attuale / 10
 // l'armatura pesante toglie a REF, DEX e MOVE (−2 Medium/Heavy Armorjack, −4 Flak/Metalgear), salvo armatura migliorata
 const sheetArmorType = a => a.type || ((CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(a.name)) || {}).id) || "custom";
-const pcPen = e => { const s = sheetOf(e), ar = s.armor || {}; return CPR.armorPen({ head: { type: sheetArmorType(ar.head || {}) }, body: { type: sheetArmorType(ar.body || {}) } }, s.armorNoPen); };
+const pcPen = e => {
+  const s = sheetOf(e), ar = s.armor || {};
+  if (s.armorNoPen) return 0;
+  const pens = ["head", "body"].map(l => { const a = ar[l] || {}; return hasVal(a.pen) ? -Math.abs(num(a.pen)) : ((CPR.armorType(sheetArmorType(a)) || {}).pen || 0); });
+  return Math.min(0, ...pens);
+};
 // + i bonus manuali e degli oggetti alla STAT (riquadro «Bonus a STAT e abilità»); non cambiano HP e Death Save
 function statEff(e, id) {
   let v = null;

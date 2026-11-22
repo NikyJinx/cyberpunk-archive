@@ -2274,3 +2274,9 @@ fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px 
 .bn-ed select { width: auto; max-width: 220px; }
 .sk-ed { grid-template-columns: minmax(110px, 1fr) 58px minmax(170px, 1.15fr); }
 .sk-ed .bn-cell { justify-content: flex-start; }
+
+/* pulsanti Indossa/Togli: su schermi stretti vanno sotto il nome, non lo schiacciano */
+@media (max-width: 560px) {
+  .gear-sec li:has(.g-side) { grid-template-columns: 34px 1fr; }
+  .gear-sec li .g-side { grid-column: 2; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
+}

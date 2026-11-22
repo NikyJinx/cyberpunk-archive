@@ -272,11 +272,13 @@ function editSheet(id) {
           <div class="field full"><span class="lbl">Ruoli e gradi</span><span class="hint">Si gestiscono nella tab «Ruoli» del dossier (anche più di uno): ${esc(rolesOf(e).map(r => `${(RL.roleById(r.id) || {}).it} ${num(r.rank)}`).join(", ") || "nessuno")}.</span></div>
           <div class="field"><label for="sh-hpm">HP max (vuoto = automatici)</label><input id="sh-hpm" name="hpMax" type="number" min="1" value="${esc(s.hpMax ?? "")}" placeholder="${autoHp}"></div>
           <div class="field"><label for="sh-hp">HP attuali (vuoto = pieni)</label><input id="sh-hp" name="hp" type="number" value="${esc(s.hp ?? "")}"></div>
-          ${[["head", "ah", "testa"], ["body", "ab", "corpo"]].map(([loc, p, l]) => { const ar = a(loc), ty = sheetArmorType(ar); return `
-          <div class="field"><label for="sh-${p}">Armatura ${l} · tipo / SP</label>
-            <div class="sh-pair"><select id="sh-${p}" data-sh-arm="${p}">${CPR.ARMOR_TYPES.map(t => `<option value="${t.id}" ${t.id === ty ? "selected" : ""}>${t.label}${t.sp ? ` (SP ${t.sp}${t.pen ? `, ${t.pen}` : ""})` : ""}</option>`).join("")}<option value="custom" ${ty === "custom" ? "selected" : ""}>Altro…</option></select>
-            <input name="${p}-sp" type="number" min="0" value="${esc(ar.sp ?? "")}" placeholder="SP"></div>
-            <input name="${p}-name" value="${esc(ar.name)}" placeholder="Nome (es. Light Armorjack)" style="margin-top:4px"></div>`; }).join("")}
+          ${[["head", "ah", "testa"], ["body", "ab", "corpo"]].map(([loc, p, l]) => { const ar = a(loc), inv = armorItems(e).filter((x, i, all) => armorInfo(x.it).locs.includes(loc) && all.findIndex(y => armorInfo(y.it).locs.includes(loc) && norm2(y.it.name) === norm2(x.it.name)) === i);
+            const has = ar.name && inv.some(x => norm2(x.it.name) === norm2(ar.name));
+            return `
+          <div class="field"><label for="sh-${p}">Armatura ${l}</label>
+            <select id="sh-${p}" name="${p}-item"><option value="">— nessuna —</option>${inv.map(({ it }) => { const A = armorInfo(it); return `<option value="${esc(it.name)}" ${norm2(ar.name) === norm2(it.name) ? "selected" : ""}>${esc(it.name)}${A.sp ? ` (SP ${A.sp}${A.pen ? `, ${A.pen}` : ""})` : ""}${A.both ? " · testa e corpo" : ""}</option>`; }).join("")}
+              ${ar.name && !has ? `<option value="__keep" selected>${esc(ar.name)} (SP ${num(ar.sp)}) · non è nell'inventario</option>` : ""}</select>
+            <span class="hint">${inv.length ? `Solo le armature dell'Equipaggiamento per la ${l}.` : `Nessuna armatura per la ${l} nell'Equipaggiamento: comprala al Night Market.`}</span></div>`; }).join("")}
           <div class="field full"><label class="check"><input type="checkbox" name="armorNoPen" ${s.armorNoPen ? "checked" : ""}> Armatura migliorata dal Tech: niente malus</label>
             <span class="hint">Medium e Heavy Armorjack danno −2 a REF, DEX e MOVE; Flak e Metalgear −4. Vale il peggiore tra testa e corpo.</span></div>
           <div class="field"><label for="sh-rep">Reputation</label><input id="sh-rep" name="rep" type="number" min="0" value="${esc(s.rep ?? "")}"></div>
@@ -325,10 +327,10 @@ function editSheet(id) {
         const nm = $("[data-f=name]", row).value.trim(); if (!nm || CPR.WEAPON_TYPES.some(x => x.label === nm)) set("name", T.label); }
       return;
     }
-    const sel = ev.target.closest("[data-sh-arm]"); if (!sel) return;
-    const t = CPR.armorType(sel.value); if (!t) return;
-    form.elements[sel.dataset.shArm + "-sp"].value = t.sp || "";
-    form.elements[sel.dataset.shArm + "-name"].value = t.sp ? t.label : "";
+    // armatura scelta dall'inventario: una tuta intera (testa e corpo) va su entrambe le zone
+    const as = ev.target.closest("[name=ah-item], [name=ab-item]"); if (!as || !as.value || as.value === "__keep") return;
+    const it = armorItems(e).find(x => x.it.name === as.value); if (!it || !armorInfo(it.it).both) return;
+    form.elements[as.name === "ah-item" ? "ab-item" : "ah-item"].value = as.value;
   });
   form.addEventListener("click", ev => {
     const add = ev.target.closest("[data-sh-add]");
@@ -351,16 +353,24 @@ function editSheet(id) {
     if (badW.length) return toast(`Danno non valido in: ${badW.map(w => w.name).join(", ")} (es. 3d6, 2d6+2, 3d6kh2)`, "err");
     const mods = readRows(form, "#sh-mods .sh-row").filter(m => m.name || num(m.value)).map(m => ({ ...m, value: num(m.value) }));
     // la SP attuale (ablazione) resta, ma non oltre la nuova SP massima
-    const armor = {};
+    const armor = {}; let gear = e.gear;
     for (const [loc, p] of [["head", "ah"], ["body", "ab"]]) {
-      const sp = nv(p + "-sp"), old = armorOf(e, loc);
-      armor[loc] = { type: $(`[data-sh-arm=${p}]`, form).value, name: v(p + "-name"), sp, cur: sp == null ? null : Math.min(old.cur, sp) };
-      if (old.sp !== sp) armor[loc].cur = sp;
+      const pick = form.elements[p + "-item"].value, old = (s.armor || {})[loc] || {};
+      if (pick === "__keep") { armor[loc] = old; continue; }        // armatura vecchia, non nell'inventario: resta com'è
+      // con lo stesso nome, prima quella già per questa zona
+      const it = pick && armorItems(e).filter(x => x.it.name === pick && armorInfo(x.it).locs.includes(loc)).sort((x, y) => armorInfo(y.it).fixed - armorInfo(x.it).fixed)[0]; if (!it) continue;
+      const A = armorInfo(it.it), same = norm2(old.name) === norm2(A.name);
+      // stessa armatura: la SP attuale (ablazione) resta; un'armatura nuova parte piena
+      armor[loc] = { name: A.name, sp: A.sp, cur: same && hasVal(old.cur) ? Math.min(num(old.cur), A.sp) : A.sp, type: A.type, pen: A.pen };
+      if (!A.fixed) gear = gearWithLoc({ gear }, it.gi, loc);   // senza zona: da ora è per questa
     }
+    // un'armatura sola nell'inventario non copre due zone (salvo le tute intere)
+    const twice = armor.head && armor.body && norm2(armor.head.name) === norm2(armor.body.name) && armor.head !== ((s.armor || {}).head) ? armorItems(e).find(x => norm2(x.it.name) === norm2(armor.head.name) && !armorInfo(x.it).fixed) : null;
+    if (twice && !armorInfo(twice.it).both && Math.max(1, num(twice.it.qty)) < 2) return toast(`Hai una sola ${twice.it.name}: non copre testa e corpo insieme`, "err");
     const sheet = { ...migrateRoles(JSON.parse(JSON.stringify(s)), e), owner: v("owner"), stats, skills, custom, weapons, armor, armorNoPen: form.elements["armorNoPen"].checked,
       hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes"), mods, bonuses: bnFormBonuses() };
     try {
-      const saved = await Store.save("entries", { ...e, sheet });
+      const saved = await Store.save("entries", { ...e, sheet, ...(gear ? { gear } : {}) });
       upsert(state.entries, saved); liveSend("entries", saved);
       toast("Scheda salvata", "ok"); openEntry(saved.id, "sheet"); refreshParty();
       if (onTable()) { renderTokens(); renderSide(); }

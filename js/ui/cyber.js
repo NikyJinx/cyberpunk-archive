@@ -72,6 +72,55 @@ function baseState(e, slotId) {
 }
 const baseCyber = e => slotsOf(e).map(sl => ({ slot: sl.id, b: baseState(e, sl.id) })).filter(x => x.b && !x.b.fixed && x.b.on);
 const gearItems = e => (e.gear && e.gear.items) || [];
+// SP e malus di un'armatura dell'inventario: dai suoi campi, dal Night Market, dal nome o dai dettagli («SP 11»)
+function armorInfo(it) {
+  const mk = window.MK ? MK.all().find(x => x.type === "armor" && norm2(x.name) === norm2(it.name)) : null;
+  const T = CPR.ARMOR_TYPES.find(t => t.sp && norm2(t.label) === norm2(it.name));
+  const m = String(it.detail || "").match(/SP\s*(\d+)/i);
+  const sp = num(it.sp) || (mk && mk.sp) || (T && T.sp) || (m ? +m[1] : 0);
+  const pen = hasVal(it.pen) ? num(it.pen) : mk ? num(mk.pen) : T ? T.pen : 0;
+  const both = !!(it.both || (mk && mk.both) || it.loc === "both");
+  // zone dove si può indossare: quella scelta all'acquisto; senza zona (oggetti vecchi o scritti a mano) testa o corpo
+  return { name: it.name, sp, pen, type: T ? T.id : "custom", both, locs: both ? ["head", "body"] : it.loc === "head" || it.loc === "body" ? [it.loc] : ["head", "body"], fixed: both || it.loc === "head" || it.loc === "body" };
+}
+const ARMOR_LOC = { head: "testa", body: "corpo", both: "testa e corpo" };
+// quali zone occupa ogni armatura dell'inventario (gi → zone) e le armature indossate che nell'inventario non ci sono
+function armorWorn(e) {
+  const ar = sheetOf(e).armor || {}, worn = ["head", "body"].filter(l => (ar[l] || {}).name || num((ar[l] || {}).sp)), on = {};
+  const inv = armorItems(e), take = (x, l) => { (on[x.gi] = on[x.gi] || []).push(l); worn.splice(worn.indexOf(l), 1); };
+  // prima quelle con la zona fissa, poi le altre (una copia per zona)
+  [...inv.filter(x => armorInfo(x.it).fixed), ...inv.filter(x => !armorInfo(x.it).fixed)].forEach(x => {
+    const A = armorInfo(x.it), max = A.fixed ? 2 : Math.max(1, num(x.it.qty));
+    A.locs.forEach(l => { if (worn.includes(l) && (on[x.gi] || []).length < max && norm2(ar[l].name) === norm2(x.it.name)) take(x, l); });
+  });
+  return { on, rest: worn.map(l => ({ l, a: ar[l] })) };
+}
+const armorItems = e => gearItems(e).map((it, gi) => ({ it, gi })).filter(x => (x.it.cat || "altro") === "armature");
+// un'armatura senza zona (comprata prima o scritta a mano) la prende la prima volta che si indossa:
+// da lì in poi va solo lì. Con più copie se ne separa una.
+function gearWithLoc(e, gi, loc) {
+  const g = JSON.parse(JSON.stringify(e.gear || {})), it = (g.items || [])[gi]; if (!it || armorInfo(it).fixed) return e.gear;
+  const n = Math.max(1, num(it.qty));
+  if (n > 1) { it.qty = n - 1; g.items.splice(gi + 1, 0, { ...it, qty: 1, loc, detail: [it.detail, `per ${ARMOR_LOC[loc]}`].filter(Boolean).join(" · ") }); }
+  else { it.loc = loc; it.detail = [it.detail, `per ${ARMOR_LOC[loc]}`].filter(Boolean).join(" · "); }
+  return g;
+}
+function wearArmor(id, gi, loc) {
+  const e = state.entries.find(x => x.id === id), it = e && gearItems(e)[gi]; if (!it || !Store.canEdit()) return;
+  const A = armorInfo(it), locs = A.both ? ["head", "body"] : A.fixed ? A.locs : [loc];
+  if (!A.sp) return toast("Questa armatura non ha la SP: scrivila nei dettagli (es. «SP 11») da Modifica equipaggiamento", "err");
+  if (!A.fixed) upsert(state.entries, { ...e, gear: gearWithLoc(e, gi, loc) });
+  sheetPatch(id, s => { s.armor = s.armor || {};
+    // una tuta intera tolta da una zona si toglie anche dall'altra
+    locs.forEach(l => { const old = s.armor[l], o = old && armorItems(e).find(x => norm2(x.it.name) === norm2(old.name));
+      if (o && armorInfo(o.it).both) ["head", "body"].forEach(z => { if (s.armor[z] && norm2(s.armor[z].name) === norm2(old.name)) delete s.armor[z]; }); });
+    locs.forEach(l => { s.armor[l] = { name: it.name, sp: A.sp, cur: A.sp, type: A.type, pen: A.pen }; }); return s; });
+  toast(`${it.name} indossata (${A.both ? "testa e corpo" : ARMOR_LOC[locs[0]]})`, "ok");
+}
+function takeOffArmor(id, locs) {
+  if (!Store.canEdit()) return;
+  sheetPatch(id, s => { s.armor = s.armor || {}; locs.forEach(l => { delete s.armor[l]; }); return s; });
+}
 
 function cyberStats(e) {
   // disinstallato (stored): fuori dal corpo, niente effetti né umanità massima tolta, ma l'umanità persa resta (si recupera solo con la terapia)
@@ -221,15 +270,22 @@ function gearInner(e) {
   });
   // armature: quelle indossate e quelle nell'inventario (con lo stesso nome sono la stessa armatura)
   const LOC = { head: "testa", body: "corpo" };
-  const worn = ["head", "body"].map(l => ({ l, a: (s.armor || {})[l] || {} })).filter(x => x.a.name || num(x.a.sp));
+  const AW = armorWorn(e);
   items.forEach((it, gi) => {
     const cat = it.cat || "altro";
     if (cat === NET_CAT) return;
     if (cat !== "armature") { rows[cat] && rows[cat].push(fromGear(it, gi)); return; }
-    const on = []; for (let k = 0; k < Math.max(1, num(it.qty)); k++) { const j = worn.findIndex(x => norm2(x.a.name) === norm2(it.name)); if (j < 0) break; on.push(LOC[worn[j].l]); worn.splice(j, 1); }
-    rows.armature.push({ ...fromGear(it), tag: on.length ? `indossata: ${on.join(", ")}` : "" });
+    const on = AW.on[gi] || [], A = armorInfo(it);
+    const free = A.both ? (on.length ? [] : ["both"]) : A.fixed ? A.locs.filter(l => !on.includes(l)) : on.length < Math.max(1, num(it.qty)) ? ["head", "body"].filter(l => !on.includes(l)) : [];
+    const btn = (l, label) => `<button type="button" class="btn ghost small g-act" data-action="armor-wear" data-id="${id}" data-i="${gi}" data-loc="${l}">${label}</button>`;
+    const act = !edit ? "" : [
+      ...free.map(l => btn(l, A.fixed ? "🛡 Indossa" : `🛡 Indossa: ${LOC[l]}`)),
+      ...(on.length ? [`<button type="button" class="btn ghost small g-act" data-action="armor-off" data-id="${id}" data-loc="${on.join(",")}">Togli${on.length > 1 || A.fixed ? "" : ` (${LOC[on[0]]})`}</button>`] : []),
+    ].join("");
+    rows.armature.push({ ...fromGear(it), detail: [it.detail || (A.sp ? `SP ${A.sp}${A.pen ? ` · ${A.pen} REF/DEX/MOVE` : ""}` : "SP non indicata"), A.fixed && !/testa|corpo/i.test(it.detail || "") ? `per ${ARMOR_LOC[A.both ? "both" : A.locs[0]]}` : ""].filter(Boolean).join(" · "), tag: on.length ? `indossata${A.fixed ? "" : `: ${on.map(l => LOC[l]).join(", ")}`}` : "", act });
   });
-  worn.forEach(x => rows.armature.push({ name: x.a.name || "Armatura", detail: `SP ${hasVal(x.a.cur) ? num(x.a.cur) : num(x.a.sp)}/${num(x.a.sp)}`, tag: `indossata: ${LOC[x.l]}` }));
+  AW.rest.forEach(x => rows.armature.push({ name: x.a.name || "Armatura", detail: `SP ${hasVal(x.a.cur) ? num(x.a.cur) : num(x.a.sp)}/${num(x.a.sp)} · non è nell'inventario`, tag: `indossata: ${LOC[x.l]}`,
+    act: edit ? `<button type="button" class="btn ghost small g-act" data-action="armor-off" data-id="${id}" data-loc="${x.l}">Togli</button>` : "" }));
   // cyberware: installato, disinstallato (resta qui) e pianificato, parte per parte
   slotsOf(e).forEach(sl => {
     const b = baseState(e, sl.id);
@@ -338,7 +394,7 @@ const gearRow = (it = {}) => `
     <input data-f="qty" type="number" min="1" step="1" placeholder="Q.tà" value="${esc(it.qty ?? 1)}">
     <input data-f="detail" placeholder="Dettagli (danno, SP, ROF…)" value="${esc(it.detail)}">
     <input data-f="note" placeholder="Nota" value="${esc(it.note)}">
-    <input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}">
+    <input type="hidden" data-f="sp" value="${esc(it.sp ?? "")}"><input type="hidden" data-f="pen" value="${esc(it.pen ?? "")}"><input type="hidden" data-f="both" value="${it.both ? "1" : ""}"><input type="hidden" data-f="loc" value="${esc(it.loc || "")}"><input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button>
   </div>`;
 const readRows = (root, sel) => $$(sel, root).map(r => Object.fromEntries($$("[data-f]", r).map(i => [i.dataset.f, i.type === "checkbox" ? i.checked : i.value.trim()])));
@@ -536,7 +592,8 @@ function editGear(id) {
     ev.preventDefault();
     const items = readRows(form, ".gear-row").filter(it => it.name).map(({ item, ...it }) => {
       const o = { ...it, qty: Math.max(1, num(it.qty) || 1) };
-      ["cost", "drug", "ref"].forEach(k => { if (!o[k]) delete o[k]; });
+      ["cost", "drug", "ref", "sp", "pen", "both", "loc"].forEach(k => { if (!o[k]) delete o[k]; });
+      if (o.sp) o.sp = num(o.sp); if (o.pen) o.pen = num(o.pen); if (o.both) o.both = true;
       if (o.cost) o.cost = num(o.cost);
       if (item) try { o.item = JSON.parse(item); } catch {}
       return o;
