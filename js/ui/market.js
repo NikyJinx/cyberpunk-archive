@@ -155,7 +155,7 @@ function mkBuy(key) {
     const opt = s => { const b = base ? baseState(e, s.id) : null, on = b && !b.fixed && b.on, more = on && it.id === "chipslot";
       return `<option value="${esc(s.id)}" ${on && !more ? "disabled" : ""}>${esc(s.label)}${more ? ` (ne hai già ${b.slots}: +1 slot)` : on ? " (già attivo)" : ""}</option>`; };
     const pu = CW.rollPu(it);
-    extra = `<div class="field"><label>${base ? "Si attiva su" : "Slot"}</label><select name="slot">${fit.map(opt).join("")}${other.length && !base ? `<optgroup label="Altri slot">${other.map(opt).join("")}</optgroup>` : ""}</select></div>
+    extra = `<div class="field"><label>${base ? "Si attiva su" : "Slot"}</label><select name="slot">${fit.map(opt).join("")}${other.length && !base ? `<optgroup label="Altri slot">${other.map(opt).join("")}</optgroup>` : ""}${base ? "" : `<option value="idle">⏸ Idle: non installato, lo installi dopo</option>`}</select></div>
       <div class="field"><label>Umanità persa (HL)</label><div class="mk-hl"><input name="hl" type="number" min="0" value="${pu.total}"><button type="button" class="gp-btn" data-mk-pu title="Tira ${esc(it.dice)}">⚄</button></div><span class="hint">${it.dice && it.dice !== "N/A" ? `${esc(it.dice)}, media ${it.pu}` : "nessuna"}${pu.dice.length ? ` · tirato: ${pu.dice.join(" + ")}` : ""}</span></div>
       ${it.id === "skillchip" ? `<div class="field"><label>Livello del chip</label><select name="lvl"><option value="3">3</option><option value="4">4</option></select></div><div class="field"><label>Abilità del chip</label><select name="param">${CPR.SKILLS.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join("")}</select></div>` : ""}
       ${it.req ? `<p class="hint field full">Richiede: ${esc(it.req)}</p>` : ""}
@@ -198,6 +198,7 @@ function mkBuy(key) {
       const sl = F("slot").value, items = (((e.cyber || {}).slots || {})[sl]) || [];
       if (it.base) cap.textContent = "";
       else if (it.id === "chipslot") { const b = baseState(e, "alveolo"); cap.textContent = b && b.on ? `Hai già un Alveolo da ${b.slots} slot: questo ne aggiunge uno (${b.slots + 1} chip).` : "Attiva l'Alveolo: tiene 1 chip e occupa 1 slot del Collegamento Neurale."; }
+      else if (sl === "idle") cap.textContent = "In idle: niente effetti e niente umanità persa finché non lo installi (in qualsiasi slot, dall'Equipaggiamento o dalla tab Cyberware).";
       else { const u = slotUse(sl, [...items, { name: it.name, ref: it.id }], baseState(e, sl)), art = n => /^[aeiou]/i.test(n) ? "l'" : "il ";
         cap.textContent = !u ? "" : u.missing ? `Manca ${art(u.missing)}${u.missing}: attivalo prima o insieme.` : u.over ? `Slot pieno: ${u.label} ${u.used}/${u.cap}.` : `${u.label === "chip" ? "Chip" : "Opzioni"} dopo l'acquisto: ${u.used}/${u.cap}.`; }
     }
@@ -224,6 +225,7 @@ async function mkCommit(e0, it, paid, qty, o) {
   if (it.type === "weapon") { s.weapons = [...(s.weapons || []), MK.toSheetWeapon(it)]; undo = { k: "weapon" }; }
   if (it.type === "gear") {
     addGear(it.gcat || "equip", it.name, "", qty, mkPrice(it.cost)); undo = { k: "gear", cat: it.gcat || "equip", qty };
+    if (it.gcat === "vestiti") { const g = gear.items.find(x => x.cat === "vestiti" && norm2(x.name) === norm2(it.name)); if (g) Object.assign(g, { ...(it.wtype ? { type: it.wtype } : {}), ...(it.style ? { style: it.style } : {}) }); }
     // il bonus dell'oggetto va nel riquadro «Bonus a STAT e abilità», legato all'oggetto (una volta sola)
     (it.bonus || []).forEach(b => { if (!(s.bonuses || []).some(x => x.item === it.name && x.target === b.target)) s.bonuses = [...(s.bonuses || []), { id: NET.uid(), ...b, item: it.name, market: it.id }]; });
   }
@@ -264,7 +266,8 @@ async function mkCommit(e0, it, paid, qty, o) {
       else cy.bases[o.slot] = { ...(cy.bases[o.slot] || {}), on: true, slots: (cy.bases[o.slot] || {}).slots ?? (B ? B[1] : 3), cost: paid || it.cost, hl: o.hl, max: 2 };
     } else {
       cy.slots = cy.slots || {};
-      cy.slots[o.slot] = [...(cy.slots[o.slot] || []), { name: it.name, ref: it.id, cost: paid || num(it.cost), hl: o.hl, installed: true, ...(o.param ? { param: o.param, lvl: +o.lvl === 4 ? 4 : 3 } : {}) }];
+      // in idle: non montato, l'umanità (già tirata) si perde quando si installa
+      cy.slots[o.slot] = [...(cy.slots[o.slot] || []), { name: it.name, ref: it.id, cost: paid || num(it.cost), hl: o.hl, ...(o.slot === "idle" ? { installed: false, fresh: true } : { installed: true }), ...(o.param ? { param: o.param, lvl: +o.lvl === 4 ? 4 : 3 } : {}) }];
       undo = { k: "cyber", slot: o.slot };
     }
   }
@@ -274,7 +277,7 @@ async function mkCommit(e0, it, paid, qty, o) {
     const saved = await Store.save("entries", e);
     upsert(state.entries, saved); liveSend("entries", saved);
     closeModal(); route(); refreshParty();
-    toast(`${it.name}${qty > 1 ? ` ×${qty}` : ""} comprato${paid ? ` (−${fmtEb(paid)})` : ""}${it.type === "cyber" ? ` · −${o.hl} umanità` : ""}`, "ok");
+    toast(`${it.name}${qty > 1 ? ` ×${qty}` : ""} comprato${paid ? ` (−${fmtEb(paid)})` : ""}${it.type === "cyber" ? (o.slot === "idle" ? " · in idle" : ` · −${o.hl} umanità`) : ""}`, "ok");
   } catch (err) { fail(err); }
 }
 
@@ -423,7 +426,9 @@ const MK_FORMS = {
     ["both", "Copre sempre testa e corpo", "chk"], ["cost", "Costo (eb)", "num", { def: 100 }], ["src", "Fonte", "text"], ["desc", "Descrizione", "area", { full: true }]] },
   gear: { title: "OGGETTO", fields: () => [
     ["name", "Nome", "text", { req: true, full: true }], ["label", "Tipo", "text", { list: [...new Set(MK.all().filter(x => x.type === "gear").map(x => x.label).filter(Boolean))], ph: "es. Attrezzo, Scudo, Granata" }],
-    ["veicolo", "È un veicolo", "chk"], ["cost", "Costo (eb)", "num", { def: 100 }], ["src", "Fonte", "text"], ["desc", "Descrizione", "area", { full: true }]] },
+    ["gdest", "Va in", "select", { opts: [["equip", "Equipaggiamento"], ["veicoli", "Veicoli"], ["vestiti", "Vestiti (Wardrobe)"]] }],
+    ["wtype", "Tipo di vestito", "select", { opts: [["", "—"], ...WD_TYPES] }], ["style", "Stile (vestiti)", "text", { list: WD_STYLES }],
+    ["cost", "Costo (eb)", "num", { def: 100 }], ["src", "Fonte", "text"], ["desc", "Descrizione", "area", { full: true }]] },
   deck: { title: "CYBERDECK", fields: () => [
     ["name", "Nome", "text", { req: true, full: true }], ["slots", "Slot", "num", { req: true, def: 7 }], ["cost", "Costo (eb)", "num", { def: 500 }], ["src", "Fonte", "text"],
     ["special", "Regole del deck", "area", { full: true, ph: "es. solo programmi · un Jack Out non sicuro conta come sicuro" }], ["desc", "Descrizione", "area", { full: true }]] },
@@ -447,7 +452,7 @@ function editMkItem(type, id) {
   if (!Store.canEdit() || !MK_FORMS[type]) return;
   const old = id ? MK.byId(id) || {} : {}, base = MK.BASE.some(b => b.id === id), F = MK_FORMS[type];
   if (base && !isGm()) return;
-  const val = (k, o) => k === "veicolo" ? old.gcat === "veicoli" : k === "mtarget" ? (old.mod || {}).target || "" : k === "mv" ? (old.mod || {}).v ?? "" : k === "pen" && old.pen ? Math.abs(old.pen) : old[k] ?? o.def ?? "";
+  const val = (k, o) => k === "gdest" ? old.gcat || "equip" : k === "mtarget" ? (old.mod || {}).target || "" : k === "mv" ? (old.mod || {}).v ?? "" : k === "pen" && old.pen ? Math.abs(old.pen) : old[k] ?? o.def ?? "";
   const field = ([k, l, kind, o = {}]) => {
     const v = val(k, o), cls = `field ${o.full ? "full" : ""}`;
     if (kind === "chk") return `<div class="${cls}"><label class="check"><input type="checkbox" name="${k}" ${v ? "checked" : ""}> ${esc(l)}</label></div>`;
@@ -474,7 +479,7 @@ function editMkItem(type, id) {
     ev.preventDefault();
     const E = form.elements, out = { id: old.id || "mk-" + NET.uid(), type };
     for (const [k, , kind] of F.fields()) {
-      if (k === "veicolo" || k === "mtarget" || k === "mv") continue;
+      if (k === "gdest" || k === "mtarget" || k === "mv") continue;
       if (kind === "chk") { if (E[k].checked) out[k] = true; continue; }
       const raw = E[k].value.trim(); if (raw === "") continue;
       out[k] = kind === "num" ? num(raw) : raw;
@@ -482,7 +487,8 @@ function editMkItem(type, id) {
     if (type === "weapon" && out.dmg && !CPR.parse(out.dmg)) return toast("Danno non valido (es. 3d6)", "err");
     if (type === "deckprog" && out.dmg && !CPR.parse(out.dmg)) return toast("Danno non valido (es. 2d6)", "err");
     if (type === "armor" && out.pen) out.pen = -Math.abs(out.pen);
-    if (type === "gear") { out.gcat = E.veicolo.checked ? "veicoli" : "equip"; if (out.gcat === "veicoli" && !out.label) out.label = "Veicolo"; }
+    if (type === "gear") { out.gcat = E.gdest.value || "equip"; if (out.gcat === "veicoli" && !out.label) out.label = "Veicolo"; if (out.gcat === "vestiti" && !out.label) out.label = "Vestito";
+      if (out.gcat !== "vestiti") { delete out.wtype; delete out.style; } }
     if (type === "drug" && E.mtarget.value && num(E.mv.value)) out.mod = { target: E.mtarget.value, v: num(E.mv.value) };
     if (type === "deckprog") { out.slots = out.slots || (out.cls === "ice" ? 2 : 1); out.eff = out.desc || ""; }
     if (type === "weapon" && out.quality === "standard") delete out.quality;

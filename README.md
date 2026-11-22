@@ -38,9 +38,15 @@ Nella sezione **Armi** dell'Equipaggiamento ogni arma ha **🏠 Lascia a casa** 
 
 Nella sezione **Cyberdeck** dell'Equipaggiamento ci sono i deck con quello che hanno installato (⇩ Disinstalla lo rimette nell'inventario) e, sotto «Non installati», programmi, Black ICE e hardware sfusi con ⇧ Installa nel deck scelto; anche la tab Cyberdeck ha il riquadro «Nell'inventario» per installarli nel deck in uso. Se il deck è pieno l'installazione viene rifiutata.
 
-La scheda **Equipaggiamento** è l'inventario completo, diviso per categoria: eddies, armi (anche quelle della tab Combattimento), armature (con quelle indossate), cyberware, cyberdeck con programmi e hardware, oggetti e veicoli. Il cyberware si può **disinstallare** da qui (⇩) senza perderlo: resta nell'elenco come ⬚ disinstallato, non dà più effetti né toglie umanità massima, ma l'umanità già persa resta (torna solo con la terapia). Togliendo un Cyberbraccio, un Cyberocchio… escono con lui anche le opzioni che contiene, e ⇧ Reinstalla le rimette.
+La scheda **Equipaggiamento** è l'inventario completo, diviso per categoria: eddies, armi (anche quelle della tab Combattimento), armature (con quelle indossate), cyberware, cyberdeck con programmi e hardware, oggetti e veicoli. Il cyberware si può **disinstallare** da qui (⇩) senza perderlo: va in **⏸ idle**, non dà più effetti né toglie umanità massima, ma l'umanità già persa resta (torna solo con la terapia). Dall'idle «⇧ Installa» lo rimette in **qualsiasi slot** (prima quelli adatti). Anche al Night Market il cyberware si può comprare in idle: in quel caso l'umanità si perde solo quando lo installi. L'idle si vede anche nella tab Cyberware, sotto la sagoma. Togliendo un Cyberbraccio, un Cyberocchio… escono con lui anche le opzioni che contiene, e ⇧ Reinstalla le rimette.
 
 Le **armature** si indossano da qui. Ogni armatura è **per la testa o per il corpo**: si sceglie quando la si compra al Night Market (le tute intere, come l'Esporma, sono per testa e corpo) e da lì si può indossare solo in quella zona, con «🛡 Indossa»; quelle indossate hanno «Togli». Per avere la stessa armatura su testa e corpo ne servono due, una per zona. Un'armatura senza zona (comprata prima di questa regola o scritta a mano) la prende la prima volta che si indossa. Indossata, l'armatura porta SP piena e il suo malus a REF, DEX e MOVE. Anche in **Modifica scheda** la testa e il corpo offrono solo le armature dell'Equipaggiamento per quella zona (o «nessuna»); un'armatura indossata da prima ma non nell'inventario resta finché non la cambi. Se si cambia armatura la SP riparte piena, se resta la stessa l'ablazione si conserva.
+
+La tab **Wardrobe** è l'armadio: i vestiti (categoria «Vestiti» dell'inventario) con tipo (top, giacca, scarpe, occhiali…) e stile (Urban Flash, Businesswear…), raggruppati per stile. «👕 Indossa» e «Togli» scelgono cosa ha addosso, «Indossa lo stile» veste tutto uno stile; in alto c'è il look attuale. In «Modifica wardrobe» si aggiungono i vestiti e un'**immagine per ogni stile**. Al Night Market un oggetto custom può andare in «Vestiti (Wardrobe)», con tipo e stile.
+
+La tab **Agent** è lo smartphone: modello, app e abbonamenti. Ogni voce può essere solo una descrizione o dare un **bonus** a una STAT o abilità, automatico finché è accesa (⏸ Spegni / ▶ Accendi); il bonus compare con ⚡ nel riquadro dei bonus e conta nei tiri. Gli abbonamenti con un costo vanno da soli nelle Spese mensili.
+
+La tab **Spese mensili** raccoglie Lifestyle, affitto, Trauma Team, siti web e servizi (con le voci del manuale già compilate), più gli abbonamenti dell'Agent. Ogni voce si può sospendere; «💸 Paga il mese» toglie il totale dagli eddies e finisce negli Acquisti del Night Market, da dove si annulla.
 
 #### ⚡ Catalogo del cyberware
 Le parti con slot (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito) sono **cyberware fondamentale**: non si aggiungono dentro lo slot ma si **attivano** in testa allo slot, con costo, PU (⚄), umanità massima e **numero di slot** modificabile per gli upgrade; anche Fashionware, Impianti Interni ed Esterni hanno i loro 7 slot modificabili. Ogni slot mostra «opzioni usate/disponibili» e avvisa se è pieno o se manca la base. Il **resoconto** di costo e umanità è in fondo alla tab.
@@ -61,7 +67,7 @@ Ogni PG e NPC ha una **Scheda** con le regole di *Cyberpunk RED* (nomi in ingles
 Basta un clic su una STAT, un'abilità o un'arma per **tirare i dadi**: base + 1d10 con il successo critico sul 10 e il fallimento critico sull'1, malus delle ferite applicato da solo, campo **MOD** per i modificatori di situazione. I danni delle armi segnalano la **Critical Injury** quando escono due 6.
 
 #### ◈ Ruoli
-La tab **Ruoli** del dossier tiene uno o più Ruoli, ognuno con il suo grado (−/+). Si parte con un Ruolo a grado 4; un secondo si prende a grado 1 solo con il precedente almeno a 4 (il sito avvisa se non è così). Ogni Ruolo segue le regole del manuale:
+La tab **Ruoli** del dossier tiene uno o più Ruoli, ognuno con il suo grado (−/+). Si parte con un Ruolo a grado 4, gratis. Gli altri si **comprano con i Punti Miglioramento**: grado 1 per 60 IP, con il precedente almeno a 4. Si prendono da «+ Ruolo · 60 IP» nella tab Ruoli oppure dalla finestra degli IP (gruppo «Nuovo Ruolo»); il Ruolo compare subito nella tab Ruoli e la spesa va nello storico degli IP, da dove si annulla. Il GM può aggiungerlo gratis se gli IP non bastano. Ogni Ruolo segue le regole del manuale:
 - **Rocker** (Impatto Carismatico): tiri contro VD 8 / 10 / 12 per singolo, piccolo e grande gruppo, con i favori del grado;
 - **Solitario** (Sensi da Combattimento): punti da distribuire con i costi del manuale. Attacco Preciso, Reazione, Individuare Minacce, Recuperare da un Disastro e Individuare Debolezze (spunta «1° colpo del round» sull'arma) sono già nei tiri; Deflettere Danni compare sotto gli HP;
 - **Netrunner** (Interfaccia): il grado è l'Interface del Cyberdeck, con le Azioni NET;
@@ -279,6 +285,7 @@ js/ui/                  interfaccia, un file per sezione (caricati in ordine da 
   hq.js                 pagina HQ: piani, migliorie, HQ IP
   ip.js                 Punti Miglioramento
   bonus.js              riquadro dei bonus a STAT e abilità
+  life.js               tab Wardrobe, Agent e Spese mensili
   combat.js             tab Combattimento e schede delle armi (PG e nemici)
   rules.js              munizioni, stati, Critical Injury, modificatori, Regole della campagna
   deck.js               Cyberdeck

@@ -45,6 +45,7 @@ const GEAR_CATS = [
   { id: "droghe",   label: "Droghe",          color: "#a98bff",   hint: "es. Synthcoke, 2 dosi" },
   { id: "netrun",   label: "Programmi e hardware", color: "var(--green)", hint: "per il cyberdeck: si installano dalla tab Cyberdeck o da qui" },
   { id: "cyber",    label: "Cyberware",       color: "var(--magenta)", hint: "es. impianto da installare, preso come bottino" },
+  { id: "vestiti",  label: "Vestiti",         color: "#ff9ad5",   hint: "si indossano dalla tab Wardrobe (tipo e stile)" },
   { id: "veicoli",  label: "Veicoli",         color: "var(--magenta)", hint: "es. Supermoto potenziata" },
   { id: "altro",    label: "Altro",           color: "var(--muted)",   hint: "" },
 ];
@@ -125,7 +126,7 @@ function takeOffArmor(id, locs) {
 function cyberStats(e) {
   // disinstallato (stored): fuori dal corpo, niente effetti né umanità massima tolta, ma l'umanità persa resta (si recupera solo con la terapia)
   const all = cyberItems(e).filter(it => !isBaseItem(it)), inst = all.filter(it => it.installed !== false);
-  const plan = all.filter(it => it.installed === false && !it.stored), stored = all.filter(it => it.installed === false && it.stored);
+  const plan = all.filter(it => it.installed === false && !it.stored && it.slot !== "idle"), stored = all.filter(it => it.installed === false && it.stored);
   const bases = baseCyber(e), storedBases = slotsOf(e).map(sl => baseState(e, sl.id)).filter(b => b && !b.fixed && b.stored);
   const cost = inst.reduce((t, it) => t + num(it.cost), 0) + bases.reduce((t, x) => t + x.b.cost, 0);
   const hl = inst.reduce((t, it) => t + num(it.hl), 0) + bases.reduce((t, x) => t + x.b.hl, 0)
@@ -212,6 +213,51 @@ function slotCard(e, s) {
     </section>`;
 }
 
+// ---------- IDLE: cyberware comprato o tolto, non installato ----------
+// cyber.slots.idle = [{ name, ref, cost, hl, installed: false, fresh (mai montato: l'umanità si perde quando si installa) | stored, from }]
+const idleCyber = e => ((((e.cyber || {}).slots || {}).idle) || []).filter(it => it && it.name);
+function idleHtml(e) {
+  const list = idleCyber(e), edit = Store.canEdit(), id = esc(e.id); if (!list.length) return "";
+  return `<section class="cy-idle"><header><span class="cy-title">⏸ Idle</span><span class="hint">non installato: niente effetti${list.some(it => it.fresh) ? " · l'umanità si perde quando lo installi" : ""} · va in qualsiasi slot</span></header>
+    <ul>${list.map((it, i) => `<li><span class="cy-name">${esc(it.name)}${it.from ? ` <small>tolto da ${esc(slotDef(e, it.from).label)}</small>` : ""}${it.ref === "skillchip" && it.param ? ` <small>${esc((CPR.skill(it.param) || {}).label || "")} ${+it.lvl === 4 ? 4 : 3}</small>` : ""}</span>
+      <span class="cy-cost">${hasVal(it.cost) ? esc(num(it.cost).toLocaleString("it-IT")) : "—"}</span><span class="cy-hl" title="${it.fresh ? "Umanità che perderai installandolo" : "Umanità già persa"}">${hasVal(it.hl) ? esc(it.hl) : "—"}${it.fresh ? "*" : ""}</span>
+      ${edit ? `<button type="button" class="btn ghost small g-act" data-action="cy-install" data-id="${id}" data-i="${i}">⇧ Installa</button>` : ""}</li>`).join("")}</ul></section>`;
+}
+// installa dall'idle: si sceglie lo slot (prima quelli adatti), e per un pezzo nuovo l'umanità persa
+function cyInstall(id, i) {
+  const e = state.entries.find(x => x.id === id), it = e && idleCyber(e)[i]; if (!it || !Store.canEdit()) return;
+  const c = CW.byId(it.ref) || CW.byName(it.name), { fit, other } = c ? mkCySlots(e, c) : { fit: slotsOf(e), other: [] };
+  const opt = s => `<option value="${esc(s.id)}" ${it.from === s.id ? "selected" : ""}>${esc(s.label)}</option>`;
+  openModal(`<form class="form" id="cy-inst">
+    <div class="modal-head"><h2>// INSTALLA · ${esc(it.name)}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+    <div class="modal-body"><div class="fields">
+      <div class="field full"><label for="ci-slot">Slot</label><select id="ci-slot" name="slot">${fit.map(opt).join("")}${other.length ? `<optgroup label="Altri slot">${other.map(opt).join("")}</optgroup>` : ""}</select></div>
+      ${it.fresh ? `<div class="field"><label for="ci-hl">Umanità persa (HL)</label><div class="mk-hl"><input id="ci-hl" name="hl" type="number" min="0" value="${esc(num(it.hl))}">${c && c.dice && c.dice !== "N/A" ? `<button type="button" class="gp-btn" data-ci-pu title="Tira ${esc(c.dice)}">⚄</button>` : ""}</div><span class="hint">${c && c.dice && c.dice !== "N/A" ? `${esc(c.dice)}, media ${c.pu}` : "si perde ora, all'installazione"}</span></div>` : `<p class="hint field full">L'umanità di questo pezzo è già stata persa quando l'hai installato la prima volta.</p>`}
+      <p class="mk-warn field full" data-ci-cap></p>
+    </div></div>
+    <div class="modal-foot"><button type="button" class="btn ghost" data-action="close">Annulla</button><button class="btn cyan" type="submit">Installa</button></div>
+  </form>`, true);
+  const form = $("#cy-inst"), cap = () => {
+    const sl = form.elements.slot.value, u = slotUse(sl, [...((((e.cyber || {}).slots || {})[sl]) || []), { name: it.name, ref: it.ref }], baseState(e, sl));
+    $("[data-ci-cap]", form).textContent = !u ? "" : u.missing ? `Manca ${u.missing}: attivalo prima.` : u.over ? `Slot pieno: ${u.label} ${u.used}/${u.cap}.` : `${u.label === "chip" ? "Chip" : "Opzioni"} dopo l'installazione: ${u.used}/${u.cap}.`;
+  };
+  cap(); form.elements.slot.addEventListener("change", cap);
+  const pu = $("[data-ci-pu]", form); pu && pu.addEventListener("click", () => { const r = CW.rollPu(c); form.elements.hl.value = r.total; toast(`Umanità persa: ${r.total}${r.dice.length ? ` (${r.dice.join(" + ")})` : ""}`); });
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    const slot = form.elements.slot.value, hl = form.elements.hl ? num(form.elements.hl.value) : num(it.hl);
+    cyberPatch(id, cy => {
+      const idle = cy.slots.idle || [], x = idle[i]; if (!x) return cy;
+      idle.splice(i, 1); if (!idle.length) delete cy.slots.idle;
+      const { fresh, stored, from, withBase, ...keep } = x;
+      cy.slots[slot] = [...(cy.slots[slot] || []), { ...keep, hl, installed: true }];
+      return cy;
+    });
+    closeModal(); openEntry(id, "cyber");
+    toast(`${it.name} installato in ${slotDef(e, slot).label}${it.fresh && hl ? ` · −${hl} umanità` : ""}`, "ok");
+  });
+}
+
 function cyberHtml(e) { return `<div class="cy-wrap" data-cyber="${esc(e.id)}">${cyberInner(e)}${cyberFxHtml(e)}</div>`; }
 function cyberInner(e) {
   const st = cyberStats(e);
@@ -240,7 +286,8 @@ function cyberInner(e) {
       </div>
     </div>`;
   return `
-    <div class="cy-legend"><span>◆ installato</span><span>◇ pianificato</span><span>⬚ disinstallato (resta in Equipaggiamento)</span><span>○ base non installata</span><span>colonne: costo (eb) · HL = umanità persa · −N = umanità massima tolta (in giallo se modificata)</span></div>
+    ${idleHtml(e)}
+    <div class="cy-legend"><span>◆ installato</span><span>◇ pianificato</span><span>⏸ idle (non installato, va in qualsiasi slot)</span><span>⬚ disinstallato (resta in Equipaggiamento)</span><span>○ base non installata</span><span>colonne: costo (eb) · HL = umanità persa · −N = umanità massima tolta (in giallo se modificata)</span></div>
     <div class="cy-layout">
       <div class="cy-col">${col("l")}</div>
       <div class="cy-center">
@@ -274,6 +321,7 @@ function gearInner(e) {
   items.forEach((it, gi) => {
     const cat = it.cat || "altro";
     if (cat === NET_CAT) return;
+    if (cat === "vestiti") { rows.vestiti.push({ ...fromGear(it, gi), detail: [wdType(it.type), it.style, it.detail].filter(Boolean).join(" · "), tag: it.worn ? "👕 indossato" : "" }); return; }
     if (cat !== "armature") { rows[cat] && rows[cat].push(fromGear(it, gi)); return; }
     const on = AW.on[gi] || [], A = armorInfo(it);
     const free = A.both ? (on.length ? [] : ["both"]) : A.fixed ? A.locs.filter(l => !on.includes(l)) : on.length < Math.max(1, num(it.qty)) ? ["head", "body"].filter(l => !on.includes(l)) : [];
@@ -299,6 +347,9 @@ function gearInner(e) {
         act: st === "in" ? cyBtn("out", sl.id, i, "⇩ Disinstalla", "Lo togli dal corpo: resta nell'inventario") : st === "stored" ? cyBtn("in", sl.id, i, "⇧ Reinstalla", "Lo rimetti nel corpo") : "" });
     });
   });
+  // cyberware in idle: comprato o tolto, si installa in qualsiasi slot
+  idleCyber(e).forEach((it, i) => rows.cyber.push({ name: it.name, detail: [it.from ? `tolto da ${slotDef(e, it.from).label}` : "", hasVal(it.hl) ? `${num(it.hl)} HL${it.fresh ? " (al montaggio)" : ""}` : ""].filter(Boolean).join(" · "), note: it.note, cls: "stored",
+    tag: "⏸ idle", act: edit ? `<button type="button" class="btn ghost small g-act" data-action="cy-install" data-id="${id}" data-i="${i}" title="Scegli lo slot dove installarlo">⇧ Installa</button>` : "" }));
   // cyberdeck con programmi e hardware
   const ds = decksOf(e), loose = netGearOf(e);
   ds.forEach((d, di) => {
@@ -314,7 +365,7 @@ function gearInner(e) {
       act: !edit ? "" : !ds.length ? `<span class="hint">nessun deck</span>` : `${ds.length > 1 ? `<select class="g-deck" data-deck-for="${gi}" aria-label="In quale deck">${ds.map((d, i) => `<option value="${i}" ${i === deckIdx(e) ? "selected" : ""}>${esc(d.name || `Cyberdeck ${i + 1}`)}</option>`).join("")}</select>` : ""}<button type="button" class="btn ghost small g-act" data-action="deck-install" data-id="${id}" data-i="${gi}" data-deck="${deckIdx(e)}">⇧ Installa</button>` }));
   }
   const SECS = [...GEAR_CATS.slice(0, 2), GEAR_CATS.find(c => c.id === "cyber"), { id: "deck", label: "Cyberdeck", color: "var(--green)" }, ...GEAR_CATS.filter(c => !["armi", "armature", "cyber", NET_CAT].includes(c.id))];
-  const LINK = { armi: (s.weapons || []).length ? ["combat", "Combattimento"] : null, cyber: ["cyber", "Cyberware"], deck: ["deck", "Cyberdeck"] };
+  const LINK = { armi: (s.weapons || []).length ? ["combat", "Combattimento"] : null, cyber: ["cyber", "Cyberware"], deck: ["deck", "Cyberdeck"], vestiti: ["wardrobe", "Wardrobe"] };
   const real = l => l.filter(x => !/subhead|none/.test(x.cls || "")).length;
   const total = SECS.reduce((t, c) => t + real(rows[c.id]), 0);
   if (!total && (money === "" || money == null) && !drugStatusHtml(e)) return `<div class="empty"><div class="big">// INVENTARIO VUOTO</div>Nessun equipaggiamento registrato.</div>`;
@@ -394,7 +445,7 @@ const gearRow = (it = {}) => `
     <input data-f="qty" type="number" min="1" step="1" placeholder="Q.tà" value="${esc(it.qty ?? 1)}">
     <input data-f="detail" placeholder="Dettagli (danno, SP, ROF…)" value="${esc(it.detail)}">
     <input data-f="note" placeholder="Nota" value="${esc(it.note)}">
-    <input type="hidden" data-f="sp" value="${esc(it.sp ?? "")}"><input type="hidden" data-f="pen" value="${esc(it.pen ?? "")}"><input type="hidden" data-f="both" value="${it.both ? "1" : ""}"><input type="hidden" data-f="loc" value="${esc(it.loc || "")}"><input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}">
+    <input type="hidden" data-f="style" value="${esc(it.style || "")}"><input type="hidden" data-f="type" value="${esc(it.type || "")}"><input type="hidden" data-f="worn" value="${it.worn ? "1" : ""}"><input type="hidden" data-f="sp" value="${esc(it.sp ?? "")}"><input type="hidden" data-f="pen" value="${esc(it.pen ?? "")}"><input type="hidden" data-f="both" value="${it.both ? "1" : ""}"><input type="hidden" data-f="loc" value="${esc(it.loc || "")}"><input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button>
   </div>`;
 const readRows = (root, sel) => $$(sel, root).map(r => Object.fromEntries($$("[data-f]", r).map(i => [i.dataset.f, i.type === "checkbox" ? i.checked : i.value.trim()])));
@@ -560,7 +611,7 @@ function editCyber(id) {
     const hidden = CYBER_SLOTS.filter(s => !$(`fieldset[data-slot="${s.id}"]`, form)).map(s => s.id);
     try {
       const saved = await Store.save("entries", { ...e, cyber: {
-        humanity: hum === "" ? null : num(hum), therapy: th === "" ? null : num(th), slots: out, extra, hidden, bases,
+        humanity: hum === "" ? null : num(hum), therapy: th === "" ? null : num(th), slots: { ...out, ...(idleCyber(e).length ? { idle: e.cyber.slots.idle } : {}) }, extra, hidden, bases,
       } });
       upsert(state.entries, saved); toast("Cyberware salvato", "ok"); openEntry(saved.id, "cyber");
     } catch (err) { fail(err); }
@@ -592,7 +643,8 @@ function editGear(id) {
     ev.preventDefault();
     const items = readRows(form, ".gear-row").filter(it => it.name).map(({ item, ...it }) => {
       const o = { ...it, qty: Math.max(1, num(it.qty) || 1) };
-      ["cost", "drug", "ref", "sp", "pen", "both", "loc"].forEach(k => { if (!o[k]) delete o[k]; });
+      ["cost", "drug", "ref", "sp", "pen", "both", "loc", "style", "type", "worn"].forEach(k => { if (!o[k]) delete o[k]; });
+      if (o.worn) o.worn = true;
       if (o.sp) o.sp = num(o.sp); if (o.pen) o.pen = num(o.pen); if (o.both) o.both = true;
       if (o.cost) o.cost = num(o.cost);
       if (item) try { o.item = JSON.parse(item); } catch {}

@@ -37,11 +37,11 @@ function rolesTabHtml(e) {
   const free = RL.ROLES.filter(r => !roles.some(x => x.id === r.id));
   return `<div class="rl-tab" data-roles-tab="${id}">
     <div class="sh-bar"><label class="sh-mod" title="Modificatore situazionale aggiunto ai tiri">MOD <input type="number" step="1" data-sheet-mod value="${sheetMod}"></label>
-      <span class="hint">Si parte con un Ruolo a grado 4. Un secondo Ruolo (a grado 1, con i Punti Miglioramento) si prende solo con il precedente almeno a 4.</span>
+      <span class="hint">Si parte con un Ruolo a grado 4. Un altro Ruolo parte a grado 1 e costa 60 IP (anche dai Punti Miglioramento), con il precedente almeno a 4.</span>
       <button type="button" class="btn ghost small cyan" data-action="dice-open">⬢ Dice log</button></div>
     ${roles.length ? roles.map((r, i) => roleCard(e, r, i, edit)).join("") : `<p class="hint">Nessun Ruolo: aggiungine uno qui sotto.</p>`}
     ${edit && free.length ? `<div class="rl-add"><select data-rl-new aria-label="Ruolo da aggiungere">${free.map(r => `<option value="${r.id}">${esc(r.it)} · ${esc(r.abilityIt)}</option>`).join("")}</select>
-      <button type="button" class="btn small yellow" data-action="rl-op" data-id="${id}" data-op="add">+ Ruolo</button>
+      <button type="button" class="btn small yellow" data-action="rl-op" data-id="${id}" data-op="add" ${roles.length ? `title="Grado 1 con i Punti Miglioramento: 60 IP (ne hai ${num(sheetOf(e).ip)})"` : ""}>+ Ruolo${roles.length ? " · 60 IP" : ""}</button>
       ${roles.length && !RL.canAddRole(roles) ? `<span class="hint warn-t">Per le regole il Ruolo precedente deve essere almeno a grado 4.</span>` : ""}</div>` : ""}
   </div>`;
 }
@@ -165,8 +165,18 @@ async function roleOp(el) {
   if (op === "add") {
     const sel = $(`.rl-tab[data-roles-tab="${CSS.escape(e.id)}"] [data-rl-new]`), id = sel && sel.value, roles = rolesOf(e);
     if (!id) return;
-    if (roles.length && !RL.canAddRole(roles) && !(await askConfirm(`Per le regole serve il Ruolo precedente almeno a grado 4 (ora è ${num(roles[roles.length - 1].rank)}). Aggiungere comunque?`, "Aggiungi"))) return;
-    return sheetPatch(e.id, s => { migrateRoles(s, e); s.roles.push({ id, rank: s.roles.length ? 1 : 4 }); return s; });
+    // il primo Ruolo è gratis (grado 4); gli altri partono a grado 1 e costano 60 IP
+    if (!roles.length) return sheetPatch(e.id, s => { migrateRoles(s, e); s.roles.push({ id, rank: 4 }); return s; });
+    const t = ipTargets(e).find(x => x.key === "newrole:" + id), ip = num(sheetOf(e).ip); if (!t) return;
+    if (t.locked && !(await askConfirm(`Per le regole serve il Ruolo precedente almeno a grado 4 (ora è ${num(roles[roles.length - 1].rank)}). Aggiungere comunque?`, "Aggiungi"))) return;
+    if (ip < t.cost) {
+      if (!isGm()) return toast(`Servono ${t.cost} IP per un nuovo Ruolo: ne hai ${ip}`, "err");
+      if (!(await askConfirm(`Servono ${t.cost} IP e ${e.name} ne ha ${ip}. Aggiungere il Ruolo gratis (decisione del GM)?`, "Aggiungi gratis"))) return;
+      return sheetPatch(e.id, s => { migrateRoles(s, e); s.roles.push({ id, rank: 1 }); return s; });
+    }
+    if (!(await askConfirm(`Prendere il Ruolo ${t.label} a grado 1 per ${t.cost} IP? Ne restano ${ip - t.cost}.`, "Compra"))) return;
+    sheetPatch(e.id, ipSpendFn(e, t));
+    return toast(`Nuovo Ruolo: ${t.label}, grado 1 (−${t.cost} IP)`, "ok");
   }
   if (op === "del") { const R = RL.roleById((rolesOf(e)[i] || {}).id) || {}; if (!(await askConfirm(`Togliere il Ruolo ${R.it || ""} con tutte le sue scelte?`, "Togli"))) return; }
   sheetPatch(e.id, s => {
