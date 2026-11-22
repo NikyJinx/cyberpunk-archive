@@ -22,7 +22,7 @@ function openEntry(id, tab = "dossier") {
     openModal(`
       <div class="modal-head"><h2>// ${T[0]} · ${esc(k.label)}</h2><button class="x" data-action="close" aria-label="Chiudi">×</button></div>
       <div class="modal-body">
-        <div class="tab-title"><h1>${esc(e.name || "Senza nome")}</h1>${e.handle ? `<span class="handle">“${esc(e.handle)}”</span>` : ""}</div>
+        <div class="tab-title"><h1>${esc(titleOf(e))}</h1>${subNameOf(e) ? `<span class="handle">${esc(subNameOf(e))}</span>` : ""}</div>
         ${tabs}
         ${T[1](e)}
       </div>
@@ -35,17 +35,17 @@ function openEntry(id, tab = "dossier") {
     return;
   }
   const k = kindOf(e.kind), st = statusOf(e.status), imgs = imagesOf(e);
-  const fac = e.faction ? factionEntry(e.faction) : null;
+  const facLink = f => { const x = factionEntry(f); return x && x.id !== e.id ? `<a data-action="open-entry" data-id="${esc(x.id)}">${esc(f)}</a>` : esc(f); };
   const facts = [
     ["Tipo", esc(k.label)],
-    e.faction && ["Fazione", fac && fac.id !== e.id ? `<a data-action="open-entry" data-id="${esc(fac.id)}">${esc(e.faction)}</a>` : esc(e.faction)],
+    factionsOf(e).length && [factionsOf(e).length > 1 ? "Fazioni" : "Fazione", factionsOf(e).map(facLink).join(", ")],
     e.role && ["Ruolo", esc(e.role)],
     st && ["Stato", `<span class="status s-${st.id}">${esc(st.label)}</span>`],
     e.attitude && ["Rapporto", esc(e.attitude)],
     e.location && ["Luogo", esc(e.location)],
     ...(e.custom || []).filter(c => c.k || c.v).map(c => [esc(c.k), esc(c.v)]),
   ].filter(Boolean);
-  const members = e.kind === "fazione" ? state.entries.filter(x => x.id !== e.id && norm(x.faction) === norm(e.name)) : [];
+  const members = e.kind === "fazione" ? state.entries.filter(x => x.id !== e.id && inFaction(x, e.name)) : [];
   const related = state.events
     .filter(ev => (ev.people || []).some(p => norm(p) === norm(e.name)) || (e.kind === "luogo" && norm(ev.location) === norm(e.name)))
     .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
@@ -56,8 +56,8 @@ function openEntry(id, tab = "dossier") {
       <div class="dossier">
         ${carouselHtml(imgs, e.name)}
         <div>
-          <h1>${esc(e.name || "Senza nome")}</h1>
-          ${e.handle ? `<div class="handle">“${esc(e.handle)}”</div>` : ""}
+          <h1>${esc(titleOf(e))}</h1>
+          ${subNameOf(e) ? `<div class="handle">${esc(subNameOf(e))}</div>` : ""}
           <dl class="facts">${facts.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>
           ${(e.tags || []).length || e.gmOnly ? `<div class="meta">${gmBadge(e)}${(e.tags || []).map(t => `<span class="badge tag">#${esc(t)}</span>`).join("")}</div>` : ""}
           ${e.description ? `<div class="block"><h4>Descrizione</h4><div class="prewrap">${esc(e.description)}</div></div>` : ""}
@@ -164,6 +164,35 @@ function imagePicker(name, ref, square = false) {
     </div>`;
 }
 
+function tagInput(name, list, dl, ph) {
+  return `<div class="tag-in" data-tag-in="${name}">
+    <span class="tag-chips">${list.map(t => tagChip(t)).join("")}</span>
+    <input id="f-${name === "faction" ? "fac" : name}" list="${dl}" placeholder="${esc(ph)}" aria-label="Aggiungi">
+    <input type="hidden" name="${name}" value="${esc(list.join(", "))}"></div>`;
+}
+const tagChip = t => `<span class="tag-chip ${norm(t) === "party" ? "party" : ""}">${esc(t)}<button type="button" data-tag-del aria-label="Togli ${esc(t)}">×</button></span>`;
+function tagSync(box) { $("input[type=hidden]", box).value = $$(".tag-chip", box).map(c => c.firstChild.textContent).join(", "); }
+function tagAdd(box, txt) {
+  const have = $$(".tag-chip", box).map(c => norm(c.firstChild.textContent));
+  String(txt || "").split(",").map(s => s.trim()).filter(Boolean).forEach(t => { if (!have.includes(norm(t))) { $(".tag-chips", box).insertAdjacentHTML("beforeend", tagChip(t)); have.push(norm(t)); } });
+  tagSync(box);
+}
+// quello scritto e non ancora confermato si aggiunge al salvataggio
+function tagFlush(form) { $$("[data-tag-in]", form).forEach(box => { const i = $("input:not([type=hidden])", box); if (i.value.trim()) { tagAdd(box, i.value); i.value = ""; } }); }
+function bindTagInputs(root) {
+  $$("[data-tag-in]", root).forEach(box => {
+    const i = $("input:not([type=hidden])", box);
+    i.addEventListener("keydown", ev => {
+      if (ev.key === "Enter" || ev.key === ",") { ev.preventDefault(); tagAdd(box, i.value); i.value = ""; }
+      else if (ev.key === "Backspace" && !i.value) { const l = $$(".tag-chip", box).pop(); if (l) { l.remove(); tagSync(box); } }
+    });
+    // scelta dall'elenco delle fazioni
+    i.addEventListener("input", ev => { if (!ev.inputType || ev.inputType === "insertReplacementText") { const o = [...(i.list ? i.list.options : [])].some(x => x.value === i.value); if (o) { tagAdd(box, i.value); i.value = ""; } } });
+    i.addEventListener("blur", () => { if (i.value.trim()) { tagAdd(box, i.value); i.value = ""; } });
+    box.addEventListener("click", ev => { const d = ev.target.closest("[data-tag-del]"); if (d) { d.closest(".tag-chip").remove(); tagSync(box); } else if (ev.target === box) i.focus(); });
+  });
+}
+
 function cfRow(c = {}) {
   return `<div class="cf-row"><input placeholder="Campo (es. Cyberware)" data-cf-k value="${esc(c.k)}"><input placeholder="Valore" data-cf-v value="${esc(c.v)}"><button type="button" data-action="cf-del" aria-label="Rimuovi campo">✕</button></div>`;
 }
@@ -187,7 +216,8 @@ function editEntry(id, preset = {}) {
             <div class="field"><label class="req" for="f-name">Nome</label><input id="f-name" name="name" required value="${esc(e.name)}"></div>
             <div class="field"><label for="f-handle">Alias / Handle</label><input id="f-handle" name="handle" value="${esc(e.handle)}"></div>
             <div class="field"><label for="f-kind">Tipo</label><select id="f-kind" name="kind">${KINDS.map(k => `<option value="${k.id}" ${e.kind === k.id ? "selected" : ""}>${k.label}</option>`).join("")}</select></div>
-            <div class="field"><label for="f-fac">Fazione</label><input id="f-fac" name="faction" list="dl-fac" value="${esc(e.faction)}" placeholder="es. Arasaka, Maelstrom…"></div>
+            <div class="field"><label for="f-fac">Fazioni</label>${tagInput("faction", factionsOf(e), "dl-fac", "es. Arasaka, Party…")}
+              <span class="hint">Invio o virgola per aggiungerne un'altra · un NPC con «Party» compare nella pagina Party</span></div>
             <div class="field"><label for="f-role">Ruolo</label><input id="f-role" name="role" list="dl-role" value="${esc(e.role)}"></div>
             <div class="field"><label for="f-status">Stato</label><select id="f-status" name="status">${STATUSES.map(s => `<option value="${s.id}" ${e.status === s.id ? "selected" : ""}>${s.label}</option>`).join("")}</select></div>
             <div class="field"><label for="f-att">Rapporto col party</label><input id="f-att" name="attitude" list="dl-att" value="${esc(e.attitude)}"></div>
@@ -213,8 +243,10 @@ function editEntry(id, preset = {}) {
     </form>
   `);
   const gallery = bindGallery($("#gallery"), oldImages);
+  bindTagInputs($("#entry-form"));
   $("#entry-form").addEventListener("submit", async ev => {
     ev.preventDefault();
+    tagFlush(ev.target);
     const form = ev.target, btn = $("button[type=submit]", form);
     btn.disabled = true; btn.textContent = "Salvataggio…";
     try {

@@ -17,10 +17,12 @@ L'archivio è pensato come un terminale trafugato dai server di Night City: inte
 
 ### 🗂 Database — `// NCPD_LEAKED_DB`
 Schede per **personaggi del party (PG), NPC, fazioni, luoghi e oggetti**.
-- Alias, fazione, ruolo (Solo, Netrunner, Fixer, Rockerboy…), stato (vivo, *flatlined*, disperso), rapporto con il party, luogo, tag, descrizione e note.
+- Alias, fazioni, ruolo (Solo, Netrunner, Fixer, Rockerboy…), stato (vivo, *flatlined*, disperso), rapporto con il party, luogo, tag, descrizione e note.
+- Se c'è un **alias** è il titolo della scheda (senza virgolette), con il nome sotto.
+- Un record può avere **più fazioni** (es. «Arasaka» e «Party»): nel modulo si aggiungono come etichette, con Invio o virgola. Un NPC con la fazione **Party** compare anche nella pagina Party, accanto ai PG.
 - **Campi personalizzati illimitati** per tutto il resto: cyberware, armi, debiti, contatti.
 - **Galleria di immagini** per ogni scheda, con carosello sfogliabile tramite frecce, tastiera o swipe e visualizzazione a schermo intero.
-- Le fazioni elencano automaticamente i propri membri. Ogni dossier mostra gli eventi del calendario in cui il personaggio è coinvolto.
+- Le fazioni elencano automaticamente i propri membri (anche quelli che hanno più fazioni). Ogni dossier mostra gli eventi del calendario in cui il personaggio è coinvolto.
 - Ricerca libera e filtri per tipo, fazione e stato. I personaggi morti compaiono in bianco e nero, marchiati **FLATLINED**.
 
 #### ◈ Cyberware ed equipaggiamento
@@ -157,7 +159,7 @@ La base della crew (regole dei Headquarters).
 Le Architetture di Rete che il GM sta mostrando: compaiono piano per piano mentre il Netrunner scende, con Password, File, Nodi e Black ICE (REZ compresi), aggiornate in tempo reale. I piani non ancora raggiunti e le note del GM non arrivano ai giocatori.
 
 ### 👥 Party — `// CREW_MANIFEST`
-Le schede di tutti i PG affiancate: HP con i pulsanti per danni e cure, armatura con l'ablazione, Luck, umanità, iniziativa, Death Save, le abilità più alte e le armi da tirare con un clic, e «Tira come» per far partire il Dice log a nome di quel PG. Ognuno può usare qualsiasi scheda.
+Le schede di tutti i PG (e degli NPC con la fazione «Party») affiancate: HP con i pulsanti per danni e cure, armatura con l'ablazione, Luck, umanità, iniziativa, Death Save, le abilità più alte e le armi da tirare con un clic, e «Tira come» per far partire il Dice log a nome di quel PG. Ognuno può usare qualsiasi scheda.
 
 ### 🔒 Area GM — `// GM_ONLY_CHANNEL`
 Una sezione che vedono **solo i GM**: le righe segrete non arrivano proprio ai giocatori, perché le filtra il database.

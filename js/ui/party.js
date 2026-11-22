@@ -5,14 +5,14 @@
 
 // ---------- PARTY: le schede dei PG a colpo d'occhio ----------
 // Tutti i giocatori possono usare tutte le schede (nel gruppo ci si fida).
-const partyPgs = () => state.entries.filter(e => e.kind === "pg").sort((a, b) => (a.name || "").localeCompare(b.name || "", "it"));
+const partyPgs = () => state.entries.filter(isPartyMember).sort((a, b) => (a.name || "").localeCompare(b.name || "", "it"));
 function partyCard(e) {
   const id = esc(e.id), edit = Store.canEdit(), imgs = imagesOf(e);
   const head = `
     <header class="pc-head">
       <div class="pc-img">${imgs.length ? imgTag(imgs[0], e.name) : `<span>${esc(initials(e.name))}</span>`}</div>
-      <div class="pc-title"><h3>${esc(e.name)}</h3>
-        <div class="pc-sub">${e.handle ? `“${esc(e.handle)}” · ` : ""}${esc(e.role || "—")}${sheetOf(e).owner ? ` · <span title="Giocatore">${esc(sheetOf(e).owner.split("@")[0])}</span>` : ""}</div></div>
+      <div class="pc-title"><h3>${esc(titleOf(e))}</h3>
+        <div class="pc-sub">${subNameOf(e) ? `<span class="pc-name">${esc(subNameOf(e))}</span> · ` : ""}${e.kind === "npc" ? `<span class="badge faction party">NPC</span> ` : ""}${esc(e.role || "—")}${sheetOf(e).owner ? ` · <span title="Giocatore">${esc(sheetOf(e).owner.split("@")[0])}</span>` : ""}</div></div>
       ${gmBadge(e)}
     </header>`;
   if (!hasSheet(e)) return `<article class="pc-card empty-sheet">${head}<p class="hint">Scheda ancora vuota.</p>
