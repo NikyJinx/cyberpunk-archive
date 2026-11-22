@@ -34,8 +34,8 @@ function pcSrc(e, i) {
     kind: "pc", id: e.id, i, key: `pc:${e.id}:${i}`, w, cat: sheetWeaponCat(w), mods: [...(s.mods || []), ...roleMods(e), ...cyberFx(e).mods], skillLabel: k.label,
     weakness: num((caOf(e) || {}).weakness),
     fix: r => { const ca = caOf(e); if (ca && num(ca.recover) && CPR.FIREARMS.includes(sheetWeaponCat(w)) && r.crit === "fail") { const minus = r.dice.find(d => d.t === "minus"); if (minus) { r.total += minus.v; r.dice = r.dice.filter(d => d !== minus); } r.crit = ""; r.note = "Recuperare da un Disastro: fallimento critico ignorato (il dado conta come 1)"; } },
-    single: [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...qualBonus(w), ...smartBonus(e, w)],
-    auto: [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: af ? af.lvl : 0 }, ...qualBonus(w), ...smartBonus(e, w)], afLvl: af ? af.lvl : 0,
+    single: [{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...skillBonusAll(e, k), ...qualBonus(w), ...smartBonus(e, w)],
+    auto: [{ l: "REF", v: statEff(e, "REF") }, { l: "Autofire", v: af ? af.lvl : 0 }, ...(af ? skillBonusAll(e, af) : []), ...qualBonus(w), ...smartBonus(e, w)], afLvl: af ? af.lvl : 0,
     extra: () => sheetExtra(e), edit: Store.canEdit(),
     post: r => postRoll({ ...r, who: e.name, entryId: e.id }),
     save: (f, v) => sheetPatch(e.id, x => { if (x.weapons && x.weapons[i]) x.weapons[i][f] = v; return x; }),
@@ -260,12 +260,13 @@ function editSheet(id) {
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
   const a = loc => (s.armor || {})[loc] || {};
   const autoHp = CPR.hpMax(num(stats.BODY), num(stats.WILL));
+  bnFormStart(e);
   openModal(`
     <form class="form" id="sheet-form">
       <div class="modal-head"><h2>// SCHEDA · ${esc(e.name)}</h2><button type="button" class="x" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="sheet" aria-label="Chiudi">×</button></div>
       <div class="modal-body">
         <h3 class="sh-h">STATs</h3>
-        <div class="sh-stat-in">${CPR.STATS.map(st => `<label><span>${st.id}</span><input name="st-${st.id}" type="number" min="0" max="20" step="1" value="${esc(stats[st.id] ?? "")}" title="${st.label}"></label>`).join("")}</div>
+        <div class="sh-stat-in">${CPR.STATS.map(st => `<div class="st-ed"><label><span>${st.id}</span><input name="st-${st.id}" type="number" min="0" max="20" step="1" value="${esc(stats[st.id] ?? "")}" title="${st.label}"></label>${bnCellHtml("STAT:" + st.id)}</div>`).join("")}</div>
         <p class="hint">HP max calcolati: <b id="sh-auto-hp">${autoHp}</b> (10 + 5 × (BODY + WILL) / 2, arrotondato per eccesso). L'EMP si abbassa da sola con l'umanità del cyberware.</p>
         <div class="fields">
           <div class="field full"><span class="lbl">Ruoli e gradi</span><span class="hint">Si gestiscono nella tab «Ruoli» del dossier (anche più di uno): ${esc(rolesOf(e).map(r => `${(RL.roleById(r.id) || {}).it} ${num(r.rank)}`).join(", ") || "nessuno")}.</span></div>
@@ -285,7 +286,7 @@ function editSheet(id) {
 
         <h3 class="sh-h">Skills <small>livello 0–10 · STAT tra parentesi</small></h3>
         <div class="sh-skill-in">${CPR.SKILL_GROUPS.map(g => `<fieldset><legend>${g.name}</legend>${g.skills.map(k => `
-          <label class="${k.basic ? "basic" : ""}"><span>${esc(k.label)} <small>(${k.stat})${k.x2 ? " ×2" : ""}</small></span><input name="sk-${k.id}" type="number" min="0" max="10" step="1" value="${esc(lv[k.id] ?? "")}"></label>`).join("")}</fieldset>`).join("")}</div>
+          <div class="sk-ed"><label class="${k.basic ? "basic" : ""}"><span>${esc(k.label)} <small>(${k.stat})${k.x2 ? " ×2" : ""}</small></span><input name="sk-${k.id}" type="number" min="0" max="10" step="1" value="${esc(lv[k.id] ?? "")}"></label>${bnCellHtml("skill:" + k.id)}</div>`).join("")}</fieldset>`).join("")}</div>
         <span class="lbl">Abilità personalizzate</span>
         <div class="sh-rows" id="sh-cus">${(s.custom || []).map(cusRow).join("")}</div>
         <button type="button" class="btn ghost small cyan" data-sh-add="cus">+ Abilità (Language, Science, Local Expert…)</button>
@@ -309,6 +310,7 @@ function editSheet(id) {
       </div>
     </form>`);
   const form = $("#sheet-form");
+  bnFormBind(form);
   form.addEventListener("input", ev => {
     if (/^st-(BODY|WILL)$/.test(ev.target.name)) $("#sh-auto-hp").textContent = CPR.hpMax(num(form["st-BODY"].value), num(form["st-WILL"].value));
   });
@@ -356,7 +358,7 @@ function editSheet(id) {
       if (old.sp !== sp) armor[loc].cur = sp;
     }
     const sheet = { ...migrateRoles(JSON.parse(JSON.stringify(s)), e), owner: v("owner"), stats, skills, custom, weapons, armor, armorNoPen: form.elements["armorNoPen"].checked,
-      hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes"), mods };
+      hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes"), mods, bonuses: bnFormBonuses() };
     try {
       const saved = await Store.save("entries", { ...e, sheet });
       upsert(state.entries, saved); liveSend("entries", saved);

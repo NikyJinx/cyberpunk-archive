@@ -32,6 +32,8 @@ Ogni PG e NPC ha una scheda **Cyberware**, organizzata come una scheda del perso
 
 La **finestra della scheda** (dossier, scheda, combattimento, cyberware…) si sposta trascinandola dalla barra in alto e si ridimensiona dall'angolo in basso a destra; posizione e misura restano su quel dispositivo (doppio clic sulla barra o ⟲ la rimettono com'era). ⇱ la **sgancia**: resta aperta e la pagina dietro si può usare (mappa, dice log, altre pagine); 📌 la riaggancia. ⧉ la apre in una **finestra a parte** del browser, che mostra solo la scheda e si aggiorna in tempo reale con le modifiche fatte altrove. Su schermi stretti la finestra resta fissa.
 
+Nella tab **Scheda** il riquadro **Bonus a STAT e abilità** mostra, per ogni STAT o abilità che ne ha, la base, ogni bonus nel suo riquadro e il totale. Quelli ⚡ sono automatici (cyberware, Ruolo, armatura pesante, umanità sull'EMP, modificatori a tutte le prove) e si cambiano dove nascono; gli altri si aggiungono e si modificano in **Modifica scheda**, direttamente accanto a ogni STAT e abilità: «Dance [livello] [bonus] + = totale». Il «+» aggiunge un bonus, un clic su un bonus lo modifica (valore, fonte, oggetto a cui è legato, acceso/spento, elimina); i ⚡ automatici compaiono sulla stessa riga e il totale si aggiorna mentre cambi livello o STAT. Nella scheda il riquadro è solo in lettura. Un bonus può essere legato a un oggetto dell'inventario: conta solo finché l'oggetto c'è. Gli oggetti del Night Market che danno un bonus (es. DPI Smartsticks, Húsafell Underjack) lo portano da soli. I bonus contano nei tiri di STAT, di abilità e negli attacchi con l'abilità dell'arma; quelli al BODY non cambiano HP e Death Save.
+
 Nella sezione **Armi** dell'Equipaggiamento ogni arma ha **🏠 Lascia a casa** / **🎒 Porta con sé**: un'arma lasciata a casa sparisce dalle schede delle armi del Combattimento (e dai tiri rapidi del Party), finisce nel riquadro «🏠 A casa» in fondo alla tab Combattimento e non si può tirare finché non la riporti con te (da lì o dall'Equipaggiamento).
 
 Nella sezione **Cyberdeck** dell'Equipaggiamento ci sono i deck con quello che hanno installato (⇩ Disinstalla lo rimette nell'inventario) e, sotto «Non installati», programmi, Black ICE e hardware sfusi con ⇧ Installa nel deck scelto; anche la tab Cyberdeck ha il riquadro «Nell'inventario» per installarli nel deck in uso. Se il deck è pieno l'installazione viene rifiutata.
@@ -274,6 +276,7 @@ js/ui/                  interfaccia, un file per sezione (caricati in ordine da 
   market.js             Night Market: acquisti, storico, impostazioni del GM, importazione
   hq.js                 pagina HQ: piani, migliorie, HQ IP
   ip.js                 Punti Miglioramento
+  bonus.js              riquadro dei bonus a STAT e abilità
   combat.js             tab Combattimento e schede delle armi (PG e nemici)
   rules.js              munizioni, stati, Critical Injury, modificatori, Regole della campagna
   deck.js               Cyberdeck

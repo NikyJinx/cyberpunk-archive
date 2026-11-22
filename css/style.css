@@ -2216,3 +2216,61 @@ fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px 
 .cb-away ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
 .cb-away li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; opacity: .75; }
 .cb-away li small { color: var(--muted); font-family: var(--font-mono); }
+
+/* ---------- bonus a STAT e abilità ---------- */
+.bn-box { margin: 10px 0 14px; border: 1px solid var(--line); background: var(--bg-2); padding: 0 12px; }
+.bn-box > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 9px 0; cursor: pointer; list-style: none; }
+.bn-box > summary::-webkit-details-marker { display: none; }
+.bn-box > summary h4 { margin: 0; font-family: var(--font-head); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); }
+.bn-box > summary h4::before { content: "▸ "; }
+.bn-box[open] > summary h4::before { content: "▾ "; }
+.bn-t { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 8px; }
+.bn-t th, .bn-t td { border-top: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: middle; }
+.bn-t thead th { color: var(--muted); font-family: var(--font-mono); font-size: 11.5px; font-weight: 400; border-top: 0; }
+.bn-t tbody th { color: var(--text); white-space: nowrap; }
+.bn-t tr.bn-stat tbody th, .bn-t tr.bn-stat th { color: var(--yellow); }
+.bn-t .bn-tot { font-family: var(--font-head); font-size: 16px; color: var(--cyan); }
+.bn-chip { display: inline-flex; align-items: center; gap: 5px; margin: 2px 6px 2px 0; padding: 3px 7px; border: 1px solid var(--line); background: rgba(255,255,255,.03); font-size: 13px; }
+.bn-chip.auto { border-style: dashed; color: #c9c9dc; }
+.bn-chip b { font-family: var(--font-mono); color: var(--green); }
+.bn-chip.man { border-color: rgba(0,240,255,.45); }
+.bn-chip.off { opacity: .45; }
+.bn-chip input { padding: 2px 4px; font-size: 13px; background: transparent; border: 1px solid transparent; color: var(--text); }
+.bn-chip input:focus { border-color: var(--cyan); }
+.bn-chip input.bn-v, .bn-add .bn-v { width: 52px; font-family: var(--font-mono); }
+.bn-chip small { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.bn-x { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
+.bn-x:hover { color: var(--red); }
+.bn-add { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 12px; }
+.bn-add select { width: auto; max-width: 230px; }
+.bn-add input[name=name] { flex: 1 1 180px; }
+
+.sh-row.bn-row { grid-template-columns: 28px minmax(130px, 1.2fr) 64px minmax(120px, 1.4fr) minmax(120px, 1fr) 28px; }
+@media (max-width: 640px) { .sh-row.bn-row { grid-template-columns: 28px 1fr 64px 28px; } .sh-row.bn-row [data-f=name], .sh-row.bn-row [data-f=item] { grid-column: 2 / 4; } }
+.bn-auto { margin: 10px 0 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.bn-auto .hint { flex-basis: 100%; margin: 2px 0 0; }
+
+/* bonus accanto a STAT e abilità nel modulo */
+.sh-skill-in { columns: 2 360px; }
+.sk-ed { display: grid; grid-template-columns: minmax(0, 1fr) 58px auto; gap: 6px; align-items: center; padding: 2px 0; }
+.sk-ed > label { display: contents; }
+.sh-skill-in .sk-ed > label > span { font-size: 14px; }
+.bn-cell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; min-width: 0; }
+.bn-list { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.bn-list i { font-style: normal; display: inline-flex; gap: 3px; }
+.bn-cell .bn-chip { margin: 0; padding: 1px 5px; font-size: 12px; cursor: pointer; }
+.bn-cell .bn-chip.auto { cursor: default; }
+.bn-plus { width: 22px; height: 22px; padding: 0; border: 1px dashed var(--line); background: none; color: var(--muted); cursor: pointer; line-height: 1; }
+.bn-plus:hover { border-color: var(--cyan); color: var(--cyan); }
+.bn-sum { font-family: var(--font-mono); font-size: 13px; color: var(--cyan); min-width: 30px; }
+.bn-cell:not(.has) .bn-plus { opacity: .45; }
+.sk-ed:hover .bn-plus, .st-ed:hover .bn-plus { opacity: 1; }
+.st-ed { display: grid; gap: 4px; justify-items: center; }
+.st-ed .bn-cell { justify-content: center; }
+.st-ed .bn-list { justify-content: center; }
+.bn-ed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; padding: 6px 8px; border: 1px solid var(--cyan); background: var(--bg-2); column-span: all; }
+.sh-stat-in .bn-ed { grid-column: 1 / -1; }
+.bn-ed input[data-ed=name] { flex: 1 1 160px; }
+.bn-ed select { width: auto; max-width: 220px; }
+.sk-ed { grid-template-columns: minmax(110px, 1fr) 58px minmax(170px, 1.15fr); }
+.sk-ed .bn-cell { justify-content: flex-start; }
