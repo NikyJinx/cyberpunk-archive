@@ -7,6 +7,7 @@
 // costi del manuale: abilità 20 × nuovo livello (×2 per le abilità a costo doppio), Capacità di Ruolo 60 × nuovo grado
 // Un Ruolo nuovo (dal secondo in poi) parte a grado 1 e costa 60 IP: chiave "newrole:<id>".
 // sheet.ipLog = [{ at, kind: "earn" | "spend", amount, why, key, label, from, to }] (più recente in fondo)
+// «earn» con amount negativo = IP tolti (penalità, correzioni)
 const ipCost = (kind, to, x2) => kind === "role" ? 60 * to : (x2 ? 40 : 20) * to;
 function ipTargets(e) {
   const s = sheetOf(e);
@@ -39,8 +40,8 @@ function openIp(id) {
     <div class="modal-body ip-box" data-ip="${esc(e.id)}">
       <div class="ip-now"><span class="sh-k">Disponibili</span> <b>${ip}</b> IP</div>
       <p class="hint">Abilità: 20 IP × il livello nuovo (40 × per le abilità ×2). Capacità di Ruolo: 60 IP × il grado nuovo; un Ruolo nuovo parte a grado 1 (60 IP), con il precedente almeno a 4. Le abilità che non hai partono da 0 (il livello 1 costa 20).</p>
-      ${edit ? `<div class="ip-row"><span class="lbl">Guadagna</span><input type="number" min="1" max="999" data-ip-amt placeholder="IP" aria-label="IP guadagnati"><input data-ip-why placeholder="Perché (es. sessione 12, missione al porto)" aria-label="Motivo">
-        <button type="button" class="btn small" data-action="ip-earn" data-id="${esc(e.id)}">+ Aggiungi IP</button></div>
+      ${edit ? `<div class="ip-row"><span class="lbl">Aggiungi / togli</span><input type="number" min="-9999" max="9999" step="1" data-ip-amt placeholder="IP (es. 50 o −50)" aria-label="IP da aggiungere (positivo) o togliere (negativo)" title="Numero negativo per togliere IP"><input data-ip-why placeholder="Perché (es. sessione 12, missione al porto)" aria-label="Motivo">
+        <button type="button" class="btn small" data-action="ip-earn" data-id="${esc(e.id)}">± Registra</button></div>
       <div class="ip-row"><span class="lbl">Spendi</span><select data-ip-target aria-label="Cosa migliorare">
         <optgroup label="Capacità di Ruolo">${tg.filter(t => t.kind === "role").map(opt).join("") || `<option disabled>nessun Ruolo</option>`}</optgroup>
         ${tg.some(t => t.kind === "newrole") ? `<optgroup label="Nuovo Ruolo (grado 1)">${tg.filter(t => t.kind === "newrole").map(opt).join("")}</optgroup>` : ""}
@@ -48,7 +49,7 @@ function openIp(id) {
         <button type="button" class="btn small yellow" data-action="ip-spend" data-id="${esc(e.id)}">Migliora</button></div>` : ""}
       <h3 class="sh-h">Storico ${edit && last ? `<button type="button" class="btn ghost small" data-action="ip-undo" data-id="${esc(e.id)}" title="Annulla l'ultima voce (restituisce gli IP o li toglie)">↶ Annulla l'ultima</button>` : ""}</h3>
       ${log.length ? `<div class="gl-wrap"><table class="gl-t ip-t"><thead><tr><th>Data</th><th>Cosa</th><th>IP</th><th>Totale dopo</th></tr></thead><tbody>${(() => {
-        let run = ip; return log.map(x => { const row = `<tr class="${x.kind}"><td class="gl-n">${esc(new Date(x.at).toLocaleDateString("it-IT"))}</td><td>${x.kind === "earn" ? `Guadagnati${x.why ? ` · ${esc(x.why)}` : ""}` : `${esc(x.label)} ${x.from} → ${x.to}`}</td><td class="gl-n">${x.kind === "earn" ? "+" : "−"}${x.amount}</td><td class="gl-n">${run}</td></tr>`; run += x.kind === "earn" ? -x.amount : x.amount; return row; }).join(""); })()}</tbody></table></div>`
+        let run = ip; return log.map(x => { const row = `<tr class="${x.kind}"><td class="gl-n">${esc(new Date(x.at).toLocaleDateString("it-IT"))}</td><td>${x.kind === "earn" ? `${x.amount < 0 ? "Tolti" : "Guadagnati"}${x.why ? ` · ${esc(x.why)}` : ""}` : `${esc(x.label)} ${x.from} → ${x.to}`}</td><td class="gl-n">${x.kind === "earn" && x.amount >= 0 ? "+" : "−"}${Math.abs(x.amount)}</td><td class="gl-n">${run}</td></tr>`; run += x.kind === "earn" ? -x.amount : x.amount; return row; }).join(""); })()}</tbody></table></div>`
         : `<p class="hint">Nessuna voce ancora.</p>`}
     </div>`);
 }
@@ -66,8 +67,9 @@ function ipAction(el) {
   const box = el.closest(".ip-box"), a = el.dataset.action;
   if (a === "ip-earn") {
     const n = Math.trunc(num($("[data-ip-amt]", box).value)), why = $("[data-ip-why]", box).value.trim();
-    if (n <= 0) return toast("Scrivi quanti IP aggiungere", "err");
-    return ipSave(e, s => { s.ip = num(s.ip) + n; s.ipLog = [...(s.ipLog || []), { at: new Date().toISOString(), kind: "earn", amount: n, why }]; return s; }, `+${n} IP`);
+    if (!n) return toast("Scrivi quanti IP aggiungere (o togliere, con il meno)", "err");
+    if (num(sheetOf(e).ip) + n < 0) return toast(`Ne ha solo ${num(sheetOf(e).ip)}: non si può scendere sotto zero`, "err");
+    return ipSave(e, s => { s.ip = num(s.ip) + n; s.ipLog = [...(s.ipLog || []), { at: new Date().toISOString(), kind: "earn", amount: n, why }]; return s; }, `${n > 0 ? "+" : "−"}${Math.abs(n)} IP`);
   }
   if (a === "ip-spend") {
     const key = $("[data-ip-target]", box).value, t = ipTargets(e).find(x => x.key === key);
