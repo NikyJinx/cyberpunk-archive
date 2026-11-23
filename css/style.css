@@ -2132,6 +2132,11 @@ body.popout > :not(dialog):not(#toasts):not(.dice-drawer) { display: none !impor
 .tt-draw.erasing [data-shape] { pointer-events: visiblePainted; cursor: not-allowed; }
 .tt-draw.erasing [data-shape]:hover { stroke-dasharray: 6 6; filter: drop-shadow(0 0 6px #fff); }
 .tt-wrap.drawing { cursor: crosshair; touch-action: none; }
+/* ✥ sposta: le forme del layer attivo si prendono anche dal bordo, quella selezionata lampeggia tratteggiata */
+.tt-draw.shifting .act [data-shape] { pointer-events: visiblePainted; cursor: move; }
+.tt-draw.shifting .act .d-area[fill="none"] { pointer-events: visible; }
+.tt-draw .sel [data-shape] { stroke-dasharray: 8 6; filter: drop-shadow(0 0 6px #fff); }
+.tt-tool.tt-fill { font-size: 18px; }
 .tt-drawbar { position: absolute; left: 10px; top: 10px; right: 10px; width: max-content; max-width: calc(100% - 20px); z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 4px; background: rgba(7,7,11,.88); border: 1px solid var(--line); }
 .tt-tool { width: 32px; height: 32px; display: grid; place-items: center; background: none; border: 1px solid transparent; color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
 .tt-tool:hover:not([disabled]) { border-color: var(--cyan); }

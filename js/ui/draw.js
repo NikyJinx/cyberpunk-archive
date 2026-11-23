@@ -4,16 +4,19 @@
 // ============================================================
 
 // ---------- MAPPA: disegno, righello e forme ----------
-// m.draw = [{ id, k: "free" | "line" | "rect" | "square" | "circle", pts [[x, y]…] (matita), x1, y1, x2, y2, c (colore), by }]
+// m.draw = [{ id, k: "free" | "line" | "rect" | "square" | "circle", pts [[x, y]…] (matita), x1, y1, x2, y2, c (colore), nf (senza riempimento), by }]
 // Coordinate in caselle. Le forme si salvano nella mappa e le vedono tutti; il righello resta solo sul mio schermo.
 // by = codice casuale di questo dispositivo (non l'email: le mappe viaggiano sul canale pubblico).
 const DRAW_TOOLS = [
   ["move", "✋", "Muovi token e mappa"], ["ruler", "📏", "Righello: trascina per misurare (lo vedi solo tu)"], ["free", "✏", "Matita"],
   ["line", "╱", "Linea con la misura"], ["rect", "▭", "Rettangolo"], ["square", "◻", "Quadrato"], ["circle", "◯", "Cerchio: trascina dal centro"],
+  ["shift", "✥", "Sposta: trascina un disegno o una forma (clic = selezionala per cambiarne colore e riempimento)"],
   ["erase", "⌫", "Gomma: clicca una forma per cancellarla"],
 ];
 const DRAW_COLORS = ["#ff2a3d", "#f3e600", "#00f0ff", "#3dff9a", "#ff2bd6", "#ffffff"];
 tt.tool = "move"; tt.color = ls.get("nc-draw-color", DRAW_COLORS[0]);
+// riempimento di rettangoli, quadrati e cerchi: acceso = colorati dentro, spento = solo il bordo (nf: true)
+tt.fill = ls.get("nc-draw-fill", true); tt.selShape = null;
 let drawCur = null;
 const drawMe = () => { let id = ls.get("nc-draw-me", ""); if (!id) { id = NET.uid(); ls.set("nc-draw-me", id); } return id; };
 const canDraw = () => Store.canEdit();
@@ -64,12 +67,13 @@ function drawShape(k, a, b, pts) {
 }
 function shapeSvg(s, tmp = false) {
   const c = safeColor(s.c || tt.color), P = v => v * CELL, attrs = `${tmp ? "" : `data-shape="${esc(s.id)}"`} stroke="${c}"`;
+  const fill = s.nf ? "none" : c;
   const title = s.label ? `<title>${esc(s.label)}</title>` : "";
   if (s.k === "free") return `<polyline ${attrs} class="d-free" points="${s.pts.map(([x, y]) => `${P(x)},${P(y)}`).join(" ")}">${title}</polyline>`;
   if (s.k === "line" || s.k === "ruler") return `<g ${attrs} class="d-line ${s.k === "ruler" ? "d-ruler" : ""}"><line x1="${P(s.x1)}" y1="${P(s.y1)}" x2="${P(s.x2)}" y2="${P(s.y2)}"/>
     <circle fill="${c}" cx="${P(s.x1)}" cy="${P(s.y1)}" r="6"/><circle fill="${c}" cx="${P(s.x2)}" cy="${P(s.y2)}" r="6"/>${title}</g>`;
-  if (s.k === "circle") return `<circle ${attrs} class="d-area" fill="${c}" cx="${P(s.x1)}" cy="${P(s.y1)}" r="${P(Math.abs(s.x2 - s.x1))}">${title}</circle>`;
-  return `<rect ${attrs} class="d-area" fill="${c}" x="${P(Math.min(s.x1, s.x2))}" y="${P(Math.min(s.y1, s.y2))}" width="${P(Math.abs(s.x2 - s.x1))}" height="${P(Math.abs(s.y2 - s.y1))}">${title}</rect>`;
+  if (s.k === "circle") return `<circle ${attrs} class="d-area" fill="${fill}" cx="${P(s.x1)}" cy="${P(s.y1)}" r="${P(Math.abs(s.x2 - s.x1))}">${title}</circle>`;
+  return `<rect ${attrs} class="d-area" fill="${fill}" x="${P(Math.min(s.x1, s.x2))}" y="${P(Math.min(s.y1, s.y2))}" width="${P(Math.abs(s.x2 - s.x1))}" height="${P(Math.abs(s.y2 - s.y1))}">${title}</rect>`;
 }
 // le misure si leggono anche dopo: passando il mouse sulla forma (title) e, per linee e righello, scritte accanto
 const shapeTxt = s => (s.k === "line" || s.k === "ruler") && s.label
@@ -79,15 +83,36 @@ function renderDraw() {
   const L = curLayer(), pub = m.draw || [], gm = isGm() ? gmDrawRec(m).draw || [] : [];
   // prima il layer Map, poi il Token, poi (solo per i GM) il GM
   const all = [...pub.filter(s => shapeLayer(s) === "map").map(s => [s, "map"]), ...pub.filter(s => shapeLayer(s) === "token").map(s => [s, "token"]), ...gm.map(s => [s, "gm"])];
-  const sig = L + ":" + all.length + ":" + JSON.stringify(all).length;
+  // firma completa (non solo la lunghezza): una forma spostata ha la stessa lunghezza ma coordinate diverse
+  const sel = tt.tool === "shift" ? tt.selShape : null;
+  const sig = L + ":" + sel + ":" + JSON.stringify(all);
   if (box.dataset.sig !== sig) {
-    box.innerHTML = all.map(([s, ly]) => `<g class="ly-${ly} ${ly === L ? "act" : ""}">${shapeSvg(s)}${shapeTxt(s)}</g>`).join("");
+    box.innerHTML = all.map(([s, ly]) => `<g class="ly-${ly} ${ly === L ? "act" : ""} ${s.id === sel ? "sel" : ""}">${shapeSvg(s)}${shapeTxt(s)}</g>`).join("");
     box.dataset.sig = sig;
   }
   box.classList.toggle("erasing", tt.tool === "erase");
+  box.classList.toggle("shifting", tt.tool === "shift");
 }
 function drawTmp(s) {
-  const box = $("#tt-draw-tmp"); if (box) box.innerHTML = s ? shapeSvg({ ...s, c: s.k === "ruler" ? "#f3e600" : tt.color }, true) + shapeTxt(s) : "";
+  const box = $("#tt-draw-tmp"); if (box) box.innerHTML = s ? shapeSvg({ ...s, c: s.k === "ruler" ? "#f3e600" : tt.color, nf: !tt.fill }, true) + shapeTxt(s) : "";
+}
+// forma selezionata con ✥ (solo se è ancora nel layer attivo e posso modificarla)
+const selShape = () => { const s = tt.tool === "shift" && tt.selShape && layerShapes(curMap()).find(x => x.id === tt.selShape); return s && drawMine(s) ? s : null; };
+const isArea = s => s && (s.k === "rect" || s.k === "square" || s.k === "circle");
+function moveShape(s, dx, dy) {
+  if (s.k === "free") return { ...s, pts: s.pts.map(([x, y]) => [r2(x + dx), r2(y + dy)]) };
+  return { ...s, x1: r2(s.x1 + dx), y1: r2(s.y1 + dy), x2: r2(s.x2 + dx), y2: r2(s.y2 + dy) };
+}
+// colore e riempimento: valgono per le forme nuove e, con ✥, anche per quella selezionata
+function setDrawColor(c) {
+  tt.color = safeColor(c); ls.set("nc-draw-color", tt.color);
+  const s = selShape();
+  if (s) saveDraw(l => l.map(x => x.id === s.id ? { ...x, c: tt.color } : x)); else renderDrawBar();
+}
+function toggleFill() {
+  const s = selShape();
+  if (isArea(s)) { const nf = !s.nf; tt.fill = !nf; ls.set("nc-draw-fill", tt.fill); saveDraw(l => l.map(x => x.id === s.id ? { ...x, nf } : x)); return; }
+  tt.fill = !tt.fill; ls.set("nc-draw-fill", tt.fill); renderDrawBar();
 }
 function drawLabel(ev, text) {
   const ruler = $("#tt-ruler"), wrap = $("#tt-wrap"); if (!ruler || !wrap) return;
@@ -100,12 +125,15 @@ function drawLabel(ev, text) {
 // barra degli strumenti sopra la mappa
 function drawBarHtml() {
   const draw = canDraw(), m = curMap(), L = curLayer(), mine = layerShapes(m, L).some(drawMine);
+  const sel = selShape(), filled = isArea(sel) ? !sel.nf : tt.fill;
+  const fillBtn = `<button type="button" class="tt-tool tt-fill ${filled ? "on" : ""}" data-action="tt-fill" aria-pressed="${filled}"
+    title="${filled ? "Figure colorate dentro" : "Figure solo con il bordo"}${isArea(sel) ? " (vale per la figura selezionata)" : " (vale per le prossime figure)"}: clicca per cambiare">${filled ? "◼" : "◻"}</button>`;
   const layers = gmTools() ? `<span class="tt-layers" role="group" aria-label="Layer">${LAYERS.filter(([k]) => k !== "gm" || (isGm() && Store.gmReady)).map(([k, ic, tip]) => `<button type="button" class="tt-tool tt-ly ${L === k ? "on" : ""}" data-action="tt-layer" data-layer="${k}" title="${esc(tip)}" aria-label="${esc(tip)}">${ic}<small>${k === "token" ? "Token" : k === "map" ? "Map" : "GM"}</small></button>`).join("")}</span><span class="tt-sep"></span>` : "";
   const bgCtl = L === "map" && m && m.image ? `<span class="tt-sep"></span><button type="button" class="tt-tool tt-txt" data-action="tt-bg-fit" title="Rimetti l'immagine a coprire tutta la mappa">↺ Adatta</button>
     <label class="tt-chk" title="Acceso: l'immagine si sposta e si ridimensiona di casella in casella. Spento: libera"><input type="checkbox" data-bg-snap ${ls.get("nc-bg-snap", true) ? "checked" : ""}> griglia</label>
     <label class="tt-chk" title="Ridimensionando, l'immagine tiene le sue proporzioni"><input type="checkbox" data-bg-keep ${ls.get("nc-bg-keep", true) ? "checked" : ""}> proporzioni</label>` : "";
   return `${layers}${DRAW_TOOLS.filter(([k]) => draw || k === "move" || k === "ruler").map(([k, ic, tip]) => `<button type="button" class="tt-tool ${tt.tool === k ? "on" : ""}" data-action="tt-tool" data-tool="${k}" title="${esc(tip)}" aria-label="${esc(tip)}">${ic}</button>`).join("")}
-    ${draw ? `<span class="tt-sep"></span>${DRAW_COLORS.map(c => `<button type="button" class="tt-color ${c === tt.color ? "on" : ""}" data-action="tt-color" data-c="${c}" style="--c:${c}" aria-label="Colore ${c}"></button>`).join("")}
+    ${draw ? `<span class="tt-sep"></span>${DRAW_COLORS.map(c => `<button type="button" class="tt-color ${c === tt.color ? "on" : ""}" data-action="tt-color" data-c="${c}" style="--c:${c}" aria-label="Colore ${c}"></button>`).join("")}${fillBtn}
       <span class="tt-sep"></span><button type="button" class="tt-tool" data-action="tt-draw-undo" title="Annulla la mia ultima forma" ${mine ? "" : "disabled"}>↶</button>
       <button type="button" class="tt-tool" data-action="tt-draw-clear" title="${isGm() ? "Cancella tutti i disegni di questo layer" : "Cancella i miei disegni"}" ${mine ? "" : "disabled"}>🗑</button>` : ""}${bgCtl}`;
 }
@@ -117,7 +145,7 @@ function renderDrawBar() {
 }
 function setTool(k) {
   tt.tool = DRAW_TOOLS.some(t => t[0] === k) ? k : "move";
-  drawCur = null; drawTmp(null); drawLabel(null, "");
+  tt.selShape = null; drawCur = null; drawTmp(null); drawLabel(null, "");
   renderDrawBar();
 }
 // fn riceve e restituisce le forme del layer attivo; le altre restano come sono
@@ -177,6 +205,17 @@ function drawDown(ev, cellAt) {
     if (s && drawMine(s)) saveDraw(l => l.filter(x => x.id !== s.id)); else if (s) toast("Puoi cancellare solo le tue forme", "err");
     return true;
   }
+  if (tt.tool === "shift") {
+    const el = ev.target.closest && ev.target.closest(".act [data-shape]"), list = layerShapes(curMap()), p = cellAt(ev);
+    const s = el ? list.find(x => x.id === el.dataset.shape) : nearShape(list, p);
+    if (!s) { if (tt.selShape) { tt.selShape = null; renderDrawBar(); } return true; }
+    if (!drawMine(s)) { toast("Puoi spostare solo le tue forme", "err"); return true; }
+    tt.selShape = s.id; renderDrawBar();
+    const g = $(`#tt-draw [data-shape="${CSS.escape(s.id)}"]`);
+    drawCur = { k: "shift", s, a: p, dx: 0, dy: 0, g: g && g.parentNode, id: ev.pointerId };
+    try { $("#tt-wrap").setPointerCapture(ev.pointerId); } catch {}
+    return true;
+  }
   if (tt.tool !== "ruler" && !canDraw()) return true;
   const p = cellAt(ev);
   drawCur = { k: tt.tool, a: p, b: p, pts: [[p.x, p.y]], id: ev.pointerId };
@@ -187,6 +226,14 @@ function drawDown(ev, cellAt) {
 function drawMove(ev, cellAt) {
   if (!drawCur) return false;
   const p = cellAt(ev), d = drawCur; d.b = p;
+  if (d.k === "shift") {
+    // a caselle intere (così rettangoli e linee restano sulla griglia), a mezze caselle per cerchi e matita
+    const step = d.s.k === "circle" || d.s.k === "free" ? 0.5 : 1, snap = v => Math.round(v / step) * step;
+    d.dx = snap(p.x - d.a.x); d.dy = snap(p.y - d.a.y);
+    if (d.g) d.g.setAttribute("transform", `translate(${d.dx * CELL} ${d.dy * CELL})`);
+    drawLabel(ev, d.dx || d.dy ? sqLabel(Math.max(Math.abs(Math.round(d.dx)), Math.abs(Math.round(d.dy)))) : "");
+    return true;
+  }
   if (d.k === "free") { const [lx, ly] = d.pts[d.pts.length - 1]; if (Math.hypot(p.x - lx, p.y - ly) > 0.12) d.pts.push([p.x, p.y]); }
   const s = drawShape(d.k, d.a, p, d.pts);
   drawTmp(s); drawLabel(ev, s.label || "");
@@ -195,6 +242,13 @@ function drawMove(ev, cellAt) {
 function drawUp(ev, cancel) {
   if (!drawCur) return false;
   const d = drawCur; drawCur = null;
+  if (d.k === "shift") {
+    drawLabel(ev, "");
+    if (cancel || (!d.dx && !d.dy)) { if (d.g) d.g.removeAttribute("transform"); return true; }
+    const { dx, dy } = d, id = d.s.id;
+    saveDraw(l => l.map(x => x.id === id ? moveShape(x, dx, dy) : x));
+    return true;
+  }
   if (d.k === "ruler") { drawLabel(ev, ""); return true; }   // il righello resta disegnato finché non ne tracci un altro
   drawTmp(null); drawLabel(ev, "");
   if (cancel) return true;
@@ -204,7 +258,7 @@ function drawUp(ev, cancel) {
   // la matita tiene al massimo 400 punti
   if (s.pts && s.pts.length > 400) { const step = Math.ceil(s.pts.length / 400); s.pts = s.pts.filter((_, i) => i % step === 0 || i === s.pts.length - 1); }
   const L = curLayer();
-  saveDraw(l => [...l, { ...s, id: NET.uid(), c: tt.color, by: drawMe(), ...(L === "map" ? { layer: "map" } : {}) }], L);
+  saveDraw(l => [...l, { ...s, id: NET.uid(), c: tt.color, by: drawMe(), ...(!tt.fill && (s.k === "rect" || s.k === "square" || s.k === "circle") ? { nf: true } : {}), ...(L === "map" ? { layer: "map" } : {}) }], L);
   return true;
 }
 
