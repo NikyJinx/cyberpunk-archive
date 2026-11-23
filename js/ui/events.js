@@ -274,7 +274,8 @@ document.addEventListener("click", async ev => {
     case "hq-floor-zoom": { const f = (hqRec().floors || []).find(x => x.id === el.dataset.id); if (f && f.image) openLightbox([f.image], 0); break; }
     case "tt-layer": setLayer(el.dataset.layer); break;
     case "tt-bg-fit": bgFit(); break;
-    case "tt-color": tt.color = safeColor(el.dataset.c); ls.set("nc-draw-color", tt.color); renderDrawBar(); break;
+    case "tt-color": setDrawColor(el.dataset.c); break;
+    case "tt-fill": toggleFill(); break;
     case "tt-draw-undo": drawUndo(); break;
     case "tt-draw-clear": drawClear(); break;
     case "cy-install": cyInstall(id, num(el.dataset.i)); break;
