@@ -132,8 +132,14 @@ function drawLabel(ev, text) {
   ruler.style.left = ev.clientX - wr.left + 16 + "px"; ruler.style.top = ev.clientY - wr.top + 12 + "px";
 }
 
-// barra degli strumenti sopra la mappa
+// barra degli strumenti sopra la mappa (fuori dalla griglia, così non copre le prime caselle); si chiude con ▴
 function drawBarHtml() {
+  const open = ls.get("nc-tt-bar", true), cur = DRAW_TOOLS.find(t => t[0] === tt.tool) || DRAW_TOOLS[0];
+  const tog = `<button type="button" class="tt-tool tt-bartog" data-action="tt-bar-toggle" aria-expanded="${open}" title="${open ? "Chiudi la barra degli strumenti" : "Apri la barra degli strumenti"}" aria-label="${open ? "Chiudi la barra degli strumenti" : "Apri la barra degli strumenti"}">${open ? "▴" : "▾"}</button>`;
+  if (!open) return `${tog}<span class="tt-barmini" data-action="tt-bar-toggle" title="Strumento attivo: ${esc(cur[2])} · clicca per aprire la barra">${cur[1]} <small>Strumenti${curLayer() !== "token" ? ` · layer ${curLayer() === "map" ? "Map" : "GM"}` : ""}</small></span>`;
+  return tog + drawBarFull();
+}
+function drawBarFull() {
   const draw = canDraw(), m = curMap(), L = curLayer(), mine = layerShapes(m, L).some(drawMine);
   const sel = selShape(), filled = isArea(sel) ? !sel.nf : tt.fill;
   const fillBtn = `<button type="button" class="tt-tool tt-fill ${filled ? "on" : ""}" data-action="tt-fill" aria-pressed="${filled}"
