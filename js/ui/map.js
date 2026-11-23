@@ -65,10 +65,10 @@ function viewTable() {
     ${m ? `
     <div class="tt">
       <div class="tt-main">
+        <div class="tt-drawbar" id="tt-drawbar" role="toolbar" aria-label="Strumenti della mappa">${drawBarHtml()}</div>
         <div class="tt-wrap" id="tt-wrap"><div class="tt-sizer" id="tt-sizer"><div class="tt-board" id="tt-board">
           <div class="tt-bg" id="tt-bg"></div><div class="tt-grid"></div><svg class="tt-draw" id="tt-draw" aria-hidden="true"></svg><svg class="tt-arrows" id="tt-arrows" aria-hidden="true"></svg><div class="tt-tokens" id="tt-tokens"></div><svg class="tt-draw tmp" id="tt-draw-tmp" aria-hidden="true"></svg>
         </div></div><div class="tt-ruler" id="tt-ruler" hidden></div></div>
-        <div class="tt-drawbar" id="tt-drawbar" role="toolbar" aria-label="Strumenti della mappa">${drawBarHtml()}</div>
         <div class="tt-zoom">
           <button type="button" class="gp-btn" data-action="tt-zoom" data-d="-1" aria-label="Riduci">−</button>
           <span id="tt-zl"></span>

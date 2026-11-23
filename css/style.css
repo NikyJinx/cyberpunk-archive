@@ -1288,8 +1288,8 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .tt-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .tt-tools select { max-width: 240px; }
 .tt { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; height: calc(100vh - 230px); min-height: 480px; }
-.tt-main { position: relative; min-width: 0; min-height: 0; }
-.tt-wrap { position: absolute; inset: 0; overflow: auto; background: #050508; border: 1px solid var(--line); cursor: grab; touch-action: pan-x pan-y; scrollbar-width: thin; }
+.tt-main { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.tt-wrap { position: relative; flex: 1; min-height: 0; overflow: auto; background: #050508; border: 1px solid var(--line); cursor: grab; touch-action: pan-x pan-y; scrollbar-width: thin; }
 .tt-wrap.panning { cursor: grabbing; }
 .tt-sizer { position: relative; }
 .tt-board { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #0b0b12; user-select: none; -webkit-user-select: none; }
@@ -2159,7 +2159,10 @@ body.popout > :not(dialog):not(#toasts):not(.dice-drawer) { display: none !impor
 .tt-draw .sel [data-shape] { stroke-dasharray: 8 6; filter: drop-shadow(0 0 6px #fff); }
 .tt-tool.tt-fill { font-size: 18px; }
 .tt-zbar { display: inline-flex; gap: 2px; }
-.tt-drawbar { position: absolute; left: 10px; top: 10px; right: 10px; width: max-content; max-width: calc(100% - 20px); z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 4px; background: rgba(7,7,11,.88); border: 1px solid var(--line); }
+.tt-bartog { color: var(--cyan); }
+.tt-barmini { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 2px; font-size: 16px; cursor: pointer; }
+.tt-barmini small { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.tt-drawbar { flex: none; align-self: flex-start; max-width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 4px; background: rgba(7,7,11,.88); border: 1px solid var(--line); }
 .tt-tool { width: 32px; height: 32px; display: grid; place-items: center; background: none; border: 1px solid transparent; color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
 .tt-tool:hover:not([disabled]) { border-color: var(--cyan); }
 .tt-tool.on { border-color: var(--yellow); background: rgba(243,230,0,.12); }

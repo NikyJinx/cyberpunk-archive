@@ -276,6 +276,7 @@ document.addEventListener("click", async ev => {
     case "tt-bg-fit": bgFit(); break;
     case "tt-color": setDrawColor(el.dataset.c); break;
     case "tt-fill": toggleFill(); break;
+    case "tt-bar-toggle": ls.set("nc-tt-bar", !ls.get("nc-tt-bar", true)); renderDrawBar(); break;
     case "tt-shape-z": shapeZ(el.dataset.z); break;
     case "tt-draw-undo": drawUndo(); break;
     case "tt-draw-clear": drawClear(); break;
