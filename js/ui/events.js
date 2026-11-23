@@ -430,6 +430,17 @@ document.addEventListener("keydown", ev => {
   saveToken({ ...t, x: clamp(num(t.x) + dir[0], 0, W - size), y: clamp(num(t.y) + dir[1], 0, H - size) });
 });
 
+// tavolo: Ctrl+C / Ctrl+V copia e incolla il token selezionato, Ctrl+D lo duplica (solo GM)
+document.addEventListener("keydown", ev => {
+  if (!onTable() || $("#modal").open || !(ev.ctrlKey || ev.metaKey) || ev.altKey || ev.shiftKey || !gmTools()) return;
+  if (ev.target.closest && ev.target.closest("input, textarea, select, [contenteditable]")) return;
+  if (String(getSelection() || "")) return;   // c'è del testo selezionato: copia normale
+  const k = ev.key.toLowerCase(), t = state.tokens.find(x => x.id === tt.sel);
+  if (k === "c" && t) { ev.preventDefault(); copyToken(t); }
+  else if (k === "v" && tt.clip) { ev.preventDefault(); pasteTokens(1); }
+  else if (k === "d" && t) { ev.preventDefault(); const err = tokCopyErr(t); if (err) return toast(err, "err"); tt.clip = JSON.parse(JSON.stringify(t)); pasteTokens(1, t); }
+});
+
 // frecce da tastiera: lightbox, poi carosello del dossier
 document.addEventListener("keydown", ev => {
   if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;

@@ -2159,6 +2159,8 @@ body.popout > :not(dialog):not(#toasts):not(.dice-drawer) { display: none !impor
 .tt-draw .sel [data-shape] { stroke-dasharray: 8 6; filter: drop-shadow(0 0 6px #fff); }
 .tt-tool.tt-fill { font-size: 18px; }
 .tt-zbar { display: inline-flex; gap: 2px; }
+.tt-dup { display: inline-flex; gap: 4px; align-items: center; }
+.tt-dup input { width: 52px; padding: 4px 6px; }
 .tt-bartog { color: var(--cyan); }
 .tt-barmini { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 2px; font-size: 16px; cursor: pointer; }
 .tt-barmini small { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
