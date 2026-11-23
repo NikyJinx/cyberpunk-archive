@@ -254,7 +254,7 @@ function renderSel() {
   const box = $("#tt-sel"); if (!box) return;
   const t = state.tokens.find(x => x.id === tt.sel);
   if (!t) {
-    box.innerHTML = `<h4>Token</h4><p class="hint">Clicca un token per selezionarlo. Trascinalo per muoverlo (o usa le frecce della tastiera). Rotella = zoom, trascina lo sfondo per spostare la vista.</p>`;
+    box.innerHTML = `<h4>Token</h4><p class="hint">Clicca un token per selezionarlo. Trascinalo per muoverlo (o usa le frecce della tastiera). Il GM copia i nemici con Ctrl+C / Ctrl+V. Rotella = zoom, trascina lo sfondo per spostare la vista.</p>`;
     return;
   }
   const e = tokEntry(t), hp = tokHp(t), edit = Store.canEdit(), gmt = gmTools();
@@ -280,6 +280,7 @@ function renderSel() {
       ${gmt ? `<label class="tt-lysel" title="Layer del token: GM = nascosto ai giocatori">Layer <select data-tok-layer>${[["token", "Token"], ["map", "Map"], ...(isGm() && Store.gmReady ? [["gm", "GM (nascosto)"]] : [])].map(([v, l]) => `<option value="${v}" ${tokLayer(t) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <span class="tt-z" title="Ordine di sovrapposizione nel suo piano (${tokPlane(t) ? "token" : "immagini del layer Map"})">Piano
           <button type="button" class="gp-btn" data-action="tt-z" data-z="back" title="Porta in fondo" aria-label="Porta in fondo">⤓</button><button type="button" class="gp-btn" data-action="tt-z" data-z="down" title="Scendi di un piano" aria-label="Scendi di un piano">↓</button><button type="button" class="gp-btn" data-action="tt-z" data-z="up" title="Sali di un piano" aria-label="Sali di un piano">↑</button><button type="button" class="gp-btn" data-action="tt-z" data-z="front" title="Porta in primo piano" aria-label="Porta in primo piano">⤒</button></span>
+        ${tokSheet(t) ? "" : `<span class="tt-dup" title="Crea copie uguali (HP pieni, numerate) · tastiera: Ctrl+C / Ctrl+V, Ctrl+D"><button type="button" class="btn ghost small" data-action="tt-dup">⧉ Duplica</button><input type="number" min="1" max="20" value="1" data-tok-dup-n aria-label="Quante copie"></span>`}
         <button type="button" class="btn ghost small" data-action="tt-edit-token">Modifica</button>
         <button type="button" class="btn ghost small danger" data-action="tt-del-token">Rimuovi</button>` : ""}
     </div>`;
@@ -338,10 +339,11 @@ function selectToken(id) {
 }
 
 // prima casella libera vicino al centro della vista
-function freeCell(m, taken) {
+// (at = parti da questa casella invece che dal centro della vista)
+function freeCell(m, taken, at) {
   const { W, H } = mapSize(m), wrap = $("#tt-wrap");
-  const cx = wrap ? Math.floor((wrap.scrollLeft + wrap.clientWidth / 2) / (CELL * tt.zoom)) : Math.floor(W / 2);
-  const cy = wrap ? Math.floor((wrap.scrollTop + wrap.clientHeight / 2) / (CELL * tt.zoom)) : Math.floor(H / 2);
+  const cx = at ? num(at.x) : wrap ? Math.floor((wrap.scrollLeft + wrap.clientWidth / 2) / (CELL * tt.zoom)) : Math.floor(W / 2);
+  const cy = at ? num(at.y) : wrap ? Math.floor((wrap.scrollTop + wrap.clientHeight / 2) / (CELL * tt.zoom)) : Math.floor(H / 2);
   for (let r = 0; r < Math.max(W, H); r++)
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
@@ -486,6 +488,38 @@ async function resaveMapTokens(m) {
   renderTokens(); renderSide();
 }
 
+// ---------- copia e incolla dei token (Ctrl+C / Ctrl+V, Ctrl+D o «⧉ Duplica») ----------
+// le copie partono fresche (HP e armatura pieni, niente stati) e prendono il numero dopo l'ultimo con lo stesso nome.
+// I token che usano HP della scheda (PG, NPC con scheda) non si copiano: le copie avrebbero gli stessi HP.
+function tokCopyErr(t) {
+  if (!t) return "Seleziona prima un token";
+  if (!gmTools()) return "Solo il GM può copiare i token";
+  if (tokSheet(t)) return "Questo token usa gli HP della sua scheda: le copie si ferirebbero insieme. Copia un nemico o un token generico";
+  return "";
+}
+function copyToken(t) {
+  const err = tokCopyErr(t); if (err) return toast(err, "err");
+  tt.clip = JSON.parse(JSON.stringify(t));
+  toast(`Copiato «${tokName(t)}»: Ctrl+V per incollarlo`, "ok");
+}
+async function pasteTokens(n = 1, src = tt.clip) {
+  const m = curMap(); if (!m || !src || !gmTools()) return;
+  n = clamp(Math.trunc(num(n)) || 1, 1, 20);
+  const toks = mapTokens(m), taken = new Set(toks.map(t => num(t.x) + "," + num(t.y)));
+  const base = tokName(src).replace(/\s+\d+$/, "");
+  const re = new RegExp("^" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:\\s+(\\d+))?$");
+  let k = Math.max(1, ...toks.map(t => (tokName(t).match(re) || [])[1]).filter(Boolean).map(Number));
+  const { id, createdAt, updatedAt, gmOnly, status, dsp, hp, ...rest } = src;
+  const armor = src.armor ? Object.fromEntries(Object.entries(src.armor).map(([l, a]) => [l, { ...a, cur: null }])) : undefined;
+  const at = src.mapId === m.id ? src : null, out = [];
+  for (let i = 0; i < n; i++) out.push({ ...rest, armor, mapId: m.id, name: `${base} ${++k}`, ...freeCell(m, taken, at) });
+  let last = null;
+  for (const t of out) last = await saveRec("tokens", t);
+  renderTokens(); renderSide();
+  if (last) selectToken(last.id);
+  toast(n > 1 ? `${n} copie di «${base}» sulla mappa` : `«${last ? tokName(last) : base}» sulla mappa`, "ok");
+}
+
 function addTokens() {
   const m = curMap(); if (!m) return;
   const onMap = new Set(mapTokens(m).map(t => t.entryId).filter(Boolean));
@@ -591,6 +625,7 @@ async function tableAction(a, el) {
     case "tt-add-token": return addTokens();
     case "tt-edit-token": return t && editToken(t.id);
     case "tt-z": return tokZ(t, el.dataset.z);
+    case "tt-dup": { const err = tokCopyErr(t); if (err) return toast(err, "err"); tt.clip = JSON.parse(JSON.stringify(t)); return pasteTokens(($("[data-tok-dup-n]") || {}).value, t); }
     case "tt-del-token": {
       if (!t) return;
       try {
