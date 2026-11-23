@@ -29,7 +29,7 @@ function refreshLifeTab(e) {
   hydrate($("#modal")); $("#modal").scrollTop = y;
   return true;
 }
-const lifeTabHtml = (e, tab) => tab === "wardrobe" ? wardrobeHtml(e) : tab === "agent" ? agentHtml(e) : expensesHtml(e);
+const lifeTabHtml = (e, tab) => tab === "wardrobe" ? wardrobeHtml(e) : tab === "veicoli" ? vehiclesHtml(e) : tab === "agent" ? agentHtml(e) : expensesHtml(e);
 
 // ---------- WARDROBE ----------
 const WD_STYLES = ["Bag Lady Chic", "Gang Colors", "Generic Chic", "Bohemian", "Leisurewear", "Nomad Leathers", "Asia Pop", "Urban Flash", "Businesswear", "High Fashion"];

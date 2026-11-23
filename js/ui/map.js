@@ -5,7 +5,7 @@
 
 // ---------- TAVOLO DI GIOCO: mappa, token, iniziativa ----------
 // maps   = { name, image, cols, rows, grid, init[{tokenId, v}], turn, round }
-// tokens = { mapId, entryId?, name, color, image, x, y (caselle), size, hp, hpMax }
+// tokens = { mapId, entryId?, name, color, image, x, y (caselle), size, hp, hpMax, z (ordine di sovrapposizione nel suo piano) }
 const CELL = 64;                              // pixel per casella a zoom 100% · 1 casella = 2 m
 // view = mappa che sto guardando io (null = seguo quella condivisa) · remote = frecce degli spostamenti altrui
 const tt = { zoom: ls.get("nc-zoom", 1), sel: null, drag: null, view: null, remote: {} };
@@ -211,9 +211,37 @@ function renderTokens() {
     if (!dragging && !tt.remote[t.id]) { el.style.left = num(t.x) * CELL + "px"; el.style.top = num(t.y) * CELL + "px"; }
   }
   for (const el of els.values()) if (!(tt.drag && tt.drag.el === el)) el.remove();
+  // ordine nel DOM = ordine di sovrapposizione (non durante un trascinamento, che si interromperebbe)
+  if (!tt.drag) {
+    const want = [...mapTokens(m)].sort(zCmp).map(t => t.id), have = $$(".tt-token", box).map(el => el.dataset.tok);
+    if (want.join() !== have.join()) want.forEach(id => { const el = $(`.tt-token[data-tok="${CSS.escape(id)}"]`, box); if (el) box.appendChild(el); });
+  }
   drawArrows(); renderDraw();
 }
 function renderSide() { renderSel(); renderInit(); }
+// piani: i token del layer Map (immagini) stanno sotto, quelli dei layer Token e GM sopra;
+// dentro lo stesso piano decide z (a parità l'id, così l'ordine è uguale per tutti)
+const tokPlane = t => tokLayer(t) === "map" ? 0 : 1;
+const zCmp = (a, b) => tokPlane(a) - tokPlane(b) || num(a.z) - num(b.z) || String(a.id).localeCompare(String(b.id));
+const zPlane = t => mapTokens(state.maps.find(m => m.id === t.mapId)).filter(x => tokPlane(x) === tokPlane(t)).sort(zCmp);
+async function tokZ(t, how) {
+  if (!t || !gmTools()) return;
+  let L = zPlane(t);
+  if (L.length < 2) return toast("È l'unico su questo piano");
+  const i = L.findIndex(x => x.id === t.id);
+  if (how === "front" || how === "back") {
+    if (i === (how === "front" ? L.length - 1 : 0)) return;
+    return saveToken({ ...t, z: how === "front" ? num(L[L.length - 1].z) + 1 : num(L[0].z) - 1 });
+  }
+  const j = how === "up" ? i + 1 : i - 1; if (j < 0 || j >= L.length) return;
+  // con z uguali (token messi prima di questa funzione) si numerano tutti nell'ordine attuale
+  if (new Set(L.map(x => num(x.z))).size < L.length) L = L.map((x, k) => ({ ...x, z: k }));
+  const za = num(L[i].z), zb = num(L[j].z);
+  L[i] = { ...L[i], z: zb }; L[j] = { ...L[j], z: za };
+  const old = new Map(zPlane(t).map(x => [x.id, num(x.z)]));
+  await Promise.all(L.filter(x => old.get(x.id) !== num(x.z)).map(x => saveRec("tokens", x)));
+  renderTokens(); renderSide();
+}
 // stati del token: quelli della scheda per PG e NPC con scheda, altrimenti i suoi
 const tokStatusIds = t => { const e = tokSheet(t); return (e ? sheetOf(e).status : t.status) || []; };
 const tokStatusApply = t => {
@@ -250,6 +278,8 @@ function renderSel() {
       ${enemy && isGm() ? `<button type="button" class="btn ghost small cyan" data-action="enemy-open" data-id="${esc(e.id)}">Scheda nemico</button>` : ""}
       ${edit ? `<button type="button" class="btn ghost small" data-action="tt-init-one">Iniziativa</button>` : ""}
       ${gmt ? `<label class="tt-lysel" title="Layer del token: GM = nascosto ai giocatori">Layer <select data-tok-layer>${[["token", "Token"], ["map", "Map"], ...(isGm() && Store.gmReady ? [["gm", "GM (nascosto)"]] : [])].map(([v, l]) => `<option value="${v}" ${tokLayer(t) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        <span class="tt-z" title="Ordine di sovrapposizione nel suo piano (${tokPlane(t) ? "token" : "immagini del layer Map"})">Piano
+          <button type="button" class="gp-btn" data-action="tt-z" data-z="back" title="Porta in fondo" aria-label="Porta in fondo">⤓</button><button type="button" class="gp-btn" data-action="tt-z" data-z="down" title="Scendi di un piano" aria-label="Scendi di un piano">↓</button><button type="button" class="gp-btn" data-action="tt-z" data-z="up" title="Sali di un piano" aria-label="Sali di un piano">↑</button><button type="button" class="gp-btn" data-action="tt-z" data-z="front" title="Porta in primo piano" aria-label="Porta in primo piano">⤒</button></span>
         <button type="button" class="btn ghost small" data-action="tt-edit-token">Modifica</button>
         <button type="button" class="btn ghost small danger" data-action="tt-del-token">Rimuovi</button>` : ""}
     </div>`;
@@ -560,6 +590,7 @@ async function tableAction(a, el) {
     }
     case "tt-add-token": return addTokens();
     case "tt-edit-token": return t && editToken(t.id);
+    case "tt-z": return tokZ(t, el.dataset.z);
     case "tt-del-token": {
       if (!t) return;
       try {
