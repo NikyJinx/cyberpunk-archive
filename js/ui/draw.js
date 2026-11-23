@@ -114,6 +114,16 @@ function toggleFill() {
   if (isArea(s)) { const nf = !s.nf; tt.fill = !nf; ls.set("nc-draw-fill", tt.fill); saveDraw(l => l.map(x => x.id === s.id ? { ...x, nf } : x)); return; }
   tt.fill = !tt.fill; ls.set("nc-draw-fill", tt.fill); renderDrawBar();
 }
+// piano della forma selezionata: nel suo layer l'ordine della lista è l'ordine di disegno (l'ultima sta sopra)
+function shapeZ(how) {
+  const s = selShape(); if (!s) return;
+  saveDraw(l => {
+    const i = l.findIndex(x => x.id === s.id); if (i < 0) return l;
+    const out = l.filter(x => x.id !== s.id);
+    const j = how === "front" ? out.length : how === "back" ? 0 : clamp(i + (how === "up" ? 1 : -1), 0, out.length);
+    out.splice(j, 0, l[i]); return out;
+  });
+}
 function drawLabel(ev, text) {
   const ruler = $("#tt-ruler"), wrap = $("#tt-wrap"); if (!ruler || !wrap) return;
   if (!text) { ruler.hidden = true; return; }
@@ -134,6 +144,8 @@ function drawBarHtml() {
     <label class="tt-chk" title="Ridimensionando, l'immagine tiene le sue proporzioni"><input type="checkbox" data-bg-keep ${ls.get("nc-bg-keep", true) ? "checked" : ""}> proporzioni</label>` : "";
   return `${layers}${DRAW_TOOLS.filter(([k]) => draw || k === "move" || k === "ruler").map(([k, ic, tip]) => `<button type="button" class="tt-tool ${tt.tool === k ? "on" : ""}" data-action="tt-tool" data-tool="${k}" title="${esc(tip)}" aria-label="${esc(tip)}">${ic}</button>`).join("")}
     ${draw ? `<span class="tt-sep"></span>${DRAW_COLORS.map(c => `<button type="button" class="tt-color ${c === tt.color ? "on" : ""}" data-action="tt-color" data-c="${c}" style="--c:${c}" aria-label="Colore ${c}"></button>`).join("")}${fillBtn}
+      ${sel ? `<span class="tt-sep"></span><span class="tt-zbar" title="Piano della forma selezionata nel suo layer">${[["back", "⤓", "Porta in fondo"], ["down", "↓", "Scendi di un piano"], ["up", "↑", "Sali di un piano"], ["front", "⤒", "Porta in primo piano"]]
+        .map(([z, ic, tip]) => `<button type="button" class="tt-tool" data-action="tt-shape-z" data-z="${z}" title="${tip}" aria-label="${tip}">${ic}</button>`).join("")}</span>` : ""}
       <span class="tt-sep"></span><button type="button" class="tt-tool" data-action="tt-draw-undo" title="Annulla la mia ultima forma" ${mine ? "" : "disabled"}>↶</button>
       <button type="button" class="tt-tool" data-action="tt-draw-clear" title="${isGm() ? "Cancella tutti i disegni di questo layer" : "Cancella i miei disegni"}" ${mine ? "" : "disabled"}>🗑</button>` : ""}${bgCtl}`;
 }
