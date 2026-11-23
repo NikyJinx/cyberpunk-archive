@@ -283,6 +283,10 @@ document.addEventListener("click", async ev => {
     case "wd-style-wear": wdStyleWear(id, el.dataset.style || ""); break;
     case "wd-off-all": wdOffAll(id); break;
     case "edit-wardrobe": editWardrobe(id); break;
+    case "vh-add": vhAdd(id, el.dataset.src); break;
+    case "vh-del": vhDel(id, num(el.dataset.k)); break;
+    case "vh-src": vhSrc(id, num(el.dataset.k), el.dataset.j == null ? null : num(el.dataset.j)); break;
+    case "vh-upg-del": vhUpgDel(id, num(el.dataset.k), num(el.dataset.j)); break;
     case "agent-toggle": agentToggle(id, el.dataset.app); break;
     case "edit-agent": editAgent(id); break;
     case "exp-toggle": expToggle(id, el.dataset.app); break;
@@ -373,11 +377,9 @@ document.addEventListener("change", ev => {
   }
   // tab Ruoli
   if (t.matches("[data-rl][data-rf]")) { roleSet(t); return; }
-  if (t.matches("select[data-rl-upg]")) {
-    const e = state.entries.find(x => x.id === t.dataset.rid), [ri, vi] = t.dataset.rlUpg.split(":").map(num), u = t.value;
-    if (e && u && Store.canEdit()) sheetPatch(e.id, s => { migrateRoles(s, e); const v = ((s.roles[ri] || {}).stable || [])[vi]; if (v) (v.upgrades = v.upgrades || []).push(u); return s; });
-    return;
-  }
+  // tab Veicoli
+  if (t.matches("[data-vh-f]")) { vhField(t); return; }
+  if (t.matches("select[data-vh-upg]")) { vhUpgAdd(t); return; }
   if (t.matches("select[data-st-op=add]")) {
     if (t.dataset.stSheet) { const e = state.entries.find(x => x.id === t.dataset.stSheet); if (e && Store.canEdit()) statusOp(t, sheetStatusApply(e)); }
     if (t.dataset.stTok) { const k = state.tokens.find(x => x.id === t.dataset.stTok); if (k && Store.canEdit()) statusOp(t, tokStatusApply(k)); }

@@ -5,7 +5,7 @@
 
 // ---------- RUOLI: più Ruoli per personaggio, ognuno con il suo grado (sheet.roles) ----------
 // ruolo = { id, rank, ca{…} (Solo), tech{field,upgrade,fabricate,invent}, med{surgery,pharma,cryo}, recipes[], team[{name,job,loyalty}],
-//           stable[{kind,name,upgrades[],active}], notes } · le schede vecchie hanno solo e.role + sheet.ability/rank
+//           stable[…] (vecchio: ora i veicoli sono nella tab Veicoli), notes } · le schede vecchie hanno solo e.role + sheet.ability/rank
 const roleFromOld = e => { const s = sheetOf(e); const id = RL.guessRole(e && e.role) || ((RL.ROLES.find(r => r.ability.toLowerCase() === String(s.ability || "").trim().toLowerCase()) || {}).id || "");
   return id ? [{ id, rank: hasVal(s.rank) ? num(s.rank) : 4 }] : []; };
 const rolesOf = e => { const s = sheetOf(e); return Array.isArray(s.roles) ? s.roles : roleFromOld(e); };
@@ -118,19 +118,14 @@ function roleCard(e, r, i, edit) {
       ${B ? `<table class="rl-t"><tr><th>Contatti</th><td>${esc(B.contacts)}</td></tr><tr><th>Portata</th><td>${esc(B.reach)}</td></tr><tr><th>Contrattare</th><td>${esc(B.haggle)}</td></tr><tr><th>Oliare</th><td>${esc(B.grease)}</td></tr></table>` : ""}
       <details class="rl-more"><summary>Tutti i gradi</summary>${RL.FIXER.map(b => `<p><b>Grado ${b.min}${b.max > b.min ? "–" + b.max : ""}</b>: ${esc(b.reach)} ${esc(b.haggle)} ${esc(b.grease)}</p>`).join("")}</details>`;
   } else if (r.id === "nomad") {
-    const st = r.stable || [], used = st.reduce((a, v) => a + 1 + (v.upgrades || []).length, 0), kinds = RL.vehiclesFor(rank);
+    // la Scuderia di Famiglia si gestisce dalla tab Veicoli (insieme ai veicoli comprati)
+    const used = garageUsed(e), kinds = RL.vehiclesFor(rank), mine = vehiclesOf(e).filter(x => vhInfo(x.it).src === "role");
     const upg = RL.NOMAD_UPGRADES.filter(u => u.g <= Math.max(1, rank));
     body = `<p class="hint">Garage ${rank} è già sommato a Drive, Pilot e tecnologie dei veicoli. A ogni grado (e per ogni punto di partenza) un veicolo nuovo o un upgrade. Usi un veicolo alla volta${rank >= 10 ? " (a grado 10 tutti insieme)" : ""}; se è distrutto la Famiglia lo ripara in una settimana per 500 E$.</p>
       <div class="en-budget ${used > rank ? "over" : ""}">Scuderia: <b>${used}</b> / ${rank} scelte · veicoli sbloccati: ${esc(kinds.join(", "))}</div>
-      ${st.map((v, k) => `<div class="rl-veh ${v.active ? "on" : ""}">
-        <div class="rl-row"><label class="check" title="In uso"><input type="checkbox" data-rl="${i}" data-rf="stable.${k}.active" data-rid="${id}" ${v.active ? "checked" : ""} ${edit ? "" : "disabled"}> in uso</label>
-          <select data-rl="${i}" data-rf="stable.${k}.kind" data-rid="${id}" ${edit ? "" : "disabled"}>${[...new Set([...kinds, v.kind].filter(Boolean))].map(x => `<option ${x === v.kind ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>
-          <input data-rl="${i}" data-rf="stable.${k}.name" data-rid="${id}" placeholder="Nome o modello" value="${esc(v.name || "")}" ${edit ? "" : "disabled"}>
-          ${op("stable-del:" + k, "✕", "gp-btn del", "Togli il veicolo")}</div>
-        <div class="st-chips">${(v.upgrades || []).map((u, j) => { const U = RL.upgradeById(u) || { name: u, eff: "" }; return `<span class="st-chip" title="${esc(U.eff)}">${esc(U.name)} ${op(`upg-del:${k}:${j}`, "✕", "gp-btn del", "Togli l'upgrade")}</span>`; }).join("")}
-          ${edit ? `<select class="st-add" data-rl-upg="${i}:${k}" data-rid="${id}" aria-label="Aggiungi un upgrade"><option value="">+ upgrade…</option>${upg.filter(u => u.multi || !(v.upgrades || []).includes(u.id)).map(u => `<option value="${u.id}">[${u.g}] ${esc(u.name)} · ${esc(u.on)}</option>`).join("")}</select>` : ""}</div>
-      </div>`).join("")}
-      ${op("stable-add", "+ Veicolo", "btn ghost small cyan")}
+      ${mine.length ? `<div class="st-chips">${mine.map(x => { const V = vhInfo(x.it), n = V.upgrades.filter(u => u.src === "role").length;
+        return `<span class="st-chip ${V.active ? "on" : ""}">${esc(x.it.name || V.kind)}${V.kind && V.kind !== x.it.name ? ` <small>${esc(V.kind)}</small>` : ""}${n ? ` <b>+${n}</b>` : ""}</span>`; }).join("")}</div>` : ""}
+      <button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${id}" data-tab="veicoli">Apri la tab Veicoli →</button>
       <details class="rl-more"><summary>Upgrade disponibili (grado ≤ ${rank})</summary>${upg.map(u => `<p><b>[${u.g}] ${esc(u.name)}</b> <small>${esc(u.on)}${u.multi ? " · più volte" : ""}</small>: ${esc(u.eff)}</p>`).join("")}
         <p class="hint">Sul libero mercato gli upgrade di grado 1 sono Molto Onerosi (1.000 E$), gli altri Lussuosi (5.000 E$).</p></details>`;
   }
@@ -145,7 +140,7 @@ function roleCard(e, r, i, edit) {
   </section>`;
 }
 
-// modifica dei Ruoli dalla tab: percorso tipo "ca.precise", "team.0.loyalty", "stable.1.name"
+// modifica dei Ruoli dalla tab: percorso tipo "ca.precise", "team.0.loyalty"
 function setPath(o, path, v) { const ks = path.split("."); let x = o; ks.slice(0, -1).forEach((k, j) => { if (x[k] == null) x[k] = /^\d+$/.test(ks[j + 1]) ? [] : {}; x = x[k]; }); x[ks[ks.length - 1]] = v; }
 function roleSet(el) {
   const e = state.entries.find(x => x.id === el.dataset.rid); if (!e || !Store.canEdit()) return;
@@ -154,7 +149,6 @@ function roleSet(el) {
     migrateRoles(s, e); const r = s.roles[i]; if (!r) return s;
     if (f === "recipes") { const set = new Set(r.recipes || []); if (el.checked) set.add(el.dataset.rv); else set.delete(el.dataset.rv); r.recipes = [...set]; return s; }
     if (f.startsWith("ca.") && !r.ca) r.ca = CPR.autoCA(clamp(num(r.rank), 0, 10));
-    if (f.endsWith(".active") && r.id === "nomad" && el.checked && num(r.rank) < 10) (r.stable || []).forEach(v => { v.active = false; });   // un veicolo alla volta
     setPath(r, f, el.type === "checkbox" ? el.checked : el.type === "number" ? Math.max(0, num(el.value)) : el.value);
     return s;
   });
@@ -188,9 +182,6 @@ async function roleOp(el) {
     if (o === "tech-auto") { const n = clamp(num(r.rank), 0, 10); r.tech = { field: n, upgrade: n, fabricate: 0, invent: 0 }; }
     if (o === "team-add") { r.team = r.team || []; r.team.push({ name: "", job: RL.EXEC_JOBS[0], loyalty: 1 + CPR.die(6) }); }
     if (o === "team-del") (r.team || []).splice(num(a), 1);
-    if (o === "stable-add") { r.stable = r.stable || []; r.stable.push({ kind: RL.vehiclesFor(num(r.rank))[0], name: "", upgrades: [], active: !r.stable.length }); }
-    if (o === "stable-del") (r.stable || []).splice(num(a), 1);
-    if (o === "upg-del") { const v = (r.stable || [])[num(a)]; if (v) (v.upgrades || []).splice(num(b), 1); }
     return s;
   });
 }

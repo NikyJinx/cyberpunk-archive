@@ -322,6 +322,8 @@ function gearInner(e) {
     const cat = it.cat || "altro";
     if (cat === NET_CAT) return;
     if (cat === "vestiti") { rows.vestiti.push({ ...fromGear(it, gi), detail: [wdType(it.type), it.style, it.detail].filter(Boolean).join(" · "), tag: it.worn ? "👕 indossato" : "" }); return; }
+    if (cat === "veicoli") { const V = vhInfo(it); rows.veicoli.push({ ...fromGear(it, gi), detail: [V.kind, ...V.upgrades.map(u => (RL.upgradeById(u.id) || { name: u.id }).name), it.detail].filter(Boolean).join(" · "),
+      tag: [V.active ? "in uso" : "", roleOfE(e, "nomad") ? (V.src === "role" ? "🏕 dal ruolo" : "💰 comprato") : ""].filter(Boolean).join(" · ") }); return; }
     if (cat !== "armature") { rows[cat] && rows[cat].push(fromGear(it, gi)); return; }
     const on = AW.on[gi] || [], A = armorInfo(it);
     const free = A.both ? (on.length ? [] : ["both"]) : A.fixed ? A.locs.filter(l => !on.includes(l)) : on.length < Math.max(1, num(it.qty)) ? ["head", "body"].filter(l => !on.includes(l)) : [];
@@ -445,7 +447,7 @@ const gearRow = (it = {}) => `
     <input data-f="qty" type="number" min="1" step="1" placeholder="Q.tà" value="${esc(it.qty ?? 1)}">
     <input data-f="detail" placeholder="Dettagli (danno, SP, ROF…)" value="${esc(it.detail)}">
     <input data-f="note" placeholder="Nota" value="${esc(it.note)}">
-    <input type="hidden" data-f="style" value="${esc(it.style || "")}"><input type="hidden" data-f="type" value="${esc(it.type || "")}"><input type="hidden" data-f="worn" value="${it.worn ? "1" : ""}"><input type="hidden" data-f="sp" value="${esc(it.sp ?? "")}"><input type="hidden" data-f="pen" value="${esc(it.pen ?? "")}"><input type="hidden" data-f="both" value="${it.both ? "1" : ""}"><input type="hidden" data-f="loc" value="${esc(it.loc || "")}"><input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}">
+    <input type="hidden" data-f="style" value="${esc(it.style || "")}"><input type="hidden" data-f="type" value="${esc(it.type || "")}"><input type="hidden" data-f="worn" value="${it.worn ? "1" : ""}"><input type="hidden" data-f="sp" value="${esc(it.sp ?? "")}"><input type="hidden" data-f="pen" value="${esc(it.pen ?? "")}"><input type="hidden" data-f="both" value="${it.both ? "1" : ""}"><input type="hidden" data-f="loc" value="${esc(it.loc || "")}"><input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}"><input type="hidden" data-f="veh" value="${esc(it.veh ? JSON.stringify(it.veh) : "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button>
   </div>`;
 const readRows = (root, sel) => $$(sel, root).map(r => Object.fromEntries($$("[data-f]", r).map(i => [i.dataset.f, i.type === "checkbox" ? i.checked : i.value.trim()])));
@@ -641,13 +643,14 @@ function editGear(id) {
   });
   form.addEventListener("submit", async ev => {
     ev.preventDefault();
-    const items = readRows(form, ".gear-row").filter(it => it.name).map(({ item, ...it }) => {
+    const items = readRows(form, ".gear-row").filter(it => it.name).map(({ item, veh, ...it }) => {
       const o = { ...it, qty: Math.max(1, num(it.qty) || 1) };
       ["cost", "drug", "ref", "sp", "pen", "both", "loc", "style", "type", "worn"].forEach(k => { if (!o[k]) delete o[k]; });
       if (o.worn) o.worn = true;
       if (o.sp) o.sp = num(o.sp); if (o.pen) o.pen = num(o.pen); if (o.both) o.both = true;
       if (o.cost) o.cost = num(o.cost);
       if (item) try { o.item = JSON.parse(item); } catch {}
+      if (veh && o.cat === "veicoli") try { o.veh = JSON.parse(veh); } catch {}
       return o;
     });
     const money = form.money.value;
