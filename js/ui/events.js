@@ -315,6 +315,10 @@ document.addEventListener("click", async ev => {
     case "drug-cure": drugCure(id, num(el.dataset.i)); break;
     case "mk-hide": { const k = el.dataset.key, h = mkCfg().hide || []; mkSaveCfg({ hide: h.includes(k) ? h.filter(x => x !== k) : [...h, k] }); break; }
     case "cb-roll": cbRoll(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), el.dataset.mode || "single"); break;
+    case "att-off": attOff(id, num(el.dataset.i), num(el.dataset.k)); break;
+    case "att-slots": attSlots(id, num(el.dataset.i), num(el.dataset.d)); break;
+    case "ammo-mod": ammoModEdit(id, num(el.dataset.i)); break;
+    case "cb-reload": cbReload(id, el.dataset.i); break;
     case "cb-dmg": cbDamage(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.mult)); break;
     case "sheet-status": { const e = state.entries.find(x => x.id === el.dataset.stSheet); if (e && Store.canEdit()) statusOp(el, sheetStatusApply(e)); break; }
     case "tok-status": { const t = state.tokens.find(x => x.id === el.dataset.stTok); if (t && Store.canEdit()) statusOp(el, tokStatusApply(t)); break; }
@@ -372,11 +376,14 @@ document.addEventListener("change", ev => {
       X.refresh(); return;
     }
     if (!X.edit) return;
+    // armi della scheda con caricatore: cambiare tipo = scaricare e ricaricare dalle scorte
+    if (t.matches("[data-cb-ammo]") && X.mag) { cbReload(X.id, X.i, t.value); return; }
     const f = t.matches("[data-cb-ammo]") ? "ammo" : t.matches("[data-cb-table]") ? "range" : "autoRange";
     if (f !== "ammo" && cbMem[X.key]) delete cbMem[X.key].last;
     X.save(f, t.value);
     return;
   }
+  if (t.matches("[data-att-on]")) { if (t.value !== "") attOn(t.dataset.id, num(t.dataset.i), num(t.value)); return; }
   // tab Ruoli
   if (t.matches("[data-rl][data-rf]")) { roleSet(t); return; }
   // tab Veicoli

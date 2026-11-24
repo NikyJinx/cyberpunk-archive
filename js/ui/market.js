@@ -93,6 +93,20 @@ function shopBody(type) {
       <tbody>${labs.map(l => `<tr class="gl-grp"><th colspan="${mkCanBuy() ? 4 : 3}">${esc(l)}</th></tr>` + list.filter(it => lab(it) === l).map(it => `<tr class="${cls(it)}">${name(it)}${desc(it)}${mkCostCell(it.cost)}${mkBuyCell(it.id, it.cost)}</tr>`).join("")).join("")}</tbody></table></div>
       <p class="hint">I farmaci del Medtech non si comprano: li prepara il Medtech con la specialità Farmaceutica.</p>`;
 }
+// tab Munizioni: ogni calibro con la Standard e i tipi del GM («Tipi di munizioni e stati»), a lotti
+function ammoShopBody() {
+  const q = norm2(glossQ), buy = mkCanBuy(), who = mkWho();
+  const rows = AMMO_FAMS.flatMap(fam => ammoTypesFor(fam).map(a => ({ fam, a, key: `ammo:${fam}:${a.id}`, cost: ammoCost(fam, a), lot: AMMO_LOT(fam) })))
+    .filter(r => (isGm() || !mkHidden(r.key)) && (!glossP || MK.priceCat(r.cost) === glossP) && (!q || norm2(`${r.fam} ${r.a.name} ${r.a.eff || ""}`).includes(q)));
+  const weaponsOf = fam => CPR.WEAPON_TYPES.filter(t => t.ammo === fam).map(t => t.label).join(", ");
+  return `${mkFilters(rows.length)}<div class="gl-wrap"><table class="gl-t mk-t">
+    <thead><tr><th>Munizioni</th><th>Effetto</th><th>Lotto</th><th>Costo</th>${buy ? "<th></th>" : ""}</tr></thead>
+    <tbody>${AMMO_FAMS.filter(f => rows.some(r => r.fam === f)).map(f => `<tr class="gl-grp"><th colspan="${buy ? 5 : 4}">${esc(f)} <small>${esc(weaponsOf(f))}${who ? ` · ${esc(who.name)} ne ha ${ammoTypesFor(f).map(a => ammoStockN(who, f, a.id)).reduce((x, y) => x + y, 0)}` : ""}</small></th></tr>` +
+      rows.filter(r => r.fam === f).map(r => `<tr class="${mkHidden(r.key) ? "mk-hid" : ""}"><td><b>${esc(r.a.name)}</b>${mkTools(r.key, null)}${who ? `<small>in scorta: ${ammoStockN(who, f, r.a.id)}</small>` : ""}</td>
+        <td>${esc(ammoEff(r.a) || (r.a.id ? [num(r.a.atk) ? `${r.a.atk > 0 ? "+" : ""}${r.a.atk} a colpire` : "", r.a.dmg ? `danno ${r.a.dmg}` : "", num(r.a.dmgMod) ? `${r.a.dmgMod > 0 ? "+" : ""}${r.a.dmgMod} al danno` : ""].filter(Boolean).join(" · ") : "Munizioni base"))}</td>
+        <td class="gl-n">${r.lot > 1 ? `${r.lot} colpi` : "1"}</td>${mkCostCell(r.cost)}${buy ? mkBuyCell(r.key, r.cost) : ""}</tr>`).join("")).join("")}</tbody></table></div>
+    <p class="hint">Le munizioni comprate vanno nell'Equipaggiamento (Munizioni) e si caricano con «⟳ Ricarica» nella tab Combattimento: ogni attacco spara un colpo, autofire e soppressione 10. I tipi oltre la Standard (perforanti, incendiarie…) li definisce il GM in «Tipi di munizioni e stati», con il prezzo.</p>`;
+}
 // tab Cyberdeck: deck, programmi, Black ICE e hardware (questi ultimi dal catalogo NET)
 const netShop = () => [
   ...NET.PROGRAMS.map(p => ({ key: "net:prog:" + p.id, grp: "Programmi", name: p.name, info: `${(NET.CLASSES[p.cls] || {}).label || ""} · ATK ${p.atk} · DEF ${p.def} · REZ ${p.rez}`, desc: p.eff, cost: p.cost, src: p.src })),
@@ -123,6 +137,11 @@ const mkCySlots = (e, c) => {
   return { fit: fit.length ? fit : all, other: all.filter(s => !fit.includes(s)) };
 };
 const mkItemOf = key => {
+  if (key.startsWith("ammo:")) {
+    const [, fam, aid = ""] = key.split(":"), a = ammoTypesFor(fam).find(t => t.id === aid); if (!a) return null;
+    const lot = AMMO_LOT(fam);
+    return { type: "ammo", key, id: key, name: `${fam} · ${a.name}`, fam, ammo: a.id, lot, cost: ammoCost(fam, a), desc: `${lot > 1 ? `Scatola da ${lot} colpi` : "Un pezzo"} per ${CPR.WEAPON_TYPES.filter(t => t.ammo === fam).map(t => t.label).join(", ")}${a.eff ? ` · ${a.eff}` : ""}` };
+  }
   if (key.startsWith("cw:")) return (c => c && { ...c, type: "cyber", key })(CW.byId(key.slice(3)));
   if (key.startsWith("net:")) { const it = netShop().find(x => x.key === key); return it && { ...it, type: "netitem", ref: key.slice(4), id: key }; }
   const m = MK.byId(key);
@@ -149,6 +168,7 @@ function mkBuy(key) {
     extra = `<div class="field full"><label>Mettilo in</label><select name="deck">${ds.map((d, i) => { const S = NET.deckSlots(d); return `<option value="${i}" ${i === deckIdx(e) ? "selected" : ""}>${esc(d.name || `Cyberdeck ${i + 1}`)} · slot ${S.used}/${S.total}</option>`; }).join("")}<option value="">nell'inventario, da installare dopo</option></select>
       ${ds.length ? "" : `<span class="hint">${esc(e.name)} non ha un cyberdeck: va nell'inventario.</span>`}</div><p class="mk-warn field full" data-mk-cap></p>`;
   }
+  if (it.type === "ammo") extra = `<div class="field"><label>${it.lot > 1 ? `Scatole da ${it.lot} colpi` : "Quantità"}</label><input name="qty" type="number" min="1" max="99" value="1"></div><p class="hint field full">In scorta: ${ammoStockN(e, it.fam, it.ammo)}. Vanno nell'Equipaggiamento; si caricano con «⟳ Ricarica» nella tab Combattimento.</p>`;
   if (it.type === "gear") extra = `<div class="field"><label>Quantità</label><input name="qty" type="number" min="1" max="99" value="1"></div>`;
   if (it.type === "cyber") {
     const { fit, other } = mkCySlots(e, it), base = !!it.base || it.id === "chipslot";
@@ -223,6 +243,7 @@ async function mkCommit(e0, it, paid, qty, o) {
     if (old) old.qty = Math.max(1, num(old.qty) || 1) + n; else gear.items.push({ cat, name, qty: n, ...(detail ? { detail } : {}), ...(cost ? { cost } : {}) });
   };
   if (it.type === "weapon") { s.weapons = [...(s.weapons || []), MK.toSheetWeapon(it)]; undo = { k: "weapon" }; }
+  if (it.type === "ammo") { ammoAdd(e, it.fam, it.ammo, qty * it.lot); undo = { k: "ammo", fam: it.fam, ammo: it.ammo, n: qty * it.lot }; }
   if (it.type === "gear") {
     addGear(it.gcat || "equip", it.name, "", qty, mkPrice(it.cost)); undo = { k: "gear", cat: it.gcat || "equip", qty };
     if (it.gcat === "vestiti") { const g = gear.items.find(x => x.cat === "vestiti" && norm2(x.name) === norm2(it.name)); if (g) Object.assign(g, { ...(it.wtype ? { type: it.wtype } : {}), ...(it.style ? { style: it.style } : {}) }); }
@@ -287,7 +308,7 @@ function mkHistory(id) {
   const log = mkLog(e), T = Object.fromEntries(MK.TYPES);
   openModal(`<div class="form">
     <div class="modal-head"><h2>// ACQUISTI · ${esc(e.name)}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
-    <div class="modal-body">${log.length ? `<ul class="mk-log">${[...log].reverse().map(l => `<li><span class="d">${esc(new Date(l.at).toLocaleDateString("it-IT"))}</span><b>${esc(l.name)}${l.qty > 1 ? ` ×${l.qty}` : ""}</b><span class="hint">${esc(T[l.type] || "")}</span><span class="c">${l.cost ? "−" + fmtEb(l.cost) : "gratis"}</span></li>`).join("")}</ul>`
+    <div class="modal-body">${log.length ? `<ul class="mk-log">${[...log].reverse().map(l => `<li><span class="d">${esc(new Date(l.at).toLocaleDateString("it-IT"))}</span><b>${esc(l.name)}${l.qty > 1 ? ` ×${l.qty}` : ""}</b><span class="hint">${esc(T[l.type] || { ammo: "Munizioni", expense: "Spese mensili" }[l.type] || "")}</span><span class="c">${l.cost ? "−" + fmtEb(l.cost) : "gratis"}</span></li>`).join("")}</ul>`
       : `<p class="hint">Nessun acquisto dal Night Market.</p>`}</div>
     <div class="modal-foot">${log.length && Store.canEdit() ? `<button type="button" class="btn ghost small left danger" data-action="mk-undo" data-id="${esc(e.id)}">Annulla l'ultimo (${esc(log[log.length - 1].name)})</button>` : ""}<button type="button" class="btn" data-action="close">Chiudi</button></div>
   </div>`, true);
@@ -298,6 +319,7 @@ async function mkUndo(id) {
   const e = JSON.parse(JSON.stringify(e0)), s = e.sheet = e.sheet || {}, gear = e.gear, u = last.undo || {};
   const dropGear = (cat, n) => { const g = (gear.items || []).find(x => norm2(x.name) === norm2(last.name) && (x.cat || "altro") === cat); if (!g) return; g.qty = (num(g.qty) || 1) - n; if (g.qty <= 0) gear.items = gear.items.filter(x => x !== g); };
   const lastIdx = (arr, f) => { for (let i = arr.length - 1; i >= 0; i--) if (f(arr[i])) return i; return -1; };
+  if (u.k === "ammo") ammoAdd(e, u.fam, u.ammo, -num(u.n));
   if (u.k === "weapon") { const w = s.weapons || [], i = lastIdx(w, x => x.market === last.id || norm2(x.name) === norm2(last.name)); if (i >= 0) w.splice(i, 1); }
   if (u.k === "gear") {
     dropGear(u.cat || "equip", u.qty || 1);

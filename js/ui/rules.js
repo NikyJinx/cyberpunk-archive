@@ -5,9 +5,51 @@
 
 // ---------- REGOLE DELLA CAMPAGNA: munizioni e stati (meta "rules", li modifica il GM) ----------
 const rules = () => state.rules || { id: "rules", ammo: [], status: CPR.DEFAULT_STATUS };
-const STD_AMMO = { id: "", name: "Standard", atk: 0, dmg: "", dmgMod: 0, eff: "" };
-const ammoList = cat => [STD_AMMO, ...(rules().ammo || []).filter(a => !a.fam || ((CPR.weaponType(cat) || {}).ammo === a.fam))];
+const STD_AMMO = { id: "", name: "Base", atk: 0, dmg: "", dmgMod: 0, eff: "" };
+// tipi per un'arma: Base, quelli del manuale (arms.js) e quelli del GM per il suo calibro
+const ammoList = cat => ammoTypesFor((CPR.weaponType(cat) || {}).ammo || "");
 const ammoOf = (cat, id) => ammoList(cat).find(a => a.id === id) || STD_AMMO;
+
+// ---------- MUNIZIONI: caricatore, scorte e ricarica ----------
+// arma della scheda: w.loaded = colpi nel caricatore (vuoto = pieno: armi già in scheda o appena comprate), w.ammo = tipo caricato
+// scorte: oggetti dell'inventario { cat: "munizioni", name: "Pistola Pesante · Standard", fam, ammo, qty = colpi }
+// prezzi: la Standard per calibro (rules().stdCost, sennò AMMO_STD_COST), gli altri tipi con il loro «cost»; si vendono a lotti
+const AMMO_LOT = fam => /granat|razz/i.test(fam || "") ? 1 : 10;
+const AMMO_STD_COST = { Granate: 10, Razzi: 100 };
+const ammoFam = cat => (CPR.weaponType(cat) || {}).ammo || "";
+// armi senza calibro (mischia, a mani nude): niente munizioni
+const ammoTypesFor = fam => !fam ? [STD_AMMO] : [...(ammoBaseOk(fam) ? [STD_AMMO] : []), ...(fam ? AMMO_BASE.filter(a => a.fams.includes(fam)) : []), ...(rules().ammo || []).filter(a => !a.fam || a.fam === fam)];
+const ammoCost = (fam, a) => a.id ? num(a.cost) : num(((rules().stdCost || {})[fam]) ?? AMMO_STD_COST[fam] ?? 10);
+const magOf = (w, cat) => magWithAtt(w, cat) || num(w.mag) || (CPR.weaponType(cat) || {}).mag || 0;
+const loadedOf = (w, cat) => hasVal(w.loaded) ? clamp(num(w.loaded), 0, magOf(w, cat)) : !w.ammo && ammoFam(cat) && !ammoBaseOk(ammoFam(cat)) ? 0 : magOf(w, cat);
+const ammoStock = (e, fam, id) => gearItems(e).find(it => it.cat === "munizioni" && it.fam === fam && (it.ammo || "") === (id || ""));
+const ammoStockN = (e, fam, id) => { const g = ammoStock(e, fam, id); return g ? num(g.qty) : 0; };
+// aggiunge (o toglie, n negativo) colpi alle scorte di un record; toglie la voce a zero
+function ammoAdd(x, fam, id, n) {
+  if (!n) return;
+  const g0 = x.gear = x.gear || {}; g0.items = g0.items || [];
+  let g = g0.items.find(it => it.cat === "munizioni" && it.fam === fam && (it.ammo || "") === (id || ""));
+  if (!g) { const mod = String(id || "").includes("~") ? (g0.ammoMods || {})[id] : null, a = mod || ammoTypesFor(fam).find(t => t.id === (id || "")) || STD_AMMO; g = { cat: "munizioni", name: `${fam} · ${a.name}`, fam, ...(id ? { ammo: id } : {}), qty: 0 }; g0.items.push(g); }
+  g.qty = num(g.qty) + n;
+  if (g.qty <= 0) g0.items = g0.items.filter(y => y !== g);
+}
+// ricarica dalle scorte; con un tipo diverso i colpi rimasti tornano nelle scorte
+function cbReload(id, i, type) {
+  const e = state.entries.find(x => x.id === id), R = e && pcWeapon(e, i), w = R && R.w; if (!w || !Store.canEdit()) return;
+  const cat = sheetWeaponCat(w), fam = ammoFam(cat), mag = magOf(w, cat); if (!fam || !mag) return;
+  const cur = w.ammo || "", to = type == null ? cur : type || "", A = ammoOfE(e, cat, to), change = to !== cur;
+  // granate e razzi non hanno la Base: quelle «di serie» nel caricatore non tornano nelle scorte
+  const have = loadedOf(w, cat), keep = change ? 0 : have, back = change && (cur || ammoBaseOk(fam)) ? have : 0;
+  const need = mag - keep, take = Math.min(need, ammoStockN(e, fam, to));
+  if (!change && !need) return toast("Il caricatore è già pieno", "ok");
+  if (!change && !take) return toast(`Niente ${fam} · ${A.name} nelle scorte: comprale al Night Market (Munizioni)`, "err");
+  entryPatch(id, x => {
+    const W0 = ((x.sheet || {}).weapons || [])[R.wi], W = W0 && (R.k == null ? W0 : (W0.attach || [])[R.k]); if (!W) return null;
+    ammoAdd(x, fam, cur, back); ammoAdd(x, fam, to, -take);
+    W.ammo = to; W.loaded = keep + take;
+    return x;
+  }, `${w.name}: ${keep + take}/${mag} ${A.name}${back ? ` · ${back} ${ammoOfE(e, cat, cur).name} tornati nelle scorte` : ""}${take < need ? (take || keep ? " · scorte finite" : " · niente nelle scorte") : ""}`);
+}
 const statusList = () => rules().status || [];
 const statusOf2 = id => statusList().find(s => s.id === id);
 // malus degli stati di chi agisce (es. Accecato −4, se il GM lo imposta)
@@ -85,6 +127,7 @@ function editRules() {
     <input data-f="dmg" placeholder="Danno al posto (es. 2d6)" title="Danno che sostituisce quello dell'arma (vuoto = quello dell'arma)" value="${esc(a.dmg || "")}">
     <input data-f="dmgMod" type="number" min="-20" max="20" placeholder="± danno" title="Modificatore al danno" value="${esc(a.dmgMod || "")}">
     <input data-f="eff" placeholder="Effetto (compare nel Dice log)" value="${esc(a.eff || "")}" class="wide">
+    <input data-f="cost" type="number" min="0" placeholder="eb" title="Prezzo al Night Market per lotto (10 colpi; granate e razzi uno per uno). Vuoto = non in vendita" value="${esc(a.cost || "")}">
     <input type="hidden" data-f="id" value="${esc(a.id || "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
   const sRow = (st = {}) => `<div class="sh-row rl-st">
@@ -98,9 +141,11 @@ function editRules() {
     <form class="form" id="rules-form">
       <div class="modal-head"><h2>// REGOLE DELLA CAMPAGNA</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
       <div class="modal-body">
-        <h3 class="sh-h">Munizioni <small>si scelgono nel tiro per colpire di ogni arma compatibile · «Standard» c'è sempre</small></h3>
+        <h3 class="sh-h">Munizioni in più <small>quelle del manuale (Perforanti, Incendiarie, Smart…) ci sono già · «Base» c'è sempre, tranne per granate e razzi</small></h3>
         <div class="sh-rows" id="rl-ammo">${(R.ammo || []).map(aRow).join("")}</div>
         <button type="button" class="btn ghost small cyan" data-rl-add="ammo">+ Munizione</button>
+        <h3 class="sh-h">Prezzo delle munizioni Base <small>al Night Market, per lotto: 10 colpi, granate e razzi uno per uno</small></h3>
+        <div class="rl-std">${AMMO_FAMS.map(f => `<label>${esc(f)} <input type="number" min="0" data-std="${esc(f)}" value="${esc((R.stdCost || {})[f] ?? AMMO_STD_COST[f] ?? 10)}"> eb</label>`).join("")}</div>
         <h3 class="sh-h">Stati <small>si mettono su schede e token · il modificatore vale per tutte le prove di chi ha lo stato</small></h3>
         <div class="sh-rows" id="rl-st">${(R.status || []).map(sRow).join("")}</div>
         <button type="button" class="btn ghost small cyan" data-rl-add="st">+ Stato</button>
@@ -117,12 +162,13 @@ function editRules() {
   form.addEventListener("submit", async ev => {
     ev.preventDefault();
     const idOf = (x, p) => x.id || p + NET.uid();
-    const ammo = readRows(form, "#rl-ammo .sh-row").filter(a => a.name).map(a => ({ id: idOf(a, "am-"), name: a.name, fam: a.fam, atk: num(a.atk), dmg: a.dmg, dmgMod: num(a.dmgMod), eff: a.eff }));
+    const ammo = readRows(form, "#rl-ammo .sh-row").filter(a => a.name).map(a => ({ id: idOf(a, "am-"), name: a.name, fam: a.fam, atk: num(a.atk), dmg: a.dmg, dmgMod: num(a.dmgMod), eff: a.eff, cost: num(a.cost) }));
+    const stdCost = Object.fromEntries($$("[data-std]", form).map(i => [i.dataset.std, num(i.value)]));
     const status = readRows(form, "#rl-st .sh-row").filter(x => x.name).map(x => ({ id: idOf(x, "st-"), name: x.name, atk: num(x.atk), dmg: x.dmg, eff: x.eff }));
     const bad = [...ammo.filter(a => a.dmg && !CPR.parse(a.dmg)).map(a => a.name), ...status.filter(x => x.dmg && !CPR.parse(x.dmg)).map(x => x.name)];
     if (bad.length) return toast(`Danno non valido in: ${bad.join(", ")} (es. 2d6 o 1d6+2)`, "err");
     try {
-      const saved = await Store.save("meta", { ...rules(), id: "rules", ammo, status });
+      const saved = await Store.save("meta", { ...rules(), id: "rules", ammo, status, stdCost });
       state.rules = saved; liveSend("meta", saved);
       toast("Regole salvate", "ok"); closeModal(); route();
     } catch (err) { fail(err); }

@@ -45,6 +45,7 @@ const GEAR_CATS = [
   { id: "droghe",   label: "Droghe",          color: "#a98bff",   hint: "es. Synthcoke, 2 dosi" },
   { id: "netrun",   label: "Programmi e hardware", color: "var(--green)", hint: "per il cyberdeck: si installano dalla tab Cyberdeck o da qui" },
   { id: "cyber",    label: "Cyberware",       color: "var(--magenta)", hint: "es. impianto da installare, preso come bottino" },
+  { id: "munizioni", label: "Munizioni",      color: "var(--orange, #ff9f1c)", hint: "colpi per calibro e tipo: si ricarica dalla tab Combattimento" },
   { id: "vestiti",  label: "Vestiti",         color: "#ff9ad5",   hint: "si indossano dalla tab Wardrobe (tipo e stile)" },
   { id: "veicoli",  label: "Veicoli",         color: "var(--magenta)", hint: "es. Supermoto potenziata" },
   { id: "altro",    label: "Altro",           color: "var(--muted)",   hint: "" },
@@ -311,7 +312,7 @@ function gearInner(e) {
   // armi della tab Combattimento + quelle segnate solo nell'inventario
   (s.weapons || []).forEach((w, i) => {
     const T = CPR.weaponType(w.cat || CPR.guessWeapon(w.name, w.skill)) || {};
-    rows.armi.push({ name: w.name || T.label || "Arma", detail: [T.label && T.label !== w.name ? T.label : "", w.dmg || T.dmg, w.rof ? `ROF ${w.rof}` : "", w.mag ? `Car. ${w.mag}` : ""].filter(Boolean).join(" · "), note: w.note,
+    rows.armi.push({ name: w.name || T.label || "Arma", detail: [T.label && T.label !== w.name ? T.label : "", w.dmg || T.dmg, w.rof ? `ROF ${w.rof}` : "", magOf(w, sheetWeaponCat(w)) ? `Car. ${ammoFam(sheetWeaponCat(w)) ? `${loadedOf(w, sheetWeaponCat(w))}/` : ""}${magOf(w, sheetWeaponCat(w))}` : "", (w.attach || []).length ? `accessori: ${w.attach.map(a => a.name).join(", ")}` : ""].filter(Boolean).join(" · "), note: w.note,
       tag: w.away ? "🏠 a casa" : "🎒 con sé", cls: w.away ? "stored" : "",
       act: edit ? `<button type="button" class="btn ghost small g-act" data-action="wpn-away" data-id="${id}" data-i="${i}" title="${w.away ? "La porti con te: torna nella tab Combattimento" : "La lasci a casa: va in fondo alla tab Combattimento e non si può usare"}">${w.away ? "🎒 Porta con sé" : "🏠 Lascia a casa"}</button>` : "" });
   });
@@ -321,6 +322,9 @@ function gearInner(e) {
   items.forEach((it, gi) => {
     const cat = it.cat || "altro";
     if (cat === NET_CAT) return;
+    if (cat === "munizioni") { const A = ammoOfE(e, (CPR.WEAPON_TYPES.find(t => t.ammo === it.fam) || {}).id || "", it.ammo || "");
+      rows.munizioni.push({ ...fromGear(it, gi), qty: 1, detail: `${num(it.qty)} ${AMMO_LOT(it.fam) > 1 ? "colpi" : num(it.qty) === 1 ? "pezzo" : "pezzi"}${A.mod ? " · modificate" : ""}`, note: ammoEff(A),
+        act: edit ? `<button type="button" class="btn ghost small g-act" data-action="ammo-mod" data-id="${id}" data-i="${gi}" title="Cambia VD, danni o effetto di alcune di queste munizioni">✎ Modifica</button>` : "" }); return; }
     if (cat === "vestiti") { rows.vestiti.push({ ...fromGear(it, gi), detail: [wdType(it.type), it.style, it.detail].filter(Boolean).join(" · "), tag: it.worn ? "👕 indossato" : "" }); return; }
     if (cat === "veicoli") { const V = vhInfo(it); rows.veicoli.push({ ...fromGear(it, gi), detail: [V.kind, ...V.upgrades.map(u => (RL.upgradeById(u.id) || { name: u.id }).name), it.detail].filter(Boolean).join(" · "),
       tag: [V.active ? "in uso" : "", roleOfE(e, "nomad") ? (V.src === "role" ? "🏕 dal ruolo" : "💰 comprato") : ""].filter(Boolean).join(" · ") }); return; }
@@ -367,7 +371,7 @@ function gearInner(e) {
       act: !edit ? "" : !ds.length ? `<span class="hint">nessun deck</span>` : `${ds.length > 1 ? `<select class="g-deck" data-deck-for="${gi}" aria-label="In quale deck">${ds.map((d, i) => `<option value="${i}" ${i === deckIdx(e) ? "selected" : ""}>${esc(d.name || `Cyberdeck ${i + 1}`)}</option>`).join("")}</select>` : ""}<button type="button" class="btn ghost small g-act" data-action="deck-install" data-id="${id}" data-i="${gi}" data-deck="${deckIdx(e)}">⇧ Installa</button>` }));
   }
   const SECS = [...GEAR_CATS.slice(0, 2), GEAR_CATS.find(c => c.id === "cyber"), { id: "deck", label: "Cyberdeck", color: "var(--green)" }, ...GEAR_CATS.filter(c => !["armi", "armature", "cyber", NET_CAT].includes(c.id))];
-  const LINK = { armi: (s.weapons || []).length ? ["combat", "Combattimento"] : null, cyber: ["cyber", "Cyberware"], deck: ["deck", "Cyberdeck"], vestiti: ["wardrobe", "Wardrobe"] };
+  const LINK = { armi: (s.weapons || []).length ? ["combat", "Combattimento"] : null, cyber: ["cyber", "Cyberware"], deck: ["deck", "Cyberdeck"], vestiti: ["wardrobe", "Wardrobe"], munizioni: ["combat", "Combattimento"] };
   const real = l => l.filter(x => !/subhead|none/.test(x.cls || "")).length;
   const total = SECS.reduce((t, c) => t + real(rows[c.id]), 0);
   if (!total && (money === "" || money == null) && !drugStatusHtml(e)) return `<div class="empty"><div class="big">// INVENTARIO VUOTO</div>Nessun equipaggiamento registrato.</div>`;
@@ -447,7 +451,7 @@ const gearRow = (it = {}) => `
     <input data-f="qty" type="number" min="1" step="1" placeholder="Q.tà" value="${esc(it.qty ?? 1)}">
     <input data-f="detail" placeholder="Dettagli (danno, SP, ROF…)" value="${esc(it.detail)}">
     <input data-f="note" placeholder="Nota" value="${esc(it.note)}">
-    <input type="hidden" data-f="style" value="${esc(it.style || "")}"><input type="hidden" data-f="type" value="${esc(it.type || "")}"><input type="hidden" data-f="worn" value="${it.worn ? "1" : ""}"><input type="hidden" data-f="sp" value="${esc(it.sp ?? "")}"><input type="hidden" data-f="pen" value="${esc(it.pen ?? "")}"><input type="hidden" data-f="both" value="${it.both ? "1" : ""}"><input type="hidden" data-f="loc" value="${esc(it.loc || "")}"><input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}"><input type="hidden" data-f="veh" value="${esc(it.veh ? JSON.stringify(it.veh) : "")}">
+    <input type="hidden" data-f="fam" value="${esc(it.fam || "")}"><input type="hidden" data-f="ammo" value="${esc(it.ammo || "")}"><input type="hidden" data-f="style" value="${esc(it.style || "")}"><input type="hidden" data-f="type" value="${esc(it.type || "")}"><input type="hidden" data-f="worn" value="${it.worn ? "1" : ""}"><input type="hidden" data-f="sp" value="${esc(it.sp ?? "")}"><input type="hidden" data-f="pen" value="${esc(it.pen ?? "")}"><input type="hidden" data-f="both" value="${it.both ? "1" : ""}"><input type="hidden" data-f="loc" value="${esc(it.loc || "")}"><input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}"><input type="hidden" data-f="veh" value="${esc(it.veh ? JSON.stringify(it.veh) : "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button>
   </div>`;
 const readRows = (root, sel) => $$(sel, root).map(r => Object.fromEntries($$("[data-f]", r).map(i => [i.dataset.f, i.type === "checkbox" ? i.checked : i.value.trim()])));
@@ -645,7 +649,7 @@ function editGear(id) {
     ev.preventDefault();
     const items = readRows(form, ".gear-row").filter(it => it.name).map(({ item, veh, ...it }) => {
       const o = { ...it, qty: Math.max(1, num(it.qty) || 1) };
-      ["cost", "drug", "ref", "sp", "pen", "both", "loc", "style", "type", "worn"].forEach(k => { if (!o[k]) delete o[k]; });
+      ["cost", "drug", "ref", "sp", "pen", "both", "loc", "style", "type", "worn", "fam", "ammo"].forEach(k => { if (!o[k]) delete o[k]; });
       if (o.worn) o.worn = true;
       if (o.sp) o.sp = num(o.sp); if (o.pen) o.pen = num(o.pen); if (o.both) o.both = true;
       if (o.cost) o.cost = num(o.cost);
