@@ -8,7 +8,36 @@
 const rawBody = e => num((sheetOf(e).stats || {}).BODY);
 // quanti chip possono essere montati: gli slot dell'Alveolo attivo (più gli Alveoli delle schede vecchie, inseriti come impianto)
 const alveoliOf = e => alveoloSlots(e) + cyberItems(e).filter(it => it.installed !== false && (CW.byId(it.ref) || CW.byName(it.name) || {}).id === "chipslot").length;
-const cyberFx = e => CW.effects(cyberItems(e), rawBody(e), { chipCap: alveoliOf(e) });
+const cyberFx = e => gearFx(e, CW.effects(cyberItems(e), rawBody(e), { chipCap: alveoliOf(e) }));
+// ---------- OGGETTI DELL'INVENTARIO CON EFFETTI (campo fx delle voci del Night Market) ----------
+// skill (+v alle abilità, «nc» = non cumulativo con un impianto o un oggetto con quel nome), immune (stato che non penalizza),
+// frame (Telaio Lineare indossato: BODY dei tiri a v, con «plugs» Connettori d'Interfaccia; PF e Death Save non cambiano)
+let gearCat = null, gearCatN = -1;
+function gearCatalogItem(it) {
+  const all = MK.all(); if (gearCatN !== all.length) { gearCat = new Map(all.filter(x => x.type === "gear" && x.fx).map(x => [norm2(x.name), x])); gearCatN = all.length; }
+  return gearCat.get(norm2(it.name)) || null;
+}
+const gearWithFx = e => gearItems(e).filter(it => num(it.qty || 1) > 0).map(it => gearCatalogItem(it)).filter(Boolean).filter((m, i, a) => a.indexOf(m) === i);
+const plugsOf = e => cyberItems(e).filter(it => it.installed !== false && (cwOf(it) || {}).id === "interfaceplugs").length;
+function gearFx(e, fx) {
+  const seen = new Set(Object.values(fx.skill).flat().map(b => norm2(b.l)));
+  for (const m of gearWithFx(e)) for (const f of m.fx) {
+    if (f.t === "skill") {
+      if (f.nc && seen.has(norm2(f.nc))) continue;
+      if (f.nc) seen.add(norm2(f.nc));
+      for (const sk of f.skills) (fx.skill[sk] = fx.skill[sk] || []).push({ l: `${m.name} (oggetto)`, v: f.v });
+    }
+    if (f.t === "immune") fx.immune.push({ status: f.status, name: `${m.name} (oggetto)` });
+    if (f.t === "frame" && plugsOf(e) < f.plugs) (fx.warn = fx.warn || []).push({ name: m.name, miss: [`${f.plugs > 1 ? f.plugs + " Connettori" : "un Connettore"} d'Interfaccia installat${f.plugs > 1 ? "i" : "o"} (ne hai ${plugsOf(e)})`] });
+  }
+  return fx;
+}
+// BODY dei tiri con un Telaio Lineare indossato: sale al valore del telaio (non oltre il suo massimo), PF e Death Save restano
+function frameBonus(e, id, base) {
+  if (id !== "BODY") return [];
+  const fr = gearWithFx(e).flatMap(m => m.fx.filter(f => f.t === "frame" && plugsOf(e) >= f.plugs).map(f => ({ ...f, name: m.name }))).sort((a, b) => b.v - a.v)[0];
+  return fr && base < fr.v ? [{ l: `${fr.name} (indossato)`, v: fr.v - base }] : [];
+}
 // bonus di un'abilità: Ruolo e cyberware (automatici) + quelli manuali e degli oggetti del riquadro «Bonus»
 const skillBonusAll = (e, k) => [...(k.custom ? [] : [...roleSkillBonus(e, k.id), ...CW.skillBonus(cyberFx(e), k.id, k.lvl)]), ...(k.key ? [...extraBonus(e, k.key), ...agentBonus(e, k.key)] : [])];
 const cwOf = it => CW.byId(it.ref) || CW.byName(it.name);
@@ -33,7 +62,7 @@ function cyberFxHtml(e, compact = false) {
   const wpn = fx.weapons.map(w => `${esc(w.name)} (${esc(w.dmg)})${have.has(norm(w.name)) ? " ✓ nelle armi" : edit ? ` <button type="button" class="btn ghost small" data-action="cy-weapon" data-id="${id}" data-name="${esc(w.name)}">+ alle armi</button>` : ""}`);
   if (!lines.length && !conds.length && !wpn.length) return compact ? "" : `<p class="hint">Gli impianti scelti dal catalogo con un effetto (bonus alle abilità, iniziativa, BODY…) lo applicano da soli ai tiri.</p>`;
   return `<div class="cy-fx ${compact ? "compact" : ""}">
-    ${compact ? `<span class="sh-k">Cyberware</span>` : `<h4>Effetti del cyberware</h4>`}
+    ${compact ? `<span class="sh-k">Cyberware</span>` : `<h4>Effetti del cyberware e degli oggetti</h4>`}
     ${conds.length ? `<div class="st-chips">${conds.map(x => { const f = x.c.fx.find(z => z.cond); return `<button type="button" class="chip ${x.it.on ? "active" : ""}" ${edit ? `data-action="cy-on" data-id="${id}" data-slot="${esc(x.slot)}" data-i="${x.i}"` : "disabled"} title="${esc(f.cond)}">${x.it.on ? "◉" : "○"} ${esc(x.c.name)} <small>${esc(f.cond)}</small></button>`; }).join("")}</div>` : ""}
     ${!compact && lines.length ? `<ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul>` : compact && lines.length ? `<span class="hint">${lines.join(" · ")}</span>` : ""}
     ${wpn.length && !compact ? `<div class="cy-wpn"><span class="sh-k">Armi integrate</span> ${wpn.join(" · ")}</div>` : ""}
