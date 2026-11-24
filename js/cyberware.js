@@ -132,8 +132,8 @@ window.CW = (() => {
     C("multioptic", "borg", "Innesto MultiOttico", OS, 1000, "Molto Oneroso", 14, "4d6", "Fino a 5 Cyberocchi in più (venduti e installati a parte). Uno solo."),
     C("artshoulder", "borg", "Innesto Spalla Artificiale", OS, 1000, "Molto Oneroso", 14, "4d6", "Due Cyberbraccia sotto le braccia normali. Uno solo."),
     C("sensorarray", "borg", "Modulo Sensori", CL, 1000, "Molto Oneroso", 14, "4d6", "Due antenne piatte ai lati della testa («Orecchie da Coniglio»): fino a 5 opzioni Cyberudito. Uno solo. Nessuno Slot.", { req: "Sistema Cyberudito", slots: 0 }),
-    C("framebeta", "borg", "Telaio Lineare β (Beta) Impiantato", OS, 5000, "Lussuoso", 14, "4d6", "Esoscheletro pesantemente rinforzato: BODY 14 (cambiano PF, soglie e Death Save), massimo 15.", { req: "BODY 8 e due Lacci Osseo-Muscolari", fx: [{ t: "setBody", v: 14, max: 15 }] }),
-    C("framesigma", "borg", "Telaio Lineare σ (Sigma) Impiantato", OS, 1000, "Molto Oneroso", 14, "4d6", "Esoscheletro rinforzato: BODY 12 (cambiano PF, soglie e Death Save), massimo 13.", { req: "BODY 6 e un Laccio Osseo-Muscolare", fx: [{ t: "setBody", v: 12, max: 13 }] }),
+    C("framebeta", "borg", "Telaio Lineare β (Beta) Impiantato", OS, 5000, "Lussuoso", 14, "4d6", "Esoscheletro pesantemente rinforzato: BODY 14 (cambiano PF, soglie e Death Save), massimo 15.", { req: "BODY 8 e due Lacci Osseo-Muscolari", fx: [{ t: "setBody", v: 14, max: 15, laces: 2, minBody: 8 }] }),
+    C("framesigma", "borg", "Telaio Lineare σ (Sigma) Impiantato", OS, 1000, "Molto Oneroso", 14, "4d6", "Esoscheletro rinforzato: BODY 12 (cambiano PF, soglie e Death Save), massimo 13.", { req: "BODY 6 e un Laccio Osseo-Muscolare", fx: [{ t: "setBody", v: 12, max: 13, laces: 1, minBody: 6 }] }),
     // espansioni (12 Days of …, Hornet's Pharmacy, Must Have Cyberware Deals)
     C("autoinjector", "internal", "AutoInjector Bodyweight", CL, 100, "Premium", 3, "1d6", "Serbatoio sottocutaneo per una dose di droga (caricarla è un'Azione); con un'Azione te la inietti. Con il Biomonitor la programmi per iniettarla da sola quando tiri l'iniziativa, subisci una Critical Injury o entri in uno Stato di Ferita scelto.", {"src": "Hornet's Pharmacy"}),
     C("gasjet", "arm", "Gas Jet Pursuit Security", CL, 500, "Expensive", 7, "2d6", "Lanciatore di gas nel braccio con 3 dosi di droga o 3 fiale di veleno o biotossina, occultato senza prove. Funziona come uno Shotgun esotico a una mano da 1 colpo, solo in modalità Shotgun Shell: invece dei danni applica la sostanza a chi viene colpito (i Filtri Nasali la bloccano). Ogni colpo svuota il serbatoio.", {"src": "Hornet's Pharmacy", "req": "Cyberbraccio", "slots": 2}),
@@ -196,9 +196,9 @@ window.CW = (() => {
     if (opts.chipCap != null) { let n = 0; inst = inst.filter(x => !x.c.chip || ++n <= opts.chipCap); }
     const have = id => inst.filter(x => x.c.id === id).length;
     const count = id => inst.filter(x => x.c.id === id || x.c.as === id).length;   // «as»: conta come un altro impianto
-    const out = { skill: {}, mods: [], body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0 };
+    const out = { skill: {}, mods: [], body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0, warn: [] };
     const seen = new Set();
-    let body = +baseBody || 0, bodyCap = null;
+    let body = +baseBody || 0, frame = null;
     for (const { it, c } of inst) for (const f of c.fx || []) {
       if (f.cond) out.cond.push({ c, f, on: !!it.on, it });
       if (f.cond && !it.on) continue;
@@ -209,7 +209,12 @@ window.CW = (() => {
       if (f.t === "chip" && it.param) (out.skill[it.param] = out.skill[it.param] || []).push({ l: c.name, chip: +it.lvl === 4 ? 4 : 3 });
       if (f.t === "mod") out.mods.push({ name: c.name, target: f.target, value: f.v });
       if (f.t === "body") body = Math.min(f.max || 99, body + f.v);
-      if (f.t === "setBody") { body = Math.max(body, f.v); bodyCap = f.max; }
+      // Telaio Lineare: si applica dopo i Lacci, se ci sono i requisiti (BODY naturale e numero di Lacci)
+      if (f.t === "setBody") {
+        const miss = [f.minBody && (+baseBody || 0) < f.minBody ? `BODY ${f.minBody} (ora ${+baseBody || 0})` : "", f.laces && have("bonelace") < f.laces ? `${f.laces > 1 ? f.laces + " Lacci" : "un Laccio"} Osseo-Muscolar${f.laces > 1 ? "i" : "e"} (ne hai ${have("bonelace")})` : ""].filter(Boolean);
+        if (miss.length) out.warn.push({ name: c.name, miss });
+        else if (!frame || f.v > frame.v) frame = f;
+      }
       if (f.t === "pain") out.pain = true;
       if (f.t === "immune") out.immune.push({ status: f.status, name: c.name });          // stato che non ti penalizza (es. Accecato)
       if (f.t === "smart") out.smart = true;                                              // collegamento per le armi Smartgun
@@ -217,7 +222,8 @@ window.CW = (() => {
       if (f.t === "armor") out.armor.push({ name: c.name, sp: f.sp, type: f.type });
       if (f.t === "weapon") out.weapons.push({ ...f, src: c.name });
     }
-    if (bodyCap) body = Math.min(body, bodyCap);
+    // il telaio fissa il BODY (12 o 14), anche se i Lacci da soli si fermano a 10
+    if (frame) body = Math.min(Math.max(body, frame.v), frame.max);
     out.body = body;
     return out;
   }
