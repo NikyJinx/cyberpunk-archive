@@ -308,7 +308,7 @@ function mkHistory(id) {
   const log = mkLog(e), T = Object.fromEntries(MK.TYPES);
   openModal(`<div class="form">
     <div class="modal-head"><h2>// ACQUISTI · ${esc(e.name)}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
-    <div class="modal-body">${log.length ? `<ul class="mk-log">${[...log].reverse().map(l => `<li><span class="d">${esc(new Date(l.at).toLocaleDateString("it-IT"))}</span><b>${esc(l.name)}${l.qty > 1 ? ` ×${l.qty}` : ""}</b><span class="hint">${esc(T[l.type] || { ammo: "Munizioni", expense: "Spese mensili" }[l.type] || "")}</span><span class="c">${l.cost ? "−" + fmtEb(l.cost) : "gratis"}</span></li>`).join("")}</ul>`
+    <div class="modal-body">${log.length ? `<ul class="mk-log">${[...log].reverse().map(l => `<li><span class="d">${esc(new Date(l.at).toLocaleDateString("it-IT"))}</span><b>${esc(l.name)}${l.qty > 1 ? ` ×${l.qty}` : ""}</b><span class="hint">${esc(T[l.type] || { ammo: "Munizioni", expense: "Spese mensili", battery: "Batteria" }[l.type] || "")}</span><span class="c">${l.cost ? "−" + fmtEb(l.cost) : "gratis"}</span></li>`).join("")}</ul>`
       : `<p class="hint">Nessun acquisto dal Night Market.</p>`}</div>
     <div class="modal-foot">${log.length && Store.canEdit() ? `<button type="button" class="btn ghost small left danger" data-action="mk-undo" data-id="${esc(e.id)}">Annulla l'ultimo (${esc(log[log.length - 1].name)})</button>` : ""}<button type="button" class="btn" data-action="close">Chiudi</button></div>
   </div>`, true);

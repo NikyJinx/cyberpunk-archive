@@ -315,6 +315,10 @@ document.addEventListener("click", async ev => {
     case "drug-cure": drugCure(id, num(el.dataset.i)); break;
     case "mk-hide": { const k = el.dataset.key, h = mkCfg().hide || []; mkSaveCfg({ hide: h.includes(k) ? h.filter(x => x !== k) : [...h, k] }); break; }
     case "cb-roll": cbRoll(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), el.dataset.mode || "single"); break;
+    case "sp-attack": spAttack(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.n)); break;
+    case "sp-check": spCheck(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.n)); break;
+    case "sp-battery": spBattery(id, num(el.dataset.i)); break;
+    case "sp-edit": spEdit(id, num(el.dataset.i)); break;
     case "att-off": attOff(id, num(el.dataset.i), num(el.dataset.k)); break;
     case "att-slots": attSlots(id, num(el.dataset.i), num(el.dataset.d)); break;
     case "ammo-mod": ammoModEdit(id, num(el.dataset.i)); break;
@@ -383,6 +387,7 @@ document.addEventListener("change", ev => {
     X.save(f, t.value);
     return;
   }
+  if (t.matches("[data-sp-rider]")) { const X = wSrc(t.dataset.src, t.dataset.id, t.dataset.i, t.dataset.tok); if (X) { spMem(X).riders[t.dataset.spRider] = t.checked; } return; }
   if (t.matches("[data-att-on]")) { if (t.value !== "") attOn(t.dataset.id, num(t.dataset.i), num(t.value)); return; }
   // tab Ruoli
   if (t.matches("[data-rl][data-rf]")) { roleSet(t); return; }
