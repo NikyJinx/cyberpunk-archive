@@ -23,6 +23,7 @@ function cyberFxHtml(e, compact = false) {
     Object.entries(by).forEach(([n, l]) => lines.push(`${esc(n)}: ${esc(l.join(", "))}`)); }
   fx.mods.forEach(m => lines.push(`${esc(m.name)}: ${m.value > 0 ? "+" : ""}${m.value} ${esc((CPR.MOD_TARGETS.find(t => t[0] === m.target) || [, m.target])[1])}`));
   if (fx.body !== rawBody(e)) lines.push(`BODY ${rawBody(e)} → <b>${fx.body}</b> (PF, soglie delle ferite e Death Save aggiornati)`);
+  (fx.warn || []).forEach(w => lines.push(`⚠ ${esc(w.name)} non ha effetto: serve ${esc(w.miss.join(" e "))}`));
   if (fx.pain) lines.push("Antidolorifico: ignori il −2 di Seriously Wounded (Mortally Wounded resta)");
   fx.immune.forEach(i => lines.push(`${esc(i.name)}: lo stato «${esc(i.status)}» non ti penalizza`));
   if (fx.smart) lines.push("Smartgun: +1 a colpire con le armi che hanno lo Smartgun Link (scritto nel nome o nelle note dell'arma)");
