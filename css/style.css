@@ -1205,9 +1205,9 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .sh-h { font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: var(--yellow); margin: 20px 0 10px; }
 .sh-h:first-child { margin-top: 0; }
 .sh-h small { font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: .05em; text-transform: none; }
-.sh-stat-in { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; margin-bottom: 8px; }
+.sh-stat-in { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
 .sh-stat-in label { display: grid; gap: 4px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--red); }
-.sh-stat-in input { text-align: center; font-family: var(--font-head); font-size: 18px; padding: 8px 2px; }
+.sh-stat-in input { width: 100%; min-width: 0; text-align: center; font-family: var(--font-head); font-size: 18px; padding: 8px 2px; }
 .sh-pair { display: grid; grid-template-columns: 1fr 76px; gap: 6px; }
 .sh-skill-in { columns: 3 250px; column-gap: 14px; margin-bottom: 10px; }
 .sh-skill-in fieldset { break-inside: avoid; border: 1px solid var(--line); margin: 0 0 12px; padding: 6px 10px 8px; }
@@ -1216,6 +1216,22 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .sh-skill-in label small { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
 .sh-skill-in label.basic span::after { content: " ●"; color: var(--green); font-size: 9px; vertical-align: middle; }
 .sh-skill-in input { padding: 4px 6px; text-align: center; font-family: var(--font-mono); }
+/* contatori di creazione del PG (Pacchetto Completo): restano in vista mentre scorri il modulo */
+.cr-box { position: sticky; top: var(--cr-top, 0px); z-index: 1; margin: 0 0 14px; background: var(--bg-2, #0b0b12); border: 1px solid var(--line); border-left: 3px solid var(--yellow); }
+.cr-box summary { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 8px 10px; cursor: pointer; font-size: 13px; }
+.cr-box summary b { font-family: var(--font-head); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--yellow); }
+.cr-c { font-family: var(--font-mono); font-size: 12px; padding: 2px 6px; border: 1px solid var(--line); }
+.cr-c.ok { color: var(--green); border-color: rgba(61,255,154,.4); }
+.cr-c.left { color: var(--cyan); border-color: rgba(0,240,255,.4); }
+.cr-c.over { color: var(--red); border-color: rgba(255,42,61,.5); }
+.cr-body { padding: 0 10px 10px; display: grid; gap: 6px; }
+.cr-body label { display: grid; gap: 4px; }
+.cr-body select { width: 100%; min-width: 0; }
+.cr-list { margin: 0; padding-left: 18px; color: var(--red); font-size: 13px; max-height: 120px; overflow: auto; }
+/* sul telefono i pulsanti lunghi del modulo della scheda vanno a capo invece di allargare la finestra */
+#sheet-form { grid-template-columns: minmax(0, 1fr); }
+#sheet-form .modal-body > .btn { white-space: normal; max-width: 100%; text-align: center; }
+.form input.cr-bad { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
 .sh-rows { display: grid; gap: 6px; margin: 6px 0 8px; }
 .sh-row { display: grid; gap: 6px; align-items: center; }
 .sh-row.cus { grid-template-columns: 1fr 130px 80px 70px 28px; }
@@ -1370,7 +1386,7 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
   .tt-log { height: 460px; }
 }
 @media (max-width: 860px) {
-  .sh-stats, .sh-stat-in { grid-template-columns: repeat(5, 1fr); }
+  .sh-stats, .sh-stat-in { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .sh-box.hp { grid-column: 1 / -1; }
   .sh-row.cus { grid-template-columns: 1fr 1fr 70px 60px 28px; }
   .sh-row.wpn-row { grid-template-columns: 1fr 1fr 28px; }
@@ -2306,6 +2322,7 @@ fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px 
 .bn-ed input[data-ed=name] { flex: 1 1 160px; }
 .bn-ed select { width: auto; max-width: 220px; }
 .sk-ed { grid-template-columns: minmax(110px, 1fr) 58px minmax(170px, 1.15fr); }
+@media (max-width: 640px) { .sk-ed { grid-template-columns: minmax(0, 1fr) 58px auto; } }
 .sk-ed .bn-cell { justify-content: flex-start; }
 
 /* pulsanti Indossa/Togli: su schermi stretti vanno sotto il nome, non lo schiacciano */

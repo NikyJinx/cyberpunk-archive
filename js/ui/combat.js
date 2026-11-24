@@ -228,6 +228,65 @@ function combatHtml(e) {
       ${critBlock(e, edit)}
     </div>`;
 }
+// ---------- creazione del PG: Pacchetto Completo (punti) del manuale base ----------
+// STAT: i punti del grado scelto (di solito 62), ognuna tra 2 e 8.
+// Abilità: 86 punti, nessuna oltre 6, le abilità base almeno a 2, quelle ×2 costano il doppio;
+// in più 4 livelli gratis nella lingua del Background Culturale (Language o un'abilità personalizzata «Language …»).
+const CR_GRADES = [[50, "Personaggio Secondario Minore"], [62, "Personaggio Iniziale"], [70, "Personaggio Secondario Maggiore"], [75, "Eroe Minore"], [80, "Eroe Maggiore"]];
+const CR_SKILL_PTS = 86, CR_LANG_FREE = 4;
+const crIsLang = name => /^(language|linguaggio|lingua)\b/i.test(String(name || "").trim()) && !/streetslang/i.test(name);
+function crBoxHtml(s, fresh) {
+  const pts = num(s.createPts) || 62;
+  return `<details class="cr-box" id="cr-box" ${fresh ? "open" : ""}>
+    <summary><b>Creazione · Pacchetto Completo</b>
+      <span class="cr-c" id="cr-st"></span><span class="cr-c" id="cr-sk"></span><span class="cr-c" id="cr-warn"></span></summary>
+    <div class="cr-body">
+      <label>Grado del personaggio <select name="createPts">${CR_GRADES.map(([n, l]) => `<option value="${n}" ${n === pts ? "selected" : ""}>${l} · ${n} punti STAT</option>`).join("")}</select></label>
+      <p class="hint">STAT tra 2 e 8 · ${CR_SKILL_PTS} punti abilità, nessuna oltre 6 · le abilità base (●) almeno a 2 · ×2 = due punti per livello · ${CR_LANG_FREE} livelli gratis nella lingua del Background Culturale. Sono solo contatori: la scheda si salva comunque (dopo la creazione i livelli salgono con gli IP).</p>
+      <ul class="cr-list" id="cr-list"></ul>
+    </div></details>`;
+}
+function crUpdate(form) {
+  const box = $("#cr-box", form); if (!box) return;
+  const val = n => { const i = form.elements[n]; return i && i.value.trim() !== "" ? num(i.value) : null; };
+  const pts = num(form.elements["createPts"].value) || 62, bad = [];
+  $$(".cr-bad", form).forEach(i => i.classList.remove("cr-bad"));
+  const flag = (n, msg) => { const i = form.elements[n]; if (i && i.classList) i.classList.add("cr-bad"); bad.push(msg); };
+  let st = 0; const empty = [];
+  for (const s of CPR.STATS) {
+    const v = val("st-" + s.id); st += v || 0;
+    if (v == null) empty.push(s.id);
+    else if (v < 2 || v > 8) flag("st-" + s.id, `${s.id} ${v}: deve stare tra 2 e 8`);
+  }
+  if (empty.length) bad.push(`STAT da riempire: ${empty.join(", ")}`);
+  // abilità: livelli × costo, poi i livelli gratis della lingua più alta
+  let sk = 0, lang = 0;
+  for (const k of CPR.SKILLS) {
+    const v = val("sk-" + k.id) || 0; sk += v * (k.x2 ? 2 : 1);
+    if (k.id === "language") lang = Math.max(lang, v);
+    if (v > 6) flag("sk-" + k.id, `${k.label} ${v}: massimo 6`);
+    if (k.basic && v < 2) flag("sk-" + k.id, `${k.label} è un'abilità base: almeno 2`);
+  }
+  for (const row of $$("#sh-cus .sh-row", form)) {
+    const name = $("[data-f=name]", row).value.trim(), li = $("[data-f=lvl]", row), v = num(li.value);
+    if (!name || !v) continue;
+    sk += v; if (crIsLang(name)) lang = Math.max(lang, v);
+    if (v > 6) { li.classList.add("cr-bad"); bad.push(`${name} ${v}: massimo 6`); }
+  }
+  sk -= Math.min(CR_LANG_FREE, lang);
+  const side = (used, tot) => used === tot ? "ok" : used > tot ? "over" : "left";
+  const txt = (used, tot) => used === tot ? "tutti spesi" : used > tot ? `${used - tot} di troppo` : `restano ${tot - used}`;
+  const sst = side(st, pts), ssk = side(sk, CR_SKILL_PTS);
+  $("#cr-st", form).className = "cr-c " + sst; $("#cr-st", form).textContent = `STAT ${st} / ${pts} · ${txt(st, pts)}`;
+  $("#cr-sk", form).className = "cr-c " + ssk; $("#cr-sk", form).textContent = `Abilità ${sk} / ${CR_SKILL_PTS} · ${txt(sk, CR_SKILL_PTS)}`;
+  if (!lang) bad.push(`Nessuna lingua del Background Culturale: metti Language (o un'abilità «Language …») a ${CR_LANG_FREE}, sono gratis`);
+  // ✓ solo quando tornano anche i punti; se mancano solo quelli bastano i due contatori
+  const w = $("#cr-warn", form), allOk = !bad.length && sst === "ok" && ssk === "ok";
+  w.hidden = !bad.length && !allOk;
+  w.className = "cr-c " + (bad.length ? "over" : "ok");
+  w.textContent = bad.length ? `⚠ ${bad.length} da sistemare` : "✓ tutto secondo le regole";
+  $("#cr-list", form).innerHTML = bad.map(b => `<li>${esc(b)}</li>`).join("");
+}
 function editSheet(id) {
   const e = state.entries.find(x => x.id === id); if (!e) return;
   const fresh = !e.sheet;
@@ -265,6 +324,7 @@ function editSheet(id) {
     <form class="form" id="sheet-form">
       <div class="modal-head"><h2>// SCHEDA · ${esc(e.name)}</h2><button type="button" class="x" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="sheet" aria-label="Chiudi">×</button></div>
       <div class="modal-body">
+        ${e.kind === "pg" ? crBoxHtml(s, fresh) : ""}
         <h3 class="sh-h">STATs</h3>
         <div class="sh-stat-in">${CPR.STATS.map(st => `<div class="st-ed"><label><span>${st.id}</span><input name="st-${st.id}" type="number" min="0" max="20" step="1" value="${esc(stats[st.id] ?? "")}" title="${st.label}"></label>${bnCellHtml("STAT:" + st.id)}</div>`).join("")}</div>
         <p class="hint">HP max calcolati: <b id="sh-auto-hp">${autoHp}</b> (10 + 5 × (BODY + WILL) / 2, arrotondato per eccesso). L'EMP si abbassa da sola con l'umanità del cyberware.</p>
@@ -313,6 +373,13 @@ function editSheet(id) {
     </form>`);
   const form = $("#sheet-form");
   bnFormBind(form);
+  // il riquadro della creazione si ferma sotto l'intestazione (anche lei fissa) della finestra
+  const crBox = $("#cr-box", form), head = $(".modal-head", form);
+  if (crBox && head) crBox.style.setProperty("--cr-top", head.offsetHeight + "px");
+  crUpdate(form);
+  form.addEventListener("input", () => crUpdate(form));
+  form.addEventListener("change", () => crUpdate(form));
+  form.addEventListener("click", ev => { if (ev.target.closest("[data-row-del]")) setTimeout(() => crUpdate(form), 0); });
   form.addEventListener("input", ev => {
     if (/^st-(BODY|WILL)$/.test(ev.target.name)) $("#sh-auto-hp").textContent = CPR.hpMax(num(form["st-BODY"].value), num(form["st-WILL"].value));
   });
@@ -368,7 +435,8 @@ function editSheet(id) {
     const twice = armor.head && armor.body && norm2(armor.head.name) === norm2(armor.body.name) && armor.head !== ((s.armor || {}).head) ? armorItems(e).find(x => norm2(x.it.name) === norm2(armor.head.name) && !armorInfo(x.it).fixed) : null;
     if (twice && !armorInfo(twice.it).both && Math.max(1, num(twice.it.qty)) < 2) return toast(`Hai una sola ${twice.it.name}: non copre testa e corpo insieme`, "err");
     const sheet = { ...migrateRoles(JSON.parse(JSON.stringify(s)), e), owner: v("owner"), stats, skills, custom, weapons, armor, armorNoPen: form.elements["armorNoPen"].checked,
-      hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes"), mods, bonuses: bnFormBonuses() };
+      hpMax: nv("hpMax"), hp: nv("hp"), rep: nv("rep"), ip: nv("ip"), crit: v("crit"), notes: v("notes"), mods, bonuses: bnFormBonuses(),
+      ...(form.elements["createPts"] ? { createPts: num(form.elements["createPts"].value) || 62 } : {}) };
     try {
       const saved = await Store.save("entries", { ...e, sheet, ...(gear ? { gear } : {}) });
       upsert(state.entries, saved); liveSend("entries", saved);
