@@ -2421,3 +2421,10 @@ fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px 
 .tag-chip button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
 .tag-chip button:hover { color: var(--red); }
 .tag-chip.party, .badge.faction.party { border-color: var(--green); color: var(--green); }
+
+/* modifica di una voce dello storico IP */
+.ip-ed td { background: var(--bg-2); }
+.ip-ed-in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ip-ed-in label { display: inline-flex; align-items: center; gap: 6px; }
+.ip-ed-in input[data-ed-amt] { width: 90px; }
+.ip-ed-in input[data-ed-why] { flex: 1 1 200px; }
