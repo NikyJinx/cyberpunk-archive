@@ -198,7 +198,7 @@ window.CW = (() => {
     const count = id => inst.filter(x => x.c.id === id || x.c.as === id).length;   // «as»: conta come un altro impianto
     const out = { skill: {}, mods: [], body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0, warn: [] };
     const seen = new Set();
-    let body = +baseBody || 0, frame = null;
+    let body = +baseBody || 0, frame = null; const frames = [];
     for (const { it, c } of inst) for (const f of c.fx || []) {
       if (f.cond) out.cond.push({ c, f, on: !!it.on, it });
       if (f.cond && !it.on) continue;
@@ -209,18 +209,20 @@ window.CW = (() => {
       if (f.t === "chip" && it.param) (out.skill[it.param] = out.skill[it.param] || []).push({ l: c.name, chip: +it.lvl === 4 ? 4 : 3 });
       if (f.t === "mod") out.mods.push({ name: c.name, target: f.target, value: f.v });
       if (f.t === "body") body = Math.min(f.max || 99, body + f.v);
-      // Telaio Lineare: si applica dopo i Lacci, se ci sono i requisiti (BODY naturale e numero di Lacci)
-      if (f.t === "setBody") {
-        const miss = [f.minBody && (+baseBody || 0) < f.minBody ? `BODY ${f.minBody} (ora ${+baseBody || 0})` : "", f.laces && have("bonelace") < f.laces ? `${f.laces > 1 ? f.laces + " Lacci" : "un Laccio"} Osseo-Muscolar${f.laces > 1 ? "i" : "e"} (ne hai ${have("bonelace")})` : ""].filter(Boolean);
-        if (miss.length) out.warn.push({ name: c.name, miss });
-        else if (!frame || f.v > frame.v) frame = f;
-      }
+      // Telaio Lineare: si controlla e si applica dopo i Lacci (vedi sotto)
+      if (f.t === "setBody") frames.push({ f, c });
       if (f.t === "pain") out.pain = true;
       if (f.t === "immune") out.immune.push({ status: f.status, name: c.name });          // stato che non ti penalizza (es. Accecato)
       if (f.t === "smart") out.smart = true;                                              // collegamento per le armi Smartgun
       if (f.t === "run") out.run += f.v;                                                  // metri in più alla Corsa
       if (f.t === "armor") out.armor.push({ name: c.name, sp: f.sp, type: f.type });
       if (f.t === "weapon") out.weapons.push({ ...f, src: c.name });
+    }
+    // requisiti del telaio: il BODY già alzato dai Lacci (es. 4 + Laccio = 6 basta per il Sigma) e il numero di Lacci
+    for (const { f, c } of frames) {
+      const miss = [f.minBody && body < f.minBody ? `BODY ${f.minBody} (ora ${body})` : "", f.laces && have("bonelace") < f.laces ? `${f.laces > 1 ? f.laces + " Lacci" : "un Laccio"} Osseo-Muscolar${f.laces > 1 ? "i" : "e"} (ne hai ${have("bonelace")})` : ""].filter(Boolean);
+      if (miss.length) out.warn.push({ name: c.name, miss });
+      else if (!frame || f.v > frame.v) frame = f;
     }
     // il telaio fissa il BODY (12 o 14), anche se i Lacci da soli si fermano a 10
     if (frame) body = Math.min(Math.max(body, frame.v), frame.max);
