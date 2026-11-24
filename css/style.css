@@ -2450,3 +2450,12 @@ fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px 
 /* attacco di un accessorio (Baionetta, Doppietta, Lanciagranate): dentro la scheda dell'arma */
 .cb-wpn.cb-sub { margin: 8px 0 4px 10px; border-left: 2px solid var(--cyan); padding-left: 10px; background: none; }
 .cb-wpn.cb-sub .nd-name { font-size: 15px; }
+
+/* speciali delle armi: cariche, attacchi speciali, effetti */
+.cb-sp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.cb-ch { font-family: var(--font-mono); font-size: 13px; border: 1px solid var(--green); color: var(--green); padding: 1px 6px; }
+.cb-ch.empty { border-color: var(--red); color: var(--red); }
+.sp-row { display: grid; grid-template-columns: 1.4fr 1.2fr 70px 90px 1.2fr auto 1fr 60px 28px; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.sp-row textarea { grid-column: 1 / -1; }
+.sp-row input, .sp-row select, .sp-row textarea { min-width: 0; font-size: 14px; padding: 6px 8px; }
+@media (max-width: 760px) { .sp-row { grid-template-columns: 1fr 1fr 28px; } .sp-row [data-f=name] { grid-column: 1 / -1; } }

@@ -139,3 +139,110 @@ function attSlots(id, i, d) {
   if (n === slotsOfW(w)) return toast(d < 0 ? "Gli slot sono occupati: smonta prima un accessorio" : "", d < 0 ? "err" : "ok");
   sheetPatch(id, s => { s.weapons[i].slots = n; return s; });
 }
+
+// ---------- SPECIALI DELLE ARMI (armi uniche, es. i Nastri di Echo) ----------
+// arma della scheda: w.charges (cariche massime), w.chargesLeft (rimaste, vuoto = piene), w.batteryCost (eb per una batteria nuova)
+// w.specials = [{ id, name, mode, charge, dmg, armor, streak, skill, dv, note }]
+//   mode "passive" = nota in ogni tiro di danno (es. portata, ignora SP basse)
+//   mode "rider"   = si attiva prima dell'attacco (casella), consuma cariche, aggiunge l'effetto al tiro (es. In Fiamme)
+//   mode "attack"  = attacco a parte: tira «dmg», armatura «half» (metà) o «ignore»; con «streak» la seconda di fila ignora tutta l'armatura
+//   mode "check"   = prova di abilità contro una VD (es. Presa del Cigno: Dance VD 17)
+const SP_MODES = [["passive", "Sempre (nota)"], ["rider", "Da attivare sull'attacco"], ["attack", "Attacco speciale"], ["check", "Prova di abilità"]];
+const SP_ARMOR = [["", "Armatura normale"], ["half", "Supera metà armatura"], ["ignore", "Ignora l'armatura"]];
+const chargesLeftOf = w => num(w.charges) ? (hasVal(w.chargesLeft) ? clamp(num(w.chargesLeft), 0, num(w.charges)) : num(w.charges)) : null;
+const spList = w => (w.specials || []).filter(x => x && x.name);
+const spMem = X => { const M = cbMem[X.key] = cbMem[X.key] || {}; M.riders = M.riders || {}; return M; };
+const spArmorTxt = a => a === "half" ? "supera solo metà dell'armatura (SP dimezzata)" : a === "ignore" ? "ignora l'armatura" : "";
+function spHtml(X) {
+  const w = X.w, list = spList(w), ch = chargesLeftOf(w), M = spMem(X), A = X.attrs;
+  if (!list.length && ch == null && !X.edit) return "";
+  return `<div class="cb-sp">
+    ${ch != null ? `<span class="cb-ch ${ch ? "" : "empty"}" title="Cariche rimaste">🔋 ${ch}/${num(w.charges)}</span>${X.edit && ch < num(w.charges) ? `<button type="button" class="btn ghost small" data-action="sp-battery" data-id="${esc(X.id)}" data-i="${X.i}" title="Batteria nuova: cariche piene${num(w.batteryCost) ? `, −${num(w.batteryCost)} eb` : ""}">Batteria nuova${num(w.batteryCost) ? ` · ${num(w.batteryCost)} eb` : ""}</button>` : ""}` : ""}
+    ${list.map((s, n) => s.mode === "rider" ? `<label class="check cb-aim" title="${esc(s.note || "")}"><input type="checkbox" data-sp-rider="${n}" ${A} ${M.riders[n] ? "checked" : ""}> ${esc(s.name)}${num(s.charge) ? ` <small>${num(s.charge)} car.</small>` : ""}</label>`
+      : s.mode === "attack" ? `<button type="button" class="btn small ghost" data-action="sp-attack" ${A} data-n="${n}" title="${esc(s.note || "")}">⚡ ${esc(s.name)} <b>${esc(s.dmg || "")}</b>${num(s.charge) ? ` <small>${num(s.charge)} car.</small>` : ""}</button>`
+      : s.mode === "check" ? `<button type="button" class="btn small ghost" data-action="sp-check" ${A} data-n="${n}" title="${esc(s.note || "")}">${esc(s.name)} <small>${esc((CPR.skill(s.skill) || {}).label || s.skill || "")} VD ${num(s.dv)}</small></button>` : "").join("")}
+    ${X.edit ? `<button type="button" class="gp-btn" data-action="sp-edit" data-id="${esc(X.id)}" data-i="${X.i}" title="Speciali dell'arma: cariche, attacchi speciali, effetti" aria-label="Modifica gli speciali">✎ speciali</button>` : ""}
+    ${list.filter(s => s.note).map(s => `<small class="cb-att-note"><b>${esc(s.name)}</b>: ${esc(s.note)}</small>`).join("")}</div>`;
+}
+// effetti attivati sull'attacco: cariche necessarie e note per il tiro
+function spRiders(X) {
+  const M = spMem(X), list = spList(X.w).map((s, n) => ({ s, n })).filter(x => x.s.mode === "rider" && M.riders[x.n]);
+  return { list, cost: list.reduce((t, x) => t + num(x.s.charge), 0), note: list.map(x => `${x.s.name}: ${x.s.note || "attivo"}`).join(" · ") };
+}
+const spPassive = X => spList(X.w).filter(s => s.mode === "passive").map(s => `${s.name}${s.note ? `: ${s.note}` : ""}`).join(" · ");
+function spAttack(X, n) {
+  const s = X && spList(X.w)[n]; if (!s) return;
+  const ch = chargesLeftOf(X.w), cost = num(s.charge);
+  if (cost && ch != null && ch < cost) return toast(`${X.w.name}: cariche finite (${ch}). Serve una batteria nuova`, "err");
+  const M = spMem(X), again = s.streak && M.lastSp === n;
+  const r = s.dmg ? CPR.rollExpr(s.dmg, { damage: true }) : null; if (s.dmg && !r) return toast(`Danno non valido: "${s.dmg}"`, "err");
+  const armor = again ? "ignore" : s.armor;
+  X.post({ kind: "damage", label: `${X.w.name} · ${s.name}${again ? " (di fila)" : ""}`, ...(r || { total: 0, dice: [], mods: [] }),
+    note: [spArmorTxt(armor) ? `Danno: ${spArmorTxt(armor)}` : "", s.note || "", cost && ch != null ? `cariche ${ch - cost}/${num(X.w.charges)}` : ""].filter(Boolean).join(" · ") });
+  M.lastSp = n;
+  if (cost && ch != null) X.save("chargesLeft", ch - cost); else X.refresh();
+}
+function spCheck(X, n) {
+  const s = X && spList(X.w)[n], e = X && X.ent; if (!s || !e) return;
+  const k = skillByKey(e, "skill:" + s.skill) || { stat: "DEX", label: s.skill || "Prova", lvl: 0 };
+  const r = CPR.check([{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...(k.key ? skillBonusAll(e, k) : []), ...sheetExtra(e)]);
+  const ok = r.total > num(s.dv);
+  X.post({ kind: "check", label: `${X.w.name} · ${s.name} (${k.label} VD ${num(s.dv)})`, ...r, note: s.note || "", hit: { ok, text: `VD ${num(s.dv)}: ${ok ? "riuscita" : "fallita"}` } });
+}
+async function spBattery(id, i) {
+  const e = state.entries.find(x => x.id === id), w = e && (sheetOf(e).weapons || [])[i]; if (!w || !Store.canEdit()) return;
+  const cost = mkPrice(num(w.batteryCost)), money = moneyOf(e);
+  if (cost && money < cost && !isGm()) return toast(`Servono ${fmtEb(cost)} per la batteria: ne hai ${fmtEb(money)}`, "err");
+  if (!(await askConfirm(`Batteria nuova per ${w.name}: cariche ${num(w.charges)}/${num(w.charges)}${cost ? `, −${fmtEb(cost)} (restano ${fmtEb(money - cost)})` : ""}?`, "Cambia batteria"))) return;
+  entryPatch(id, x => {
+    const W = x.sheet.weapons[i]; if (!W) return null;
+    W.chargesLeft = num(W.charges);
+    if (cost) { x.gear = x.gear || {}; x.gear.money = num(x.gear.money) - cost; x.gear.log = [...(x.gear.log || []), { at: new Date().toISOString(), id: "battery", name: `Batteria · ${W.name}`, type: "battery", cost, qty: 1, undo: { k: "battery" } }]; }
+    return x;
+  }, `${w.name}: batteria nuova${cost ? ` (−${fmtEb(cost)})` : ""}`);
+}
+// modulo degli speciali di un'arma
+function spEdit(id, i) {
+  const e = state.entries.find(x => x.id === id), w = e && (sheetOf(e).weapons || [])[i]; if (!w) return;
+  const row = (s = {}) => `<div class="sp-row">
+    <input type="hidden" data-f="id" value="${esc(s.id || "")}">
+    <input data-f="name" placeholder="Nome (es. Scossa Sincopata)" value="${esc(s.name || "")}">
+    <select data-f="mode">${SP_MODES.map(([v, l]) => `<option value="${v}" ${v === (s.mode || "passive") ? "selected" : ""}>${l}</option>`).join("")}</select>
+    <input data-f="charge" type="number" min="0" placeholder="cariche" title="Cariche che consuma ogni volta" value="${esc(s.charge || "")}">
+    <input data-f="dmg" placeholder="Danno (es. 6d6)" title="Solo per gli attacchi speciali" value="${esc(s.dmg || "")}">
+    <select data-f="armor" title="Armatura (attacchi speciali)">${SP_ARMOR.map(([v, l]) => `<option value="${v}" ${v === (s.armor || "") ? "selected" : ""}>${l}</option>`).join("")}</select>
+    <label class="check" title="Usato due volte di fila ignora tutta l'armatura"><input type="checkbox" data-f="streak" ${s.streak ? "checked" : ""}> 2ª di fila ignora l'armatura</label>
+    <select data-f="skill" title="Abilità (prove)"><option value="">— abilità —</option>${CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === s.skill ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
+    <input data-f="dv" type="number" min="0" placeholder="VD" title="VD della prova" value="${esc(s.dv || "")}">
+    <button type="button" class="x" data-row-del aria-label="Rimuovi">✕</button>
+    <textarea data-f="note" rows="2" placeholder="Effetto / regola (compare nel Dice log)">${esc(s.note || "")}</textarea></div>`;
+  openModal(`<form class="form" id="sp-form">
+    <div class="modal-head"><h2>// SPECIALI · ${esc(w.name)}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+    <div class="modal-body">
+      <div class="fields">
+        <div class="field"><label for="sp-ch">Cariche (vuoto = nessuna)</label><input id="sp-ch" name="charges" type="number" min="0" value="${esc(w.charges || "")}"></div>
+        <div class="field"><label for="sp-left">Rimaste</label><input id="sp-left" name="chargesLeft" type="number" min="0" value="${esc(chargesLeftOf(w) ?? "")}"></div>
+        <div class="field"><label for="sp-bat">Batteria nuova (eb)</label><input id="sp-bat" name="batteryCost" type="number" min="0" value="${esc(w.batteryCost || "")}"></div>
+      </div>
+      <h3 class="sh-h">Speciali <small>sempre (nota nei danni) · da attivare sull'attacco · attacco speciale con il suo danno · prova di abilità contro una VD</small></h3>
+      <div id="sp-rows">${spList(w).map(row).join("")}</div>
+      <button type="button" class="btn ghost small cyan" data-sp-add>+ Speciale</button>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn ghost small left" data-action="close">Annulla</button><button class="btn" type="submit">Salva</button></div></form>`);
+  const form = $("#sp-form");
+  form.addEventListener("click", ev => {
+    if (ev.target.closest("[data-sp-add]")) $("#sp-rows", form).insertAdjacentHTML("beforeend", row());
+    const d = ev.target.closest("[data-row-del]"); if (d) d.closest(".sp-row").remove();
+  });
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    const specials = readRows(form, "#sp-rows .sp-row").filter(s => s.name).map(s => ({ id: s.id || NET.uid(), name: s.name, mode: s.mode, ...(num(s.charge) ? { charge: num(s.charge) } : {}),
+      ...(s.dmg ? { dmg: s.dmg } : {}), ...(s.armor ? { armor: s.armor } : {}), ...(s.streak ? { streak: true } : {}), ...(s.skill ? { skill: s.skill } : {}), ...(num(s.dv) ? { dv: num(s.dv) } : {}), ...(s.note ? { note: s.note } : {}) }));
+    const bad = specials.filter(s => s.dmg && !CPR.parse(s.dmg)).map(s => s.name); if (bad.length) return toast(`Danno non valido in: ${bad.join(", ")}`, "err");
+    const F = form.elements, ch = num(F.charges.value);
+    sheetPatch(id, s => { const W = s.weapons[i]; if (!W) return s; W.specials = specials;
+      if (ch) { W.charges = ch; W.chargesLeft = clamp(F.chargesLeft.value === "" ? ch : num(F.chargesLeft.value), 0, ch); W.batteryCost = num(F.batteryCost.value); } else { delete W.charges; delete W.chargesLeft; delete W.batteryCost; }
+      return s; });
+    toast("Speciali salvati", "ok"); closeModal(); setTimeout(() => openEntry(id, "combat"), 50);
+  });
+}

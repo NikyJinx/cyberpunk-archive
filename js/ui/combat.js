@@ -96,6 +96,9 @@ function cbRoll(X, mode = "single") {
   const auto = mode === "auto" || mode === "supp", aimLoc = !auto && M.aim ? (M.loc || "head") : "";
   // ogni attacco spara un colpo, autofire e soppressione 10
   const shots = X.mag ? (auto ? 10 : 1) : 0;
+  // effetti speciali attivati sull'attacco (es. In Fiamme dei Nastri): consumano cariche
+  const RD = X.kind === "pc" && !X.isSub ? spRiders(X) : { cost: 0, note: "" }, chL = RD.cost ? chargesLeftOf(X.w) : null;
+  if (RD.cost && chL != null && chL < RD.cost) return toast(`${X.w.name}: cariche finite (${chL}). Serve una batteria nuova`, "err");
   if (shots && X.loaded < shots) return toast(`${X.w.name}: ${X.loaded ? `solo ${X.loaded} colpi, ne servono ${shots}` : "caricatore vuoto"}. Ricarica dalla tab Combattimento`, "err");
   const r = CPR.check(cbParts(X, mode, aimLoc));
   if (X.fix) X.fix(r);
@@ -108,10 +111,12 @@ function cbRoll(X, mode = "single") {
   const hit = X.melee ? null : T ? { ok: !!reach, table: T.label, bands: bands.filter(b => b.hit).map(b => b.label + (b.mult ? ` ×${b.mult}` : "")), text: `${T.label}: ${reach ? `colpisce a ${reach}` : "fuori portata a ogni distanza"}` } : null;
   // attacco: come prima (chi, cosa, totale e addendi) + la riga delle distanze; gli effetti stanno nel tiro del danno
   const note = [r.note || "", X.melee ? "vs DEX + Evasion + 1d10 del difensore" : "",
-    mode === "supp" ? "chi è entro 25 m tira WILL + Concentration contro questo totale" : "", scope ? "Mirino di Precisione: +1 oltre 51 m (già contato nelle distanze)" : ""].filter(Boolean).join(" · ");
+    mode === "supp" ? "chi è entro 25 m tira WILL + Concentration contro questo totale" : "", RD.note ? `${RD.note}${chL != null ? ` (cariche ${chL - RD.cost}/${num(X.w.charges)})` : ""}` : "", scope ? "Mirino di Precisione: +1 oltre 51 m (già contato nelle distanze)" : ""].filter(Boolean).join(" · ");
   const what = { single: aimed ? `aimed shot (${aimed.label})` : "attack", auto: `autofire ×${X.autoMax}`, supp: "suppressive fire" }[mode];
   X.post({ kind: "check", label: `${X.w.name} · ${what}${X.ammo.id ? ` · ${X.ammo.name}` : ""}${shots ? ` · ${X.loaded - shots}/${X.mag}` : ""}`, ...r, note, ...(hit ? { hit } : {}) });
-  if (shots) X.save("loaded", X.loaded - shots); else X.refresh();
+  if (shots) X.save("loaded", X.loaded - shots);
+  if (RD.cost && chL != null) X.save("chargesLeft", chL - RD.cost);
+  if (!shots && !(RD.cost && chL != null)) X.refresh();
 }
 function cbDamage(X, mult) {
   if (!X) return;
@@ -127,7 +132,7 @@ function cbDamage(X, mult) {
   const weak = X.weakness && (cbMem[X.key] || {}).weak ? [{ l: "Individuare Debolezze", v: X.weakness }] : [];
   [...(num(X.ammo.dmgMod) ? [{ l: X.ammo.name, v: num(X.ammo.dmgMod) }] : []), ...modsFor(X.mods, ["damage"]), ...weak].forEach(m => { r.mods.push({ l: m.l, v: m.v }); r.total += m.v; });
   const aimed = L && L.aim && !auto ? CPR.AIMED.find(a => a.id === L.aim) : null;
-  const note = [aimed ? `${aimed.label}: ${aimed.eff}` : "", X.ammoEff ? `${X.ammo.name}: ${X.ammoEff}` : "", r.crit === "injury" ? "Due 6: tira la Critical Injury dalla scheda del bersaglio" : ""].filter(Boolean).join(" · ");
+  const note = [aimed ? `${aimed.label}: ${aimed.eff}` : "", X.ammoEff ? `${X.ammo.name}: ${X.ammoEff}` : "", X.kind === "pc" && !X.isSub ? spPassive(X) : "", r.crit === "injury" ? "Due 6: tira la Critical Injury dalla scheda del bersaglio" : ""].filter(Boolean).join(" · ");
   X.post({ kind: "damage", label: `${X.w.name} · damage${auto ? ` (autofire ×${mult})` : aimed ? ` (aimed: ${aimed.label})` : ""}`, ...r, note });
 }
 // la tabella delle VD fa parte della descrizione dell'arma; dopo un tiro segna ✓ / ✗ per ogni distanza
@@ -175,6 +180,7 @@ function cbCard(X) {
       <span class="cb-dmg">${dmg}</span>
     </div>
     ${X.ammoEff ? `<p class="hint">${esc(X.ammo.name)}: ${esc(X.ammoEff)}</p>` : ""}
+    ${X.kind === "pc" && !X.isSub ? spHtml(X) : ""}
     ${X.kind === "pc" && !X.melee && !X.isSub ? attHtml(X.ent, X.i, X.w, X.edit) : ""}
     ${X.kind === "pc" && !X.isSub ? attAttacks(X.ent, X.i).map(x => cbCard(pcSrc(X.ent, `${X.i}.${x.k}`))).join("") : ""}
     ${M.aim ? `<p class="hint">${esc((CPR.AIMED.find(a => a.id === (M.loc || "head")) || {}).eff || "")}</p>` : ""}
@@ -340,7 +346,7 @@ function editSheet(id) {
     <input data-f="afDmg" placeholder="Autofire 2d6" title="Danno dell'autofire (vuoto = 2d6). Vale anche 3d6kh2 = tira 3d6 e tieni i 2 più alti" value="${esc(w.afDmg || "")}">
     <input data-f="auto" type="number" min="0" max="10" placeholder="× max" title="Moltiplicatore massimo dell'autofire (vuoto = quello della categoria: SMG 3, fucile d'assalto 4; 0 o vuoto su armi senza autofire)" value="${esc(w.auto ?? "")}">
     <input data-f="note" placeholder="Note (Smartgun, Excellent…)" value="${esc(w.note)}">
-    <input type="hidden" data-f="away" value="${w.away ? "1" : ""}"><input type="hidden" data-f="quality" value="${esc(w.quality || "")}"><input type="hidden" data-f="market" value="${esc(w.market || "")}"><input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}"><input type="hidden" data-f="loaded" value="${esc(w.loaded ?? "")}"><input type="hidden" data-f="slots" value="${esc(w.slots ?? "")}"><input type="hidden" data-f="attach" value="${esc(w.attach && w.attach.length ? JSON.stringify(w.attach) : "")}">
+    <input type="hidden" data-f="away" value="${w.away ? "1" : ""}"><input type="hidden" data-f="quality" value="${esc(w.quality || "")}"><input type="hidden" data-f="market" value="${esc(w.market || "")}"><input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}"><input type="hidden" data-f="loaded" value="${esc(w.loaded ?? "")}"><input type="hidden" data-f="slots" value="${esc(w.slots ?? "")}"><input type="hidden" data-f="attach" value="${esc(w.attach && w.attach.length ? JSON.stringify(w.attach) : "")}"><input type="hidden" data-f="xtra" value="${esc(w.specials || w.charges ? JSON.stringify({ specials: w.specials, charges: w.charges, chargesLeft: w.chargesLeft, batteryCost: w.batteryCost }) : "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
   const modRow = (m = {}) => `<div class="sh-row mod-row">
     <label class="check" title="Attivo"><input type="checkbox" data-f="on" ${m.on === false ? "" : "checked"}></label>
@@ -448,7 +454,7 @@ function editSheet(id) {
     for (const st of CPR.STATS) { const x = nv("st-" + st.id); if (x != null) stats[st.id] = x; }
     for (const k of CPR.SKILLS) { const x = nv("sk-" + k.id); if (x) skills[k.id] = x; }
     const custom = readRows(form, "#sh-cus .sh-row").filter(c => c.name).map(c => ({ ...c, lvl: num(c.lvl) }));
-    const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name).map(({ away, loaded, slots, attach, ...w }) => ({ ...w, auto: w.auto === "" ? "" : num(w.auto), ...(away ? { away: true } : {}),
+    const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name).map(({ away, loaded, slots, attach, xtra, ...w }) => ({ ...(xtra ? (() => { try { return JSON.parse(xtra); } catch { return {}; } })() : {}), ...w, auto: w.auto === "" ? "" : num(w.auto), ...(away ? { away: true } : {}),
       ...(loaded !== "" && loaded != null ? { loaded: num(loaded) } : {}), ...(slots !== "" && slots != null ? { slots: num(slots) } : {}), ...(attach ? (() => { try { return { attach: JSON.parse(attach) }; } catch { return {}; } })() : {}) }));
     const badW = weapons.filter(w => (w.dmg && !CPR.parse(w.dmg)) || (w.afDmg && !CPR.parse(w.afDmg)));
     if (badW.length) return toast(`Danno non valido in: ${badW.map(w => w.name).join(", ")} (es. 3d6, 2d6+2, 3d6kh2)`, "err");
