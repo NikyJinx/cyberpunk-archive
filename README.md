@@ -66,7 +66,7 @@ Nella modifica del cyberware ogni slot ha «+ dal catalogo…»: tutti gli impia
 #### ⬢ Scheda del personaggio
 Ogni PG e NPC ha una **Scheda** con le regole di *Cyberpunk RED* (nomi in inglese, come sul manuale):
 - le 10 **STAT**, tutte le **abilità** divise per categoria (quelle base partono da 2, quelle a costo doppio sono segnate ×2) e abilità personalizzate come *Language (Japanese)* o *Science (Chemistry)*;
-- **Role Ability** con il rank, **Hit Points** calcolati da BODY e WILL, stato delle ferite, **armatura** di testa e corpo con l'ablazione, **Luck**, **Death Save**, **iniziativa**, movimento, reputazione e IP (nella finestra degli IP «Aggiungi / togli» accetta anche numeri negativi per togliere IP, mai sotto zero);
+- **Role Ability** con il rank, **Hit Points** calcolati da BODY e WILL, stato delle ferite, **armatura** di testa e corpo con l'ablazione, **Luck**, **Death Save**, **iniziativa**, movimento, reputazione e IP (nella finestra degli IP «Aggiungi / togli» accetta anche numeri negativi per togliere IP, mai sotto zero; nello storico ogni voce, anche vecchia, ha ✎ per correggere gli IP e il motivo o per eliminarla: eliminare una spesa riporta l'abilità o il Ruolo al livello di prima e restituisce gli IP, ma solo se dopo non ci sono altri aumenti dello stesso bersaglio (vanno annullati prima));
 - l'**EMP** scende da sola con l'umanità calcolata nella scheda Cyberware;
 - il campo **Giocatore** collega il PG all'email con cui il giocatore fa login.
 

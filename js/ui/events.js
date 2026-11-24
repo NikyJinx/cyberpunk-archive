@@ -237,7 +237,7 @@ document.addEventListener("click", async ev => {
     case "edit-sheet": editSheet(id); break;
     case "edit-decks": editDecks(id); break;
     case "ip-open": openIp(id); break;
-    case "ip-earn": case "ip-spend": case "ip-undo": ipAction(el); break;
+    case "ip-earn": case "ip-spend": case "ip-undo": case "ip-edit": ipAction(el); break;
     case "sheet-roll": { const e = state.entries.find(x => x.id === id); if (e) sheetRoll(e, el.dataset.roll); break; }
     case "rl-op": roleOp(el); break;
     case "rl-roll": roleRoll(el); break;
