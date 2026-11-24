@@ -20,7 +20,7 @@ const modsFor = (mods, targets) => (mods || []).filter(m => m && m.on !== false 
 // contesto del tiro per un'arma della scheda
 const sheetWeaponCat = w => w.cat || CPR.guessWeapon(w.name, w.skill);
 function sheetExtra(e) {
-  const s = sheetOf(e), w = woundOf(e), out = [], fx = cyberItems(e).length ? cyberFx(e) : null;
+  const s = sheetOf(e), w = woundOf(e), out = [], fx = cyberFx(e);
   if (w.pen) out.push({ l: w.label, v: w.pen });
   // modificatori «tutte le prove»: quelli della scheda e quelli del cyberware (es. DeathTrance −4)
   out.push(...statusParts(s.status, fx ? fx.immune : []), ...modsFor(s.mods, ["all"]), ...(fx ? modsFor(fx.mods, ["all"]) : []));
