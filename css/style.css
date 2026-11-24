@@ -1828,7 +1828,7 @@ button.en-tr:hover, button.en-tr:focus-visible { background: rgba(243,230,0,.08)
 .crit-last b { color: var(--red); }
 
 .sh-row.mod-row { grid-template-columns: 28px 1.2fr 1fr 64px 1.4fr 28px; }
-.sh-row.rl-ammo { grid-template-columns: 1.2fr 1fr 80px 1fr 80px 2fr 28px; }
+.sh-row.rl-ammo { grid-template-columns: 1.2fr 1fr 70px 1fr 70px 2fr 70px 28px; }
 .sh-row.rl-st { grid-template-columns: 1.2fr 80px 1fr 2.4fr 28px; }
 @media (max-width: 860px) {
   .sh-row.mod-row { grid-template-columns: 28px 1fr 1fr 28px; }
@@ -2428,3 +2428,25 @@ fieldset.cy-edit.nested { margin-left: 28px; margin-top: -6px; border-left: 3px 
 .ip-ed-in label { display: inline-flex; align-items: center; gap: 6px; }
 .ip-ed-in input[data-ed-amt] { width: 90px; }
 .ip-ed-in input[data-ed-why] { flex: 1 1 200px; }
+
+/* munizioni: colpi nel caricatore */
+.cb-mag { font-family: var(--font-mono); font-size: 13px; border: 1px solid var(--cyan); color: var(--cyan); padding: 1px 6px; margin-left: auto; white-space: nowrap; }
+.cb-mag.low { border-color: var(--yellow); color: var(--yellow); }
+.cb-mag.empty { border-color: var(--red); color: var(--red); }
+.cb-ctl .btn small { font-size: 11px; opacity: .8; }
+.rl-std { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.rl-std input { width: 80px; }
+
+/* accessori delle armi */
+.cb-att { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.cb-att-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--cyan); padding: 1px 2px 1px 8px; font-size: 13px; }
+.cb-att-chip small { color: var(--muted); }
+.cb-att-chip button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0 4px; }
+.cb-att-chip button:hover { color: var(--red); }
+.cb-att select { width: auto; max-width: 240px; font-size: 13px; padding: 3px 6px; }
+.cb-att-sl { display: inline-flex; gap: 2px; }
+.cb-att-note { flex-basis: 100%; color: var(--muted); }
+
+/* attacco di un accessorio (Baionetta, Doppietta, Lanciagranate): dentro la scheda dell'arma */
+.cb-wpn.cb-sub { margin: 8px 0 4px 10px; border-left: 2px solid var(--cyan); padding-left: 10px; background: none; }
+.cb-wpn.cb-sub .nd-name { font-size: 15px; }

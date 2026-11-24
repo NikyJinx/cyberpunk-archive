@@ -148,8 +148,8 @@ function editCyberHb(cid) {
 
 // ---------- GLOSSARIO: tutti i cataloghi del sito ----------
 // Night Market: le prime quattro tab sono il negozio (con un PG scelto si compra), le altre la consultazione
-const GLOSS_TABS = [["weapon", "Armi"], ["armor", "Armature"], ["gear", "Equipaggiamento"], ["drug", "Droghe"], ["cyber", "Cyberware"], ["deck", "Cyberdeck"], ["weapons", "Regole delle armi"], ["rules", "Munizioni e stati"], ["crit", "Critical Injury"], ["net", "NET"]];
-const SHOP_TABS = ["weapon", "armor", "gear", "drug", "cyber", "deck"];
+const GLOSS_TABS = [["weapon", "Armi"], ["armor", "Armature"], ["ammo", "Munizioni"], ["gear", "Equipaggiamento"], ["drug", "Droghe"], ["cyber", "Cyberware"], ["deck", "Cyberdeck"], ["weapons", "Regole delle armi"], ["rules", "Tipi di munizioni e stati"], ["crit", "Critical Injury"], ["net", "NET"]];
+const SHOP_TABS = ["weapon", "armor", "ammo", "gear", "drug", "cyber", "deck"];
 const glossTab = () => { const t = ls.get("nc-gloss", "weapon"); return GLOSS_TABS.some(x => x[0] === t) ? t : "weapon"; };
 let glossQ = "", glossG = "";
 function viewGlossary() {
@@ -165,6 +165,7 @@ function viewGlossary() {
     <div id="gloss-body">${glossBody(tab)}</div>`;
 }
 function glossBody(tab) {
+  if (tab === "ammo") return ammoShopBody();
   if (["weapon", "armor", "gear", "deck", "drug"].includes(tab)) return shopBody(tab);
   if (tab === "cyber") {
     const q = norm2(glossQ), buy = mkCanBuy();
