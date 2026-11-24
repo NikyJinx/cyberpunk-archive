@@ -232,6 +232,8 @@ function combatHtml(e) {
 // STAT: i punti del grado scelto (di solito 62), ognuna tra 2 e 8.
 // Abilità: 86 punti, nessuna oltre 6, le abilità base almeno a 2, quelle ×2 costano il doppio;
 // in più 4 livelli gratis nella lingua del Background Culturale (Language o un'abilità personalizzata «Language …»).
+// Contano solo i valori di creazione: i livelli comprati con gli IP (storico IP) si tolgono, e cyberware e bonus
+// non entrano perché nel modulo le STAT e le abilità sono quelle base (i bonus stanno a parte, nelle celle «+»).
 const CR_GRADES = [[50, "Personaggio Secondario Minore"], [62, "Personaggio Iniziale"], [70, "Personaggio Secondario Maggiore"], [75, "Eroe Minore"], [80, "Eroe Maggiore"]];
 const CR_SKILL_PTS = 86, CR_LANG_FREE = 4;
 const crIsLang = name => /^(language|linguaggio|lingua)\b/i.test(String(name || "").trim()) && !/streetslang/i.test(name);
@@ -242,11 +244,18 @@ function crBoxHtml(s, fresh) {
       <span class="cr-c" id="cr-st"></span><span class="cr-c" id="cr-sk"></span><span class="cr-c" id="cr-warn"></span></summary>
     <div class="cr-body">
       <label>Grado del personaggio <select name="createPts">${CR_GRADES.map(([n, l]) => `<option value="${n}" ${n === pts ? "selected" : ""}>${l} · ${n} punti STAT</option>`).join("")}</select></label>
-      <p class="hint">STAT tra 2 e 8 · ${CR_SKILL_PTS} punti abilità, nessuna oltre 6 · le abilità base (●) almeno a 2 · ×2 = due punti per livello · ${CR_LANG_FREE} livelli gratis nella lingua del Background Culturale. Sono solo contatori: la scheda si salva comunque (dopo la creazione i livelli salgono con gli IP).</p>
+      <p class="hint">STAT tra 2 e 8 · ${CR_SKILL_PTS} punti abilità, nessuna oltre 6 · le abilità base (●) almeno a 2 · ×2 = due punti per livello · ${CR_LANG_FREE} livelli gratis nella lingua del Background Culturale. Contano solo i valori di creazione: i livelli comprati con gli IP si tolgono da soli, cyberware e bonus non entrano. Sono solo contatori: la scheda si salva comunque.</p>
+      <p class="hint" id="cr-ip" hidden></p>
       <ul class="cr-list" id="cr-list"></ul>
     </div></details>`;
 }
-function crUpdate(form) {
+// livelli presi con gli IP per ogni abilità («skill:id» o «cskill:indice»), dallo storico
+function crIpRaises(s) {
+  const out = {};
+  for (const x of s.ipLog || []) if (x.kind === "spend" && /^c?skill:/.test(x.key || "")) out[x.key] = (out[x.key] || 0) + Math.max(0, num(x.to) - num(x.from));
+  return out;
+}
+function crUpdate(form, raises = {}) {
   const box = $("#cr-box", form); if (!box) return;
   const val = n => { const i = form.elements[n]; return i && i.value.trim() !== "" ? num(i.value) : null; };
   const pts = num(form.elements["createPts"].value) || 62, bad = [];
@@ -260,20 +269,24 @@ function crUpdate(form) {
   }
   if (empty.length) bad.push(`STAT da riempire: ${empty.join(", ")}`);
   // abilità: livelli × costo, poi i livelli gratis della lingua più alta
-  let sk = 0, lang = 0;
+  let sk = 0, lang = 0, fromIp = 0;
+  const base = (key, v) => { const r = Math.min(v, raises[key] || 0); fromIp += r; return v - r; };
   for (const k of CPR.SKILLS) {
-    const v = val("sk-" + k.id) || 0; sk += v * (k.x2 ? 2 : 1);
+    const v = base("skill:" + k.id, val("sk-" + k.id) || 0); sk += v * (k.x2 ? 2 : 1);
     if (k.id === "language") lang = Math.max(lang, v);
     if (v > 6) flag("sk-" + k.id, `${k.label} ${v}: massimo 6`);
     if (k.basic && v < 2) flag("sk-" + k.id, `${k.label} è un'abilità base: almeno 2`);
   }
+  $$("#sh-cus .sh-row", form).forEach((row, i) => row.dataset.crI = i);
   for (const row of $$("#sh-cus .sh-row", form)) {
-    const name = $("[data-f=name]", row).value.trim(), li = $("[data-f=lvl]", row), v = num(li.value);
+    const name = $("[data-f=name]", row).value.trim(), li = $("[data-f=lvl]", row), v = base("cskill:" + row.dataset.crI, num(li.value));
     if (!name || !v) continue;
     sk += v; if (crIsLang(name)) lang = Math.max(lang, v);
     if (v > 6) { li.classList.add("cr-bad"); bad.push(`${name} ${v}: massimo 6`); }
   }
   sk -= Math.min(CR_LANG_FREE, lang);
+  const ipNote = $("#cr-ip", form); ipNote.hidden = !fromIp;
+  ipNote.textContent = `Esclusi ${fromIp} livelli di abilità comprati con gli IP (dallo storico IP): qui conta solo la creazione.`;
   const side = (used, tot) => used === tot ? "ok" : used > tot ? "over" : "left";
   const txt = (used, tot) => used === tot ? "tutti spesi" : used > tot ? `${used - tot} di troppo` : `restano ${tot - used}`;
   const sst = side(st, pts), ssk = side(sk, CR_SKILL_PTS);
@@ -376,10 +389,11 @@ function editSheet(id) {
   // il riquadro della creazione si ferma sotto l'intestazione (anche lei fissa) della finestra
   const crBox = $("#cr-box", form), head = $(".modal-head", form);
   if (crBox && head) crBox.style.setProperty("--cr-top", head.offsetHeight + "px");
-  crUpdate(form);
-  form.addEventListener("input", () => crUpdate(form));
-  form.addEventListener("change", () => crUpdate(form));
-  form.addEventListener("click", ev => { if (ev.target.closest("[data-row-del]")) setTimeout(() => crUpdate(form), 0); });
+  const crRaises = crIpRaises(s), cr = () => crUpdate(form, crRaises);
+  cr();
+  form.addEventListener("input", cr);
+  form.addEventListener("change", cr);
+  form.addEventListener("click", ev => { if (ev.target.closest("[data-row-del]")) setTimeout(cr, 0); });
   form.addEventListener("input", ev => {
     if (/^st-(BODY|WILL)$/.test(ev.target.name)) $("#sh-auto-hp").textContent = CPR.hpMax(num(form["st-BODY"].value), num(form["st-WILL"].value));
   });
