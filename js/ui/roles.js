@@ -76,6 +76,7 @@ function roleCard(e, r, i, edit) {
         ${roll("repair", `Riparazione Temporanea <b>+${num(t.field)}</b>`, "btn small", "TECH + abilità + Esperienza sul Campo + 1d10, contro la VD della riparazione completa")}</div>
       <div class="rl-acts"><span class="sh-k">Prezzo</span><select data-rl-price aria-label="Categoria di prezzo">${RL.PRICE_DV.map(p => `<option value="${p.id}">${esc(p.label)} · VD ${p.dv} · ${esc(p.time)}</option>`).join("")}</select>
         ${roll("make:upgrade", `Upgrade <b>+${num(t.upgrade)}</b>`)}${roll("make:fabricate", `Fabbricare <b>+${num(t.fabricate)}</b>`)}${roll("make:invent", `Inventare <b>+${num(t.invent)}</b>`)}</div>
+      ${makerHqHtml(e)}
       <details class="rl-more"><summary>Cosa fa ogni Specializzazione</summary>${RL.TECH_SPECS.map(x => `<p><b>${esc(x.label)}</b>: ${esc(x.eff)}</p>`).join("")}</details>`;
   } else if (r.id === "medtech") {
     const m = { surgery: 0, pharma: 0, cryo: 0, ...(r.med || {}) }, used = num(m.surgery) + num(m.pharma) + num(m.cryo);
@@ -185,6 +186,16 @@ async function roleOp(el) {
     return s;
   });
 }
+// tiri da Creatore: attrezzi dell'HQ (es. Master Mechanic's Tool Kit) e progetto in corso del Workshop potenziato
+function makerHqHtml(e) {
+  const kit = hqMakerBonus(), mine = hqProjects().filter(p => p.imp === "workshop"), own = makerGearBonus(e);
+  if (!kit.length && !mine.length && !own.length) return "";
+  return `<div class="rl-acts rl-hq">${kit.length ? `<label class="check" title="Lavori nella base: valgono gli attrezzi dell'HQ"><input type="checkbox" data-rl-hq checked> Lavoro nell'HQ <small>${esc(kit[0].l)} +${kit[0].v}</small></label>` : ""}
+    ${own.length ? `<span class="hint">${esc(own[0].l)} +${own[0].v}</span>` : ""}
+    ${mine.length ? `<select data-rl-proj aria-label="Progetto in corso"><option value="">— nessun progetto in corso —</option>${mine.map(p => `<option value="${esc(p.id)}" ${p.who === e.id ? "selected" : ""}>${esc(p.name)} · +${num(p.bonus)}</option>`).join("")}</select>` : ""}</div>`;
+}
+// attrezzo da Creatore nell'inventario del PG (stesso effetto «maker» del Night Market)
+const makerGearBonus = e => { const m = gearWithFx(e).map(x => ({ l: x.name, v: num((x.fx.find(f => f.t === "maker") || {}).v) })).filter(b => b.v).sort((a, b) => b.v - a.v)[0]; return m ? [m] : []; };
 function roleRoll(el) {
   const e = state.entries.find(x => x.id === el.dataset.id); if (!e) return;
   const r = rolesOf(e)[num(el.dataset.r)]; if (!r) return;
@@ -192,7 +203,8 @@ function roleRoll(el) {
   const k = el.dataset.k, [kind, arg] = k.split(":");
   const vsDv = (parts, dv, label, extra = {}) => {
     const x = CPR.check([...parts, ...sheetExtra(e)]), ok = x.total > dv;
-    return postRoll({ kind: "check", who: e.name, entryId: e.id, label, ...x, hit: { ok, text: `vs VD ${dv} → ${ok ? `riuscito, supera di ${x.total - dv}` : "fallito"}` }, ...extra });
+    postRoll({ kind: "check", who: e.name, entryId: e.id, label, ...x, hit: { ok, text: `vs VD ${dv} → ${ok ? `riuscito, supera di ${x.total - dv}` : "fallito"}` }, ...extra });
+    return x;
   };
   const val = sel => { const s = card && $(sel, card); return s ? s.value : ""; };
   if (kind === "ability") return sheetCheck(e, `${R.abilityIt || R.ability}`, [{ l: R.abilityIt || "Grado", v: rank }]);
@@ -202,12 +214,18 @@ function roleRoll(el) {
   }
   if (r.id === "tech") {
     const t = techOf(e), sk = val("[data-rl-skill]") || "basictech", K = CPR.skill(sk);
-    if (kind === "repair") return sheetCheck(e, `Riparazione Temporanea (${K.label})`, [{ l: "TECH", v: statEff(e, "TECH") }, { l: K.label, v: skillLvl(e, sk) }, { l: "Esperienza sul Campo", v: num(t.field) }],
+    // attrezzi: quello dell'HQ se lavori nella base, altrimenti il tuo (non si sommano: vale il più alto)
+    const hqBox = card && $("[data-rl-hq]", card), tools = [...(hqBox && hqBox.checked ? hqMakerBonus() : []), ...makerGearBonus(e)].sort((a, b) => b.v - a.v).slice(0, 1);
+    if (kind === "repair") return sheetCheck(e, `Riparazione Temporanea (${K.label})`, [{ l: "TECH", v: statEff(e, "TECH") }, { l: K.label, v: skillLvl(e, sk) }, { l: "Esperienza sul Campo", v: num(t.field) }, ...tools],
       { note: `vs la VD della riparazione completa · l'oggetto funziona per ${10 * num(t.field)} minuti, poi torna danneggiato e non si rappezza più` });
     if (kind === "make") {
       const S = RL.TECH_SPECS.find(x => x.id === arg), P = RL.PRICE_DV.find(p => p.id === val("[data-rl-price]")) || RL.PRICE_DV[0];
-      return vsDv([{ l: "TECH", v: statEff(e, "TECH") }, { l: K.label, v: skillLvl(e, sk) }, { l: S.label, v: num(t[arg]) }], P.dv, `${S.label} · ${P.label}`,
+      const pj = hqProjects().find(p => p.id === val("[data-rl-proj]"));
+      const x = vsDv([{ l: "TECH", v: statEff(e, "TECH") }, { l: K.label, v: skillLvl(e, sk) }, { l: S.label, v: num(t[arg]) }, ...tools, ...(pj && num(pj.bonus) ? [{ l: `Progetto in corso: ${pj.name}`, v: num(pj.bonus) }] : [])], P.dv, `${S.label} · ${P.label}${pj ? ` · ${pj.name}` : ""}`,
         { note: `Tempo: ${P.time} · materiali pari alla Categoria di Prezzo${arg === "upgrade" ? " (un upgrade per oggetto; se fallisci a metà ricominci senza perdere i materiali)" : ""}` });
+      // Upgraded Workshop: un 1 naturale fa svanire i bonus del progetto
+      if (pj && x.crit === "fail" && num(pj.bonus)) hqSave(h => { const p = (h.projects || []).find(y => y.id === pj.id); if (p) p.bonus = 0; }, `${pj.name}: 1 naturale, i bonus del progetto svaniscono`);
+      return x;
     }
   }
   if (r.id === "medtech") {

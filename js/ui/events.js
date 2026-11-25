@@ -268,6 +268,10 @@ document.addEventListener("click", async ev => {
     case "hq-undo": hqUndo(); break;
     case "hq-edit": hqEdit(); break;
     case "hq-item": hqItemEdit(el.dataset.id); break;
+    case "hq-gear": hqGearEdit(el.dataset.id); break;
+    case "hq-proj-week": hqProjOp("week", el.dataset.id); break;
+    case "hq-proj-fumble": hqProjOp("fumble", el.dataset.id); break;
+    case "hq-proj-done": hqProjOp("done", el.dataset.id); break;
     case "hq-floor": hqFloorEdit(el.dataset.id); break;
     case "hq-floor-go": hqFloor = el.dataset.id; ls.set("nc-hq-floor", hqFloor); route(); break;
     case "hq-floor-map": hqFloorMap(el.dataset.id); break;
