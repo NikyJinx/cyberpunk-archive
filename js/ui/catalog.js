@@ -58,7 +58,7 @@ function cyberFxHtml(e, compact = false) {
   fx.immune.forEach(i => lines.push(`${esc(i.name)}: lo stato «${esc(i.status)}» non ti penalizza`));
   if (fx.smart) lines.push("Smartgun: +1 a colpire con le armi che hanno lo Smartgun Link (scritto nel nome o nelle note dell'arma)");
   if (fx.run) lines.push(`Corsa +${fx.run} m`);
-  fx.armor.forEach(a => lines.push(`${esc(a.name)}: SP ${a.sp} sottopelle a testa e corpo, già combinata con l'armatura indossata (vale la più alta, si ablano insieme; 🛌 = +1 per giorno di riposo)`));
+  fx.armor.forEach(a => lines.push(`${esc(a.name)}: SP ${a.sp}${a.up ? " (upgrade +1)" : ""} sottopelle a testa e corpo, già combinata con l'armatura indossata (vale la più alta, si ablano insieme; 🛌 = +1 per giorno di riposo)` + (edit ? (() => { const x = items.find(y => y.c && y.c.name === a.name && (y.c.fx || []).some(f => f.t === "armor")); return x ? " " + cyUpBtn(id, x.slot, x.i, x.it) : ""; })() : "")));
   const have = new Set((s.weapons || []).map(w => norm(w.name)));
   const wpn = fx.weapons.map(w => `${esc(w.name)} (${esc(w.dmg)})${have.has(norm(w.name)) ? " ✓ nelle armi" : edit ? ` <button type="button" class="btn ghost small" data-action="cy-weapon" data-id="${id}" data-name="${esc(w.name)}">+ alle armi</button>` : ""}`);
   if (!lines.length && !conds.length && !wpn.length) return compact ? "" : `<p class="hint">Gli impianti scelti dal catalogo con un effetto (bonus alle abilità, iniziativa, BODY…) lo applicano da soli ai tiri.</p>`;
