@@ -6,11 +6,27 @@
 // ---------- HQ della crew ----------
 // meta "hq" = { name, place, notes, lost (accesso perso), ip, log[{ at, kind: earn|buy|lost, amount, why, imp, from, to }],
 //              owned{ id: livello }, floors[{ id, name, image, notes }], items[] (migliorie custom o modificate),
+//              picks{ id: [id degli upgrade scelti] } (migliorie con upgrade a scelta, es. Workshop),
 //              projects[{ id, imp: "workshop"|"studio", name, who (id del PG), weeks, bonus }] (lavori in corso, +2 a settimana),
 //              gear[{ id, ref (voce del Night Market), name, cost, desc, maker }] (oggetti della base; maker = bonus ai tiri da Maker) }
 // Livello: 0 = non comprata, 1 = comprata, 1 + n = n upgrade.
 const hqRec = () => state.hq || { id: "hq", name: "", ip: 0, log: [], owned: {}, floors: [], items: [] };
 const hqLvl = (H, id) => num((H.owned || {})[id]);
+// upgrade a scelta comprati (opts); per un HQ salvato prima delle scelte valgono i primi in elenco
+const hqPicks = (H, it) => {
+  if (!it.opts) return [];
+  const p = (H.picks || {})[it.id];
+  return Array.isArray(p) ? p.filter(x => it.opts.some(o => o.id === x)) : it.opts.slice(0, Math.max(0, hqLvl(H, it.id) - 1)).map(o => o.id);
+};
+const hqOptsLeft = (H, it) => (it.opts || []).filter(o => !hqPicks(H, it).includes(o.id));
+// colonna «Prossimo»: compra, upgrade, o un pulsante per ogni upgrade a scelta che manca
+function hqNextCell(H, it, edit, label) {
+  const lvl = hqLvl(H, it.id), cost = HQ.nextCost(it, lvl), id = esc(it.id);
+  if (cost == null) return `<span class="hint">al massimo</span>`;
+  const can = edit && num(H.ip) >= cost, btn = (opt, txt) => `<button type="button" class="btn small ${can ? "" : "ghost"}" data-action="hq-buy" data-id="${id}"${opt ? ` data-opt="${esc(opt)}"` : ""} ${can ? "" : `title="Servono ${cost} HQ IP"`}>${txt}</button>`;
+  if (lvl && it.opts) return `${edit ? `<div class="hq-opt-btns">${hqOptsLeft(H, it).map(o => btn(o.id, `Upgrade: ${esc(o.name)}`)).join("")}</div>` : ""}<small>${cost} HQ IP</small>`;
+  return `${edit ? btn("", label) : ""}<small>${cost} HQ IP</small>`;
+}
 let hqFloor = ls.get("nc-hq-floor", "");
 async function hqSave(fn, msg, full = false) {
   if (!Store.canEdit()) return;
@@ -61,7 +77,7 @@ function viewHq() {
 // ---------- progetti in corso (Studio e Workshop potenziati) ----------
 // ogni settimana di downtime sul progetto +2 alle prove (si accumula); un 1 naturale su una prova azzera il bonus
 // livello che serve per i progetti: Studio al primo upgrade, Workshop al secondo (projAt)
-const hqProjImps = H => HQ.all().filter(it => it.projects && hqLvl(H, it.id) >= (it.projAt || 2));
+const hqProjImps = H => HQ.all().filter(it => it.projects && (it.projOpt ? hqPicks(H, it).includes(it.projOpt) : hqLvl(H, it.id) >= (it.projAt || 2)));
 const hqProjects = (H = hqRec()) => (H.projects || []).filter(p => !H.lost);
 function hqProjHtml(H, edit) {
   const imps = hqProjImps(H), list = H.projects || [];
@@ -165,13 +181,14 @@ function hqRow(H, it, edit) {
   const lvl = hqLvl(H, it.id), max = HQ.maxLevel(it), cost = HQ.nextCost(it, lvl), id = esc(it.id);
   const can = edit && cost != null && num(H.ip) >= cost;
   const state0 = !lvl ? `<span class="hq-st no">non comprata</span>` : lvl === 1 ? `<span class="hq-st ok">comprata</span>` : `<span class="hq-st up">upgrade ${lvl - 1}${max > 2 ? `/${max - 1}` : ""}</span>`;
-  const levels = (it.levels || []).length ? `<details class="hq-lv"><summary>Benefici degli upgrade (${it.levels.length})</summary><ol>${it.levels.map((l, i) => `<li class="${lvl - 1 > i ? "got" : ""}">${esc(l)}</li>`).join("")}</ol></details>` : "";
+  const levels = it.opts ? `<ul class="hq-opts">${it.opts.map(o => `<li class="${hqPicks(H, it).includes(o.id) ? "got" : ""}"><b>${esc(o.name)}</b>: ${esc(o.eff)}</li>`).join("")}</ul>`
+    : (it.levels || []).length ? `<details class="hq-lv"><summary>Benefici degli upgrade (${it.levels.length})</summary><ol>${it.levels.map((l, i) => `<li class="${lvl - 1 > i ? "got" : ""}">${esc(l)}</li>`).join("")}</ol></details>` : "";
   return `<tr class="${lvl ? "own" : ""}">
     <td><b>${it.custom ? "★ " : ""}${esc(it.name)}</b>${edit ? ` <button type="button" class="gp-btn" data-action="hq-item" data-id="${id}" aria-label="Modifica" title="${it.custom ? "Modifica" : "Modifica (diventa custom, si può ripristinare)"}">✎</button>` : ""}${it.roles ? `<small>${esc(it.roles)}</small>` : ""}</td>
     <td>${esc(it.eff || "")}</td>
     <td>${esc(it.up || "")}${levels}</td>
     <td class="gl-n">${state0}${lvl && edit ? `<button type="button" class="hq-lose" data-action="hq-lose" data-id="${id}" title="Persa (distrutta o rubata): torna non comprata, gli HQ IP non tornano">✕ persa</button>` : ""}</td>
-    <td class="gl-n">${cost == null ? `<span class="hint">al massimo</span>` : `${edit ? `<button type="button" class="btn small ${can ? "" : "ghost"}" data-action="hq-buy" data-id="${id}" ${can ? "" : `title="Servono ${cost} HQ IP"`}>${lvl ? "Upgrade" : "Compra"}</button>` : ""}<small>${cost} HQ IP</small>`}</td>
+    <td class="gl-n">${hqNextCell(H, it, edit, lvl ? "Upgrade" : "Compra")}</td>
   </tr>`;
 }
 
@@ -181,31 +198,38 @@ function hqOwnRow(H, it, edit) {
   const can = edit && cost != null && num(H.ip) >= cost;
   const lv = it.levels || [];
   const gives = [`<p>${esc(it.eff || "")}</p>`];
-  if (ups && lv.length) gives.push(`<ol class="hq-got">${lv.slice(0, ups).map(l => `<li>${esc(l)}</li>`).join("")}</ol>`);
+  if (ups && it.opts) gives.push(`<ul class="hq-got">${it.opts.filter(o => hqPicks(H, it).includes(o.id)).map(o => `<li><b>${esc(o.name)}</b>: ${esc(o.eff)}</li>`).join("")}</ul>`);
+  else if (ups && lv.length) gives.push(`<ol class="hq-got">${lv.slice(0, ups).map(l => `<li>${esc(l)}</li>`).join("")}</ol>`);
   else if (ups && it.up) gives.push(`<p class="hq-upg"><b>Upgrade${ups > 1 ? ` ×${ups}` : ""}:</b> ${esc(it.up)}</p>`);
   return `<tr>
     <td><b>${it.custom ? "★ " : ""}${esc(it.name)}</b>${it.roles ? `<small>${esc(it.roles)}</small>` : ""}</td>
     <td class="gl-n">${ups ? `<span class="hq-st up">upgrade ${ups}${max > 2 ? `/${max - 1}` : ""}</span>` : `<span class="hq-st ok">comprata</span>`}${edit ? `<button type="button" class="hq-lose" data-action="hq-lose" data-id="${id}" title="Persa (distrutta o rubata): torna non comprata, gli HQ IP non tornano">✕ persa</button>` : ""}</td>
     <td>${gives.join("")}</td>
-    <td class="gl-n">${cost == null ? `<span class="hint">al massimo</span>` : `${edit ? `<button type="button" class="btn small ${can ? "" : "ghost"}" data-action="hq-buy" data-id="${id}" ${can ? "" : `title="Servono ${cost} HQ IP"`}>Upgrade</button>` : ""}<small>${cost} HQ IP</small>`}</td>
+    <td class="gl-n">${hqNextCell(H, it, edit, "Upgrade")}</td>
   </tr>`;
 }
 
 // ---------- azioni ----------
-function hqBuy(id) {
+function hqBuy(id, opt) {
   const H = hqRec(), it = HQ.byId(id); if (!it) return;
   const lvl = hqLvl(H, id), cost = HQ.nextCost(it, lvl);
   if (cost == null) return;
   if (num(H.ip) < cost) return toast(`Servono ${cost} HQ IP (ne avete ${num(H.ip)})`, "err");
+  // upgrade a scelta: serve sapere quale (uno non ancora comprato)
+  const O = lvl && it.opts ? hqOptsLeft(H, it).find(o => o.id === opt) : null;
+  if (lvl && it.opts && !O) return toast("Scegli quale upgrade comprare", "err");
+  const picks = hqPicks(H, it);
   hqSave(h => {
     h.owned = h.owned || {}; h.owned[id] = lvl + 1; h.ip = num(h.ip) - cost;
-    h.log = [...(h.log || []), { at: new Date().toISOString(), kind: "buy", amount: cost, imp: id, why: it.name, from: lvl, to: lvl + 1 }];
-  }, `${it.name}: ${lvl ? `upgrade ${lvl}` : "comprata"} (−${cost} HQ IP)`);
+    if (it.opts) { h.picks = h.picks || {}; h.picks[id] = O ? [...picks, O.id] : picks; }
+    h.log = [...(h.log || []), { at: new Date().toISOString(), kind: "buy", amount: cost, imp: id, why: O ? `${it.name} · ${O.name}` : it.name, from: lvl, to: lvl + 1, ...(O ? { opt: O.id } : {}) }];
+  }, `${it.name}: ${O ? O.name : lvl ? `upgrade ${lvl}` : "comprata"} (−${cost} HQ IP)`);
 }
 async function hqLose(id) {
   const H = hqRec(), it = HQ.byId(id), lvl = hqLvl(H, id); if (!it || !lvl) return;
   if (!(await askConfirm(`«${it.name}» è persa (distrutta, rubata…)? Torna non comprata con i suoi upgrade e gli HQ IP spesi non tornano.`, "Persa"))) return;
-  hqSave(h => { delete h.owned[id]; h.log = [...(h.log || []), { at: new Date().toISOString(), kind: "lost", amount: 0, imp: id, why: it.name, from: lvl, to: 0 }]; }, `${it.name} persa`);
+  const picks = hqPicks(H, it);
+  hqSave(h => { delete h.owned[id]; if (h.picks) delete h.picks[id]; h.log = [...(h.log || []), { at: new Date().toISOString(), kind: "lost", amount: 0, imp: id, why: it.name, from: lvl, to: 0, ...(it.opts ? { picks } : {}) }]; }, `${it.name} persa`);
 }
 function hqEarn(form) {
   const n = Math.trunc(num(form.elements.n.value)), why = form.elements.why.value.trim(); if (n <= 0) return;
@@ -218,7 +242,12 @@ async function hqUndo() {
   hqSave(h => {
     const l = h.log.pop();
     if (l.kind === "earn") h.ip = num(h.ip) - l.amount;
-    else { h.owned = h.owned || {}; if (l.from) h.owned[l.imp] = l.from; else delete h.owned[l.imp]; if (l.kind === "buy") h.ip = num(h.ip) + l.amount; }
+    else {
+      h.owned = h.owned || {}; if (l.from) h.owned[l.imp] = l.from; else delete h.owned[l.imp]; if (l.kind === "buy") h.ip = num(h.ip) + l.amount;
+      // upgrade a scelta: l'acquisto annullato toglie quella scelta, la perdita annullata le rimette
+      if (l.opt && h.picks && h.picks[l.imp]) h.picks[l.imp] = h.picks[l.imp].filter(x => x !== l.opt);
+      if (l.kind === "lost" && l.picks) { h.picks = h.picks || {}; h.picks[l.imp] = l.picks; }
+    }
   }, "Annullato");
 }
 function hqLog() {
@@ -313,7 +342,7 @@ function hqItemEdit(id) {
   const form = $("#hqi-form");
   form.addEventListener("submit", async ev => {
     ev.preventDefault(); const E = form.elements;
-    const rec = { id: it.id || "hq-" + NET.uid(), name: E.name.value.trim(), cost: num(E.cost.value), upCost: num(E.upCost.value), maxUp: Math.max(0, Math.trunc(num(E.maxUp.value))),
+    const rec = { ...Object.fromEntries(Object.entries(it).filter(([k]) => k !== "custom")), id: it.id || "hq-" + NET.uid(), name: E.name.value.trim(), cost: num(E.cost.value), upCost: num(E.upCost.value), maxUp: Math.max(0, Math.trunc(num(E.maxUp.value))),
       roles: E.roles.value.trim(), eff: E.eff.value.trim(), up: E.up.value.trim(), levels: E.levels.value.split("\n").map(x => x.trim()).filter(Boolean) };
     await hqSave(h => { h.items = h.items || []; const i = h.items.findIndex(x => x.id === rec.id); if (i >= 0) h.items[i] = rec; else h.items.push(rec); }, `★ ${rec.name} salvata`);
     closeModal();

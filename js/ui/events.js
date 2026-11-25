@@ -262,7 +262,7 @@ document.addEventListener("click", async ev => {
     case "drug-take": drugTake(id, num(el.dataset.i)); break;
     case "deck-install": { const sel = el.closest("li") && $(".g-deck", el.closest("li")); deckInstall(id, num(el.dataset.i), num(sel ? sel.value : el.dataset.deck)); break; }
     case "tt-tool": setTool(el.dataset.tool); break;
-    case "hq-buy": hqBuy(el.dataset.id); break;
+    case "hq-buy": hqBuy(el.dataset.id, el.dataset.opt); break;
     case "hq-lose": hqLose(el.dataset.id); break;
     case "hq-log": hqLog(); break;
     case "hq-undo": hqUndo(); break;

@@ -2,6 +2,7 @@
 //  NIGHT CITY ARCHIVE — Headquarters (window.HQ)
 //  Migliorie dell'HQ della crew e loro upgrade, pagati con gli HQ IP.
 //  Regole: ogni miglioria si compra una volta e si potenzia una volta (salvo indicazione);
+//  con «opts» gli upgrade sono a scelta e si comprano in qualsiasi ordine (quali: meta hq.picks[id]);
 //  la crew riceve tanti HQ IP quanti IP riceve dalla colonna Group dopo una missione.
 // ============================================================
 window.HQ = (() => {
@@ -51,13 +52,13 @@ window.HQ = (() => {
     I("training", "Training Area", 40, 40, 1, "Tutti, Solo",
       "Con una settimana di downtime un membro della crew fa pratica in Athletics, Archery, Autofire, Brawling, Evasion, Handgun, Heavy Weapons, Martial Arts, Melee Weapon o Shoulder Arms: +1 alle prove con quell'abilità finché la crew non riceve di nuovo IP di gruppo o non fa pratica di nuovo.",
       "I Solo scelgono due abilità diverse della lista: contano entrambe come allenate."),
-    // due upgrade separati: il terzo progetto del manuale, poi l'Upgraded Workshop homebrew (lavoro in corso)
+    // due upgrade a scelta, in qualsiasi ordine (opts): il terzo progetto del manuale e l'Upgraded Workshop homebrew
     I("workshop", "Workshop", 40, 40, 2, "Tech",
       "Quando un Tech usa Upgrade, Fabrication o Invention Expertise nel Workshop, può assegnare lo stesso tempo a un secondo progetto senza spenderne altro.",
-      "Due upgrade separati, da comprare uno alla volta (vedi i benefici).",
-      { projects: "Progetto", projAt: 3, levels: [
-        "Anche a un terzo progetto.",
-        "Upgraded Workshop (homebrew): come nello Studio, un Tech può portare avanti un lavoro in corso. Ogni settimana di downtime passata sul progetto dà +2 (si accumula) alle prove di Upgrade, Fabrication o Invention per quel progetto, finché non lo finisce, lo abbandona o fa un 1 naturale su una delle prove: allora i bonus svaniscono.",
+      "Due upgrade a scelta, comprati uno alla volta nell'ordine che volete.",
+      { projects: "Progetto", projOpt: "wip", opts: [
+        { id: "third", name: "Terzo progetto", eff: "Lo stesso tempo vale anche per un terzo progetto." },
+        { id: "wip", name: "Upgraded Workshop (homebrew)", eff: "Come nello Studio, un Tech può portare avanti un lavoro in corso. Ogni settimana di downtime passata sul progetto dà +2 (si accumula) alle prove di Upgrade, Fabrication o Invention per quel progetto, finché non lo finisce, lo abbandona o fa un 1 naturale su una delle prove: allora i bonus svaniscono." },
       ] }),
     I("workstation", "Workstation", 40, 40, 1, "Exec",
       "Un Team Member di un Exec della crew (scelto all'acquisto) diventa membro della crew: riceve IP quando li riceve il suo Exec e una parte uguale della paga dei lavori a cui partecipa (IP e soldi li spende il GM). È fedele al suo capo, non alla Corporazione, e lo segue se cambia azienda. Se si perde l'accesso alla Workstation non guadagna più IP né paga, ma tiene quello già speso.",
