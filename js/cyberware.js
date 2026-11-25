@@ -226,7 +226,7 @@ window.CW = (() => {
       if (f.t === "immune") out.immune.push({ status: f.status, name: c.name });          // stato che non ti penalizza (es. Accecato)
       if (f.t === "smart") out.smart = true;                                              // collegamento per le armi Smartgun
       if (f.t === "run") out.run += f.v;                                                  // metri in più alla Corsa
-      if (f.t === "armor") out.armor.push({ name: c.name, sp: f.sp, type: f.type });
+      if (f.t === "armor") out.armor.push({ name: c.name, sp: f.sp + (+it.up || 0), type: f.type, up: +it.up || 0 });
       if (f.t === "weapon") out.weapons.push({ ...f, src: c.name });
     }
     // requisiti del telaio: il BODY già alzato dai Lacci (es. 4 + Laccio = 6 basta per il Sigma) e il numero di Lacci

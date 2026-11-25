@@ -149,6 +149,18 @@ function armorUp(id, gi, d) {
     return x;
   }, d > 0 ? `${it.name}: upgrade, SP ${armorInfo(it).sp + 1}` : `${it.name}: upgrade tolto, SP ${armorInfo(it).sp - 1}`);
 }
+// upgrade del cyberware che fa da armatura (Armatura Subdermale, Skin Weave…): +1 SP sottopelle, anche quella attuale
+const cyUpBtn = (id, slot, i, it) => `<button type="button" class="btn ghost small g-act" data-action="cy-up" data-id="${id}" data-slot="${esc(slot)}" data-i="${i}" data-d="${num(it.up) ? -1 : 1}" title="${num(it.up) ? "Toglie l'upgrade: −1 SP" : "Impianto migliorato: +1 SP"}">${num(it.up) ? "⬇ Togli upgrade" : "⬆ Upgrade +1 SP"}</button>`;
+function cyUp(id, slot, i, d) {
+  const e = state.entries.find(x => x.id === id), it = e && ((((e.cyber || {}).slots || {})[slot]) || [])[i]; if (!it || !Store.canEdit()) return;
+  entryPatch(id, x => {
+    const I = (((x.cyber || {}).slots || {})[slot] || [])[i]; if (!I) return null;
+    I.up = Math.max(0, Math.min(1, num(I.up) + d)); if (!I.up) delete I.up;
+    // la SP attuale sottopelle (se segnata) sale o scende con l'upgrade
+    const sk = (x.sheet || {}).skin; if (sk) ["head", "body"].forEach(l => { if (hasVal(sk[l])) sk[l] = Math.max(0, num(sk[l]) + d); });
+    return x;
+  }, `${it.name}: ${d > 0 ? "upgrade, +1 SP" : "upgrade tolto, −1 SP"}`);
+}
 function takeOffArmor(id, locs) {
   if (!Store.canEdit()) return;
   sheetPatch(id, s => { s.armor = s.armor || {}; locs.forEach(l => { delete s.armor[l]; }); return s; });
@@ -379,9 +391,10 @@ function gearInner(e) {
     (((e.cyber || {}).slots || {})[sl.id] || []).forEach((it, i) => {
       if (!it.name || isBaseItem(it)) return;
       const st = it.installed !== false ? "in" : it.stored ? "stored" : "plan";
-      rows.cyber.push({ name: it.name, detail: [sl.label, hasVal(it.hl) ? `${num(it.hl)} HL` : ""].filter(Boolean).join(" · "), note: it.note, cls: st === "in" ? "" : st,
+      const arm = ((cwOf(it) || {}).fx || []).find(f => f.t === "armor");
+      rows.cyber.push({ name: it.name, detail: [sl.label, hasVal(it.hl) ? `${num(it.hl)} HL` : "", arm ? `SP ${arm.sp + num(it.up)}${num(it.up) ? " (upgrade +1)" : ""}` : ""].filter(Boolean).join(" · "), note: it.note, cls: st === "in" ? "" : st,
         tag: { in: "◆ installato", stored: "⬚ disinstallato", plan: "◇ pianificato" }[st],
-        act: st === "in" ? cyBtn("out", sl.id, i, "⇩ Disinstalla", "Lo togli dal corpo: resta nell'inventario") : st === "stored" ? cyBtn("in", sl.id, i, "⇧ Reinstalla", "Lo rimetti nel corpo") : "" });
+        act: (arm && edit ? cyUpBtn(id, sl.id, i, it) : "") + (st === "in" ? cyBtn("out", sl.id, i, "⇩ Disinstalla", "Lo togli dal corpo: resta nell'inventario") : st === "stored" ? cyBtn("in", sl.id, i, "⇧ Reinstalla", "Lo rimetti nel corpo") : "") });
     });
   });
   // cyberware in idle: comprato o tolto, si installa in qualsiasi slot
@@ -437,7 +450,7 @@ const cyRow = (it = {}, def = 2) => `
   <div class="cy-row ${it.ref === "skillchip" ? "chip" : ""}">
     <label class="cy-inst" title="Installato (togli la spunta se è solo pianificato)"><input type="checkbox" data-f="installed" ${it.installed === false ? "" : "checked"}><span></span></label>
     <input data-f="name" placeholder="Nome impianto" list="dl-cyber" value="${esc(it.name)}">
-    <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="stored" value="${it.stored ? "1" : ""}"><input type="hidden" data-f="withBase" value="${it.withBase ? "1" : ""}"><input type="hidden" data-f="on" value="${it.on ? "1" : ""}">
+    <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="stored" value="${it.stored ? "1" : ""}"><input type="hidden" data-f="withBase" value="${it.withBase ? "1" : ""}"><input type="hidden" data-f="on" value="${it.on ? "1" : ""}"><input type="hidden" data-f="up" value="${it.up ? "1" : ""}">
     <select data-f="lvl" class="cy-param cy-lvl" title="Livello a cui il chip porta l'abilità">${[3, 4].map(n => `<option value="${n}" ${+it.lvl === n ? "selected" : ""}>liv. ${n}</option>`).join("")}</select>
     <select data-f="param" class="cy-param" title="Abilità del Chip Abilità"><option value="">abilità del chip…</option>${CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === it.param ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
     <input data-f="cost" type="number" min="0" step="1" placeholder="eb" title="Costo in eddies" value="${esc(it.cost ?? "")}">
@@ -635,7 +648,7 @@ function editCyber(id) {
       const items = readRows(fs, ".cy-row").filter(it => it.name && !isBaseItem(it)).map(it => ({
         name: it.name, installed: it.installed, cost: it.cost === "" ? null : num(it.cost), hl: it.hl === "" ? null : num(it.hl),
         max: it.max === "" ? null : num(it.max), note: it.note,
-        ...(it.ref ? { ref: it.ref } : {}), ...(it.on ? { on: true } : {}), ...(it.stored && it.installed === false ? { stored: true, ...(it.withBase ? { withBase: true } : {}) } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param, lvl: +it.lvl === 4 ? 4 : 3 } : {}),
+        ...(it.ref ? { ref: it.ref } : {}), ...(it.on ? { on: true } : {}), ...(it.up ? { up: 1 } : {}), ...(it.stored && it.installed === false ? { stored: true, ...(it.withBase ? { withBase: true } : {}) } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param, lvl: +it.lvl === 4 ? 4 : 3 } : {}),
       }));
       if (fs.classList.contains("custom")) {
         const label = $("[data-slot-f=label]", fs).value.trim();
