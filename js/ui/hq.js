@@ -60,7 +60,8 @@ function viewHq() {
 }
 // ---------- progetti in corso (Studio e Workshop potenziati) ----------
 // ogni settimana di downtime sul progetto +2 alle prove (si accumula); un 1 naturale su una prova azzera il bonus
-const hqProjImps = H => HQ.all().filter(it => it.projects && hqLvl(H, it.id) >= 2);
+// livello che serve per i progetti: Studio al primo upgrade, Workshop al secondo (projAt)
+const hqProjImps = H => HQ.all().filter(it => it.projects && hqLvl(H, it.id) >= (it.projAt || 2));
 const hqProjects = (H = hqRec()) => (H.projects || []).filter(p => !H.lost);
 function hqProjHtml(H, edit) {
   const imps = hqProjImps(H), list = H.projects || [];

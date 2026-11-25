@@ -51,10 +51,14 @@ window.HQ = (() => {
     I("training", "Training Area", 40, 40, 1, "Tutti, Solo",
       "Con una settimana di downtime un membro della crew fa pratica in Athletics, Archery, Autofire, Brawling, Evasion, Handgun, Heavy Weapons, Martial Arts, Melee Weapon o Shoulder Arms: +1 alle prove con quell'abilità finché la crew non riceve di nuovo IP di gruppo o non fa pratica di nuovo.",
       "I Solo scelgono due abilità diverse della lista: contano entrambe come allenate."),
-    I("workshop", "Workshop", 40, 40, 1, "Tech",
+    // due upgrade separati: il terzo progetto del manuale, poi l'Upgraded Workshop homebrew (lavoro in corso)
+    I("workshop", "Workshop", 40, 40, 2, "Tech",
       "Quando un Tech usa Upgrade, Fabrication o Invention Expertise nel Workshop, può assegnare lo stesso tempo a un secondo progetto senza spenderne altro.",
-      "Anche a un terzo progetto. Upgraded Workshop (homebrew): come nello Studio, un Tech può portare avanti un lavoro in corso. Ogni settimana di downtime passata sul progetto dà +2 (si accumula) alle prove di Upgrade, Fabrication o Invention per quel progetto, finché non lo finisce, lo abbandona o fa un 1 naturale su una delle prove: allora i bonus svaniscono.",
-      { projects: "Progetto" }),
+      "Due upgrade separati, da comprare uno alla volta (vedi i benefici).",
+      { projects: "Progetto", projAt: 3, levels: [
+        "Anche a un terzo progetto.",
+        "Upgraded Workshop (homebrew): come nello Studio, un Tech può portare avanti un lavoro in corso. Ogni settimana di downtime passata sul progetto dà +2 (si accumula) alle prove di Upgrade, Fabrication o Invention per quel progetto, finché non lo finisce, lo abbandona o fa un 1 naturale su una delle prove: allora i bonus svaniscono.",
+      ] }),
     I("workstation", "Workstation", 40, 40, 1, "Exec",
       "Un Team Member di un Exec della crew (scelto all'acquisto) diventa membro della crew: riceve IP quando li riceve il suo Exec e una parte uguale della paga dei lavori a cui partecipa (IP e soldi li spende il GM). È fedele al suo capo, non alla Corporazione, e lo segue se cambia azienda. Se si perde l'accesso alla Workstation non guadagna più IP né paga, ma tiene quello già speso.",
       "Il Team Member non usa più il sistema di Lealtà (CP:R pag. 154): resta fedele finché il suo Exec non lo tradisce. Se la Workstation potenziata va persa, la crew deve ripristinarla prima di spendere HQ IP in altro; altrimenti il Team Member si sente tradito e se ne va."),
