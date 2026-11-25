@@ -16,7 +16,7 @@ const AMMO_BASE = [
   { id: "flash", name: "Flashbang", fams: [AM_G], cost: 100, nodmg: true, dv: 15, eff: "Nessun danno: la vittima supera Resist Torture/Drugs VD {dv} o subisce Damaged Eye e Damaged Ear per 1 minuto (senza Bonus Damage)." },
   { id: "smoke", name: "Fumogene", fams: [AM_G], cost: 50, nodmg: true, eff: "Nessun danno: fumo su 10 × 10 m attorno all'impatto per 1 minuto (−4 ad agire nel fumo)." },
   { id: "rubber", name: "In Gomma", fams: [AM_A, ...AM_P, AM_S], cost: 10, eff: "Niente Critical Injury e niente ablazione; se il bersaglio scenderebbe sotto 0 PF resta a 1. Contano come munizioni base per le armi esotiche." },
-  { id: "incend", name: "Incendiarie", fams: [AM_S, AM_A, AM_G, ...AM_P], cost: 100, eff: "Se il danno supera l'armatura il bersaglio prende fuoco: 2 danni diretti ai PF alla fine di ogni suo turno finché non usa un'Azione per spegnersi (non cumulativo)." },
+  { id: "incend", name: "Incendiarie", fams: [AM_S, AM_A, AM_G, ...AM_P, "Lanciafiamme"], cost: 100, eff: "Se il danno supera l'armatura il bersaglio prende fuoco: 2 danni diretti ai PF alla fine di ogni suo turno finché non usa un'Azione per spegnersi (non cumulativo)." },
   { id: "tear", name: "Lacrimogene", fams: [AM_G], cost: 50, nodmg: true, dv: 13, eff: "Nessun danno: la vittima supera Resist Torture/Drugs VD {dv} o subisce Damaged Eye per 1 minuto (senza Bonus Damage)." },
   { id: "ap", name: "Perforanti", fams: [...AM_P, AM_S, AM_A, AM_G, AM_R], cost: 100, eff: "Ablano l'armatura di 2 invece che di 1." },
   { id: "smart", name: "Smart", fams: [AM_A, ...AM_P, AM_R, AM_S], cost: 500, eff: "Serve il cyberware Mirino. Colpo singolo fallito di 4 o meno: ritenti subito contro la stessa VD, con 10 al posto del d10 (si può spendere LUCK; chi schiva i proiettili può schivare anche questo)." },
@@ -34,7 +34,7 @@ const AMMO_BASE = [
   { id: "minic9", name: "Mini C9 (Stickybomb)", fams: [AM_G], cost: 60, lot: 1, dmg: "6d6", src: "Solo of Fortune 2045", eff: "Solo per la Stickybomb Launcher. Colpito il bersaglio, la carica si pianta con Demolitions VD 17: 6d6 se riesce, 4d6 se fallisce, come una granata perforante. Esplode solo a distanza, con un'Azione, dopo 30 secondi (10 round)." },
 ].map(a => ({ ...a, id: "cpr-" + a.id, builtin: true }));
 // la Base c'è per tutti i calibri tranne granate e razzi
-const ammoBaseOk = fam => fam !== AM_G && fam !== AM_R;
+const ammoBaseOk = fam => fam !== AM_G && fam !== AM_R && fam !== "Lanciafiamme";
 const ammoEff = a => String(a.eff || "").replace(/\{dv\}/g, a.dv ?? "").replace(/\{sdmg\}/g, a.sdmg || "");
 
 // ---------- MUNIZIONI MODIFICATE ----------
