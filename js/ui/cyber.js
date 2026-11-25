@@ -22,7 +22,12 @@ const CYBER_SLOTS = [
   { id: "fashion",    label: "Fashionware",         col: "r",      zone: "fashion", max: 0 },
   { id: "neural",     label: "Neuralware",          col: "bottom", zone: "brain",   max: 2 },
   { id: "alveolo",    label: "Alveolo (Chipware)",  col: "bottom", zone: "brain",   max: 2 },
+  // non è un impianto: compare con gli Occhiali Intelligenti nell'inventario, 2 slot per opzioni da Cyberocchio,
+  // niente umanità persa e le opzioni contano sempre come una coppia
+  { id: "occhiali",   label: "Occhiali Intelligenti", col: "top",  zone: "",        max: 0, glasses: true },
 ];
+const isGlasses = it => /occhiali intelligenti|smart\s*glasses/i.test((it && it.name) || "");
+const hasGlasses = e => ((e.gear && e.gear.items) || []).some(it => isGlasses(it) && num(it.qty || 1) > 0);
 const BODY_ZONES = [
   ["", "Nessuna"], ["brain", "Testa / cervello"], ["eye_r", "Occhio destro"], ["eye_l", "Occhio sinistro"], ["ears", "Orecchie"],
   ["skin", "Pelle / esterno"], ["fashion", "Pelle (fashion)"], ["torso", "Torso / interno"], ["core", "Centro del corpo"],
@@ -31,7 +36,7 @@ const BODY_ZONES = [
 // slot base + slot personalizzati della scheda (alternati a sinistra e destra)
 // e.cyber.hidden = slot standard rimossi da questa scheda
 const hiddenSlots = e => (e.cyber && e.cyber.hidden) || [];
-const slotsOf = e => [...CYBER_SLOTS.filter(s => !hiddenSlots(e).includes(s.id)), ...((e.cyber && e.cyber.extra) || []).map((x, i) => ({
+const slotsOf = e => [...CYBER_SLOTS.filter(s => !hiddenSlots(e).includes(s.id) && (!s.glasses || hasGlasses(e) || ((((e.cyber || {}).slots || {}).occhiali) || []).length)), ...((e.cyber && e.cyber.extra) || []).map((x, i) => ({
   id: x.id, label: x.label || "Slot personalizzato", zone: x.zone || "", col: i % 2 ? "r" : "l",
   max: x.max === "" || x.max == null ? 2 : Number(x.max), custom: true,
 }))];
@@ -53,7 +58,7 @@ const GEAR_CATS = [
 const isPerson = e => e.kind === "npc" || e.kind === "pg";
 const num = v => (v === "" || v == null || isNaN(Number(v))) ? 0 : Number(v);
 const fmtEb = n => `${Math.round(n).toLocaleString("it-IT")} eb`;
-const cyberItems = e => Object.entries((e.cyber && e.cyber.slots) || {}).flatMap(([slot, list]) => (list || []).map(it => ({ ...it, slot })));
+const cyberItems = e => Object.entries((e.cyber && e.cyber.slots) || {}).flatMap(([slot, list]) => (list || []).map(it => slot === "occhiali" ? { ...it, slot, pair: true, ...(hasGlasses(e) ? {} : { installed: false }) } : { ...it, slot }));
 const cyberCount = e => cyberItems(e).filter(it => it.installed !== false && !isBaseItem(it)).length + baseCyber(e).length;
 // cyberware fondamentale (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito):
 // non è un impianto dello slot, si attiva sullo slot stesso · e.cyber.bases[slot] = { on, slots, cost, hl, max }
@@ -79,7 +84,8 @@ function armorInfo(it) {
   const mk = window.MK ? MK.all().find(x => x.type === "armor" && norm2(x.name) === norm2(it.name)) : null;
   const T = CPR.ARMOR_TYPES.find(t => t.sp && norm2(t.label) === norm2(it.name));
   const m = String(it.detail || "").match(/SP\s*(\d+)/i);
-  const sp = num(it.sp) || (mk && mk.sp) || (T && T.sp) || (m ? +m[1] : 0);
+  // upgrade: +1 SP sull'armatura (it.up)
+  const sp = (num(it.sp) || (mk && mk.sp) || (T && T.sp) || (m ? +m[1] : 0)) + num(it.up);
   const pen = hasVal(it.pen) ? num(it.pen) : mk ? num(mk.pen) : T ? T.pen : 0;
   const both = !!(it.both || (mk && mk.both) || it.loc === "both");
   // zone dove si può indossare: quella scelta all'acquisto; senza zona (oggetti vecchi o scritti a mano) testa o corpo
@@ -119,6 +125,18 @@ function wearArmor(id, gi, loc) {
     locs.forEach(l => { s.armor[l] = { name: it.name, sp: A.sp, cur: A.sp, type: A.type, pen: A.pen, ...(A.penBy ? { penBy: A.penBy } : {}) }; }); return s; });
   toast(`${it.name} indossata (${A.both ? "testa e corpo" : ARMOR_LOC[locs[0]]})`, "ok");
 }
+// upgrade dell'armatura: +1 SP (anche su quella indossata, SP attuale compresa)
+function armorUp(id, gi, d) {
+  const e = state.entries.find(x => x.id === id), it = e && gearItems(e)[gi]; if (!it || !Store.canEdit()) return;
+  const on = armorWorn(e).on[gi] || [];
+  entryPatch(id, x => {
+    const g = x.gear.items[gi]; if (!g) return null;
+    g.up = Math.max(0, Math.min(1, num(g.up) + d)); if (!g.up) delete g.up;
+    const ar = (x.sheet = x.sheet || {}).armor = x.sheet.armor || {};
+    on.forEach(l => { const a = ar[l]; if (!a) return; a.sp = Math.max(0, num(a.sp) + d); a.cur = Math.max(0, Math.min(a.sp, (hasVal(a.cur) ? num(a.cur) : num(a.sp) - d) + d)); });
+    return x;
+  }, d > 0 ? `${it.name}: upgrade, SP ${armorInfo(it).sp + 1}` : `${it.name}: upgrade tolto, SP ${armorInfo(it).sp - 1}`);
+}
 function takeOffArmor(id, locs) {
   if (!Store.canEdit()) return;
   sheetPatch(id, s => { s.armor = s.armor || {}; locs.forEach(l => { delete s.armor[l]; }); return s; });
@@ -130,7 +148,7 @@ function cyberStats(e) {
   const plan = all.filter(it => it.installed === false && !it.stored && it.slot !== "idle"), stored = all.filter(it => it.installed === false && it.stored);
   const bases = baseCyber(e), storedBases = slotsOf(e).map(sl => baseState(e, sl.id)).filter(b => b && !b.fixed && b.stored);
   const cost = inst.reduce((t, it) => t + num(it.cost), 0) + bases.reduce((t, x) => t + x.b.cost, 0);
-  const hl = inst.reduce((t, it) => t + num(it.hl), 0) + bases.reduce((t, x) => t + x.b.hl, 0)
+  const hl = inst.filter(it => it.slot !== "occhiali").reduce((t, it) => t + num(it.hl), 0) + bases.reduce((t, x) => t + x.b.hl, 0)
     + stored.reduce((t, it) => t + num(it.hl), 0) + storedBases.reduce((t, b) => t + b.hl, 0);
   const maxLoss = inst.reduce((t, it) => t + itemMax(e, it), 0) + bases.reduce((t, x) => t + x.b.max, 0);
   const start = e.cyber && hasVal(e.cyber.humanity) ? num(e.cyber.humanity) : null;
@@ -170,7 +188,7 @@ const BODY_SVG = `
 // Alveolo: si attiva sul suo slot e tiene 1 chip (Chip di Memoria, Chip Abilità, Antidolorifico…); gli slot si aumentano
 // installando altri Alveoli. Ogni slot dell'Alveolo occupa uno slot del Collegamento Neurale.
 const SLOT_BASE = { occhio: ["cybereye", 3, "Cyberocchio"], braccio: ["cyberarm", 4, "Cyberbraccio"], gamba: ["cyberleg", 3, "Cybergamba"], neural: ["neurallink", 5, "Collegamento Neurale"], audio: ["cyberaudio", 3, "Sistema Cyberudito"], alveolo: ["chipslot", 1, "Alveolo"] };
-const SLOT_FIXED = { fashion: 7, interni: 7, esterni: 7 };
+const SLOT_FIXED = { fashion: 7, interni: 7, esterni: 7, occhiali: 2 };
 function slotUse(slotId, items, base, extra = 0) {
   if (!base) return null;
   const kind = slotKind(slotId), limb = kind === "braccio" || kind === "gamba", alv = kind === "alveolo";
@@ -197,7 +215,7 @@ function slotCard(e, s) {
   const sumC = inst.reduce((t, it) => t + num(it.cost), 0) + (bOn ? b.cost : 0), sumH = inst.reduce((t, it) => t + num(it.hl), 0) + (bOn ? b.hl : 0);
   return `
     <section class="cy-slot ${inst.length || bOn ? "has" : ""} ${items.length || bOn ? "" : "vacant"} ${s.custom ? "custom" : ""}" data-zone="${s.zone}">
-      <header><span class="cy-title">${esc(s.label)}</span>${slotUseHtml(slotUse(s.id, items, b, s.id === "neural" ? alveoloSlots(e) : 0))}
+      <header><span class="cy-title">${esc(s.label)}</span>${s.glasses ? (hasGlasses(e) ? `<span class="cy-cap" title="Non è un impianto: niente umanità, le opzioni contano come una coppia">esterni</span>` : `<span class="cy-cap over" title="Gli Occhiali Intelligenti non sono nell'inventario: le opzioni non hanno effetto">⚠ occhiali non nell'inventario</span>`) : ""}${slotUseHtml(slotUse(s.id, items, b, s.id === "neural" ? alveoloSlots(e) : 0))}
         ${inst.length || bOn ? `<span class="cy-sum">${fmtEb(sumC)} · ${sumH} HL</span>` : ""}</header>
       ${b && !b.fixed ? `<div class="cy-base ${b.on ? "on" : ""}" title="Cyberware fondamentale: si attiva sullo slot">${b.on ? `◆ <b>${esc(b.name)}</b> · ${b.slots} slot${b.slots !== b.std ? ` (standard ${b.std})` : ""} <small>${b.cost.toLocaleString("it-IT")} eb · ${b.hl} HL · −${b.max}</small>` : b.stored ? `⬚ ${esc(b.name)} disinstallato <small>(in Equipaggiamento · ${b.hl} HL restano)</small>` : `○ ${esc(b.name)} non installato${slotKind(s.id) === "braccio" || slotKind(s.id) === "gamba" ? " <small>(arto di carne: 1 opzione)</small>" : ""}`}</div>`
         : b && b.slots !== b.std ? `<div class="cy-base on"><small>${b.slots} slot opzioni (standard ${b.std})</small></div>` : ""}
@@ -334,9 +352,10 @@ function gearInner(e) {
     const btn = (l, label) => `<button type="button" class="btn ghost small g-act" data-action="armor-wear" data-id="${id}" data-i="${gi}" data-loc="${l}">${label}</button>`;
     const act = !edit ? "" : [
       ...free.map(l => btn(l, A.fixed ? "🛡 Indossa" : `🛡 Indossa: ${LOC[l]}`)),
+      `<button type="button" class="btn ghost small g-act" data-action="armor-up" data-id="${id}" data-i="${gi}" data-d="${num(it.up) ? -1 : 1}" title="${num(it.up) ? "Toglie l'upgrade: −1 SP" : "Armatura migliorata: +1 SP"}">${num(it.up) ? "⬇ Togli upgrade" : "⬆ Upgrade +1 SP"}</button>`,
       ...(on.length ? [`<button type="button" class="btn ghost small g-act" data-action="armor-off" data-id="${id}" data-loc="${on.join(",")}">Togli${on.length > 1 || A.fixed ? "" : ` (${LOC[on[0]]})`}</button>`] : []),
     ].join("");
-    rows.armature.push({ ...fromGear(it), detail: [it.detail || (A.sp ? `SP ${A.sp}${A.pen ? ` · ${A.pen} REF/DEX/MOVE` : ""}` : "SP non indicata"), A.fixed && !/testa|corpo/i.test(it.detail || "") ? `per ${ARMOR_LOC[A.both ? "both" : A.locs[0]]}` : ""].filter(Boolean).join(" · "), tag: on.length ? `indossata${A.fixed ? "" : `: ${on.map(l => LOC[l]).join(", ")}`}` : "", act });
+    rows.armature.push({ ...fromGear(it), detail: [num(it.up) ? String(it.detail || "").replace(/SP\s*\d+/i, `SP ${A.sp} (upgrade +1)`) || `SP ${A.sp} (upgrade +1)` : it.detail || (A.sp ? `SP ${A.sp}${A.pen ? ` · ${A.pen} REF/DEX/MOVE` : ""}` : "SP non indicata"), A.fixed && !/testa|corpo/i.test(it.detail || "") ? `per ${ARMOR_LOC[A.both ? "both" : A.locs[0]]}` : ""].filter(Boolean).join(" · "), tag: on.length ? `indossata${A.fixed ? "" : `: ${on.map(l => LOC[l]).join(", ")}`}` : "", act });
   });
   AW.rest.forEach(x => rows.armature.push({ name: x.a.name || "Armatura", detail: `SP ${hasVal(x.a.cur) ? num(x.a.cur) : num(x.a.sp)}/${num(x.a.sp)} · non è nell'inventario`, tag: `indossata: ${LOC[x.l]}`,
     act: edit ? `<button type="button" class="btn ghost small g-act" data-action="armor-off" data-id="${id}" data-loc="${x.l}">Togli</button>` : "" }));
@@ -451,7 +470,7 @@ const gearRow = (it = {}) => `
     <input data-f="qty" type="number" min="1" step="1" placeholder="Q.tà" value="${esc(it.qty ?? 1)}">
     <input data-f="detail" placeholder="Dettagli (danno, SP, ROF…)" value="${esc(it.detail)}">
     <input data-f="note" placeholder="Nota" value="${esc(it.note)}">
-    <input type="hidden" data-f="fam" value="${esc(it.fam || "")}"><input type="hidden" data-f="ammo" value="${esc(it.ammo || "")}"><input type="hidden" data-f="style" value="${esc(it.style || "")}"><input type="hidden" data-f="type" value="${esc(it.type || "")}"><input type="hidden" data-f="worn" value="${it.worn ? "1" : ""}"><input type="hidden" data-f="sp" value="${esc(it.sp ?? "")}"><input type="hidden" data-f="pen" value="${esc(it.pen ?? "")}"><input type="hidden" data-f="both" value="${it.both ? "1" : ""}"><input type="hidden" data-f="loc" value="${esc(it.loc || "")}"><input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}"><input type="hidden" data-f="veh" value="${esc(it.veh ? JSON.stringify(it.veh) : "")}">
+    <input type="hidden" data-f="up" value="${esc(it.up || "")}"><input type="hidden" data-f="fam" value="${esc(it.fam || "")}"><input type="hidden" data-f="ammo" value="${esc(it.ammo || "")}"><input type="hidden" data-f="style" value="${esc(it.style || "")}"><input type="hidden" data-f="type" value="${esc(it.type || "")}"><input type="hidden" data-f="worn" value="${it.worn ? "1" : ""}"><input type="hidden" data-f="sp" value="${esc(it.sp ?? "")}"><input type="hidden" data-f="pen" value="${esc(it.pen ?? "")}"><input type="hidden" data-f="both" value="${it.both ? "1" : ""}"><input type="hidden" data-f="loc" value="${esc(it.loc || "")}"><input type="hidden" data-f="cost" value="${esc(it.cost ?? "")}"><input type="hidden" data-f="drug" value="${esc(it.drug || "")}"><input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="item" value="${esc(it.item ? JSON.stringify(it.item) : "")}"><input type="hidden" data-f="veh" value="${esc(it.veh ? JSON.stringify(it.veh) : "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button>
   </div>`;
 const readRows = (root, sel) => $$(sel, root).map(r => Object.fromEntries($$("[data-f]", r).map(i => [i.dataset.f, i.type === "checkbox" ? i.checked : i.value.trim()])));
@@ -614,7 +633,7 @@ function editCyber(id) {
       if (items.length) out[fs.dataset.slot] = items;
     }
     const hum = form.humanity.value, th = form.therapy.value;
-    const hidden = CYBER_SLOTS.filter(s => !$(`fieldset[data-slot="${s.id}"]`, form)).map(s => s.id);
+    const hidden = CYBER_SLOTS.filter(s => !s.glasses && !$(`fieldset[data-slot="${s.id}"]`, form)).map(s => s.id);   // gli occhiali compaiono da soli
     try {
       const saved = await Store.save("entries", { ...e, cyber: {
         humanity: hum === "" ? null : num(hum), therapy: th === "" ? null : num(th), slots: { ...out, ...(idleCyber(e).length ? { idle: e.cyber.slots.idle } : {}) }, extra, hidden, bases,
@@ -649,9 +668,9 @@ function editGear(id) {
     ev.preventDefault();
     const items = readRows(form, ".gear-row").filter(it => it.name).map(({ item, veh, ...it }) => {
       const o = { ...it, qty: Math.max(1, num(it.qty) || 1) };
-      ["cost", "drug", "ref", "sp", "pen", "both", "loc", "style", "type", "worn", "fam", "ammo"].forEach(k => { if (!o[k]) delete o[k]; });
+      ["cost", "drug", "ref", "sp", "pen", "both", "loc", "style", "type", "worn", "fam", "ammo", "up"].forEach(k => { if (!o[k]) delete o[k]; });
       if (o.worn) o.worn = true;
-      if (o.sp) o.sp = num(o.sp); if (o.pen) o.pen = num(o.pen); if (o.both) o.both = true;
+      if (o.up) o.up = num(o.up); if (o.sp) o.sp = num(o.sp); if (o.pen) o.pen = num(o.pen); if (o.both) o.both = true;
       if (o.cost) o.cost = num(o.cost);
       if (item) try { o.item = JSON.parse(item); } catch {}
       if (veh && o.cat === "veicoli") try { o.veh = JSON.parse(veh); } catch {}

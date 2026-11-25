@@ -298,6 +298,7 @@ document.addEventListener("click", async ev => {
     case "exp-toggle": expToggle(id, el.dataset.app); break;
     case "exp-pay": expPay(id); break;
     case "edit-expenses": editExpenses(id); break;
+    case "armor-up": armorUp(id, num(el.dataset.i), num(el.dataset.d)); break;
     case "armor-wear": wearArmor(id, num(el.dataset.i), el.dataset.loc === "both" ? "head" : el.dataset.loc); break;
     case "armor-off": takeOffArmor(id, String(el.dataset.loc || "").split(",").filter(Boolean)); break;
     case "wpn-away": {   // arma lasciata a casa / portata con sé

@@ -195,8 +195,9 @@ window.CW = (() => {
   function effects(items, baseBody, opts = {}) {
     let inst = (items || []).filter(it => it.installed !== false).map(it => ({ it, c: byId(it.ref) || byName(it.name) })).filter(x => x.c);
     if (opts.chipCap != null) { let n = 0; inst = inst.filter(x => !x.c.chip || ++n <= opts.chipCap); }
-    const have = id => inst.filter(x => x.c.id === id).length;
-    const count = id => inst.filter(x => x.c.id === id || x.c.as === id).length;   // «as»: conta come un altro impianto
+    const w = x => x.it.pair ? 2 : 1;   // negli Occhiali Intelligenti un'opzione conta sempre come una coppia
+    const have = id => inst.filter(x => x.c.id === id).reduce((t, x) => t + w(x), 0);
+    const count = id => inst.filter(x => x.c.id === id || x.c.as === id).reduce((t, x) => t + w(x), 0);   // «as»: conta come un altro impianto
     const out = { skill: {}, mods: [], stat: {}, body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0, warn: [] };
     let body = +baseBody || 0, frame = null; const frames = [];
     // effetti validi; con la stessa chiave resta il più forte (es. Analizzatore di Stress potenziato sul normale)

@@ -131,7 +131,7 @@ function deckShopBody(q, name, desc, buyTh) {
 // ---------- acquisto ----------
 // slot adatti al gruppo del cyberware (le parti doppie destra e sinistra)
 const mkCySlots = (e, c) => {
-  const pairs = { optics: ["occhio_dx", "occhio_sx"], arm: ["braccio_dx", "braccio_sx"], leg: ["gamba_dx", "gamba_sx"], limbcover: ["braccio_dx", "braccio_sx", "gamba_dx", "gamba_sx"] };
+  const pairs = { optics: ["occhio_dx", "occhio_sx", "occhiali"], arm: ["braccio_dx", "braccio_sx"], leg: ["gamba_dx", "gamba_sx"], limbcover: ["braccio_dx", "braccio_sx", "gamba_dx", "gamba_sx"] };
   const g = CW.GROUPS.find(x => x.id === c.g) || {}, want = c.chip || c.id === "chipslot" ? ["alveolo"] : pairs[c.g] || [g.slot].filter(Boolean);
   const all = slotsOf(e), fit = all.filter(s => want.includes(s.id));
   return { fit: fit.length ? fit : all, other: all.filter(s => !fit.includes(s)) };
@@ -288,6 +288,7 @@ async function mkCommit(e0, it, paid, qty, o) {
     } else {
       cy.slots = cy.slots || {};
       // in idle: non montato, l'umanità (già tirata) si perde quando si installa
+      if (o.slot === "occhiali") o.hl = 0;   // negli occhiali non è un impianto: niente umanità
       cy.slots[o.slot] = [...(cy.slots[o.slot] || []), { name: it.name, ref: it.id, cost: paid || num(it.cost), hl: o.hl, ...(o.slot === "idle" ? { installed: false, fresh: true } : { installed: true }), ...(o.param ? { param: o.param, lvl: +o.lvl === 4 ? 4 : 3 } : {}) }];
       undo = { k: "cyber", slot: o.slot };
     }
@@ -298,7 +299,7 @@ async function mkCommit(e0, it, paid, qty, o) {
     const saved = await Store.save("entries", e);
     upsert(state.entries, saved); liveSend("entries", saved);
     closeModal(); route(); refreshParty();
-    toast(`${it.name}${qty > 1 ? ` ×${qty}` : ""} comprato${paid ? ` (−${fmtEb(paid)})` : ""}${it.type === "cyber" ? (o.slot === "idle" ? " · in idle" : ` · −${o.hl} umanità`) : ""}`, "ok");
+    toast(`${it.name}${qty > 1 ? ` ×${qty}` : ""} comprato${paid ? ` (−${fmtEb(paid)})` : ""}${it.type === "cyber" ? (o.slot === "idle" ? " · in idle" : o.slot === "occhiali" ? " · negli Occhiali Intelligenti" : ` · −${o.hl} umanità`) : ""}`, "ok");
   } catch (err) { fail(err); }
 }
 
