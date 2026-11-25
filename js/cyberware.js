@@ -128,7 +128,7 @@ window.CW = (() => {
     C("plasticcover", "limbcover", "Copertura Plastica", CC, 100, "Premium", 0, N, "Copertura plastica in molti colori e disegni. Nessuno Slot.", { req: "Cyberbraccio o Cybergamba", slots: 0 }),
     C("realskinn", "limbcover", "RealSkinn™", CC, 500, "Onerosa", 0, N, "Copertura in pelle artificiale. Nessuno Slot.", { req: "Cyberbraccio o Cybergamba", slots: 0 }),
     C("superchrome", "limbcover", "Superchrome®", CC, 1000, "Molto Onerosa", 0, N, "Copertura cromata: +2 a Wardrobe & Style (non cumulativo). Nessuno Slot.", { req: "Cyberbraccio o Cybergamba", slots: 0, fx: [{ t: "skill", skills: ["wardrobe"], v: 2, key: "wardrobe" }] }),
-    C("hardenedshield", "limbcover", "Schermatura Rinforzata", CL, 1000, "Molto Onerosa", 3, "1d6", "L'arto e le sue opzioni non si disattivano con EMP e programmi (salvo Black ICE).", { req: "Cyberbraccio o Cybergamba" }),
+    C("hardenedshield", "limbcover", "Schermatura Rinforzata (Hardened)", CL, 1000, "Molto Onerosa", 3, "1d6", "Le opzioni del cyberware non possono essere disattivate, rese inutilizzabili o distrutte da scosse elettriche, Microwaver o impulsi EMP, né da effetti di programmi che non siano Black ICE.", { req: "Cyberbraccio o Cybergamba" }),
     // Borgware
     C("multioptic", "borg", "Innesto MultiOttico", OS, 1000, "Molto Oneroso", 14, "4d6", "Fino a 5 Cyberocchi in più (venduti e installati a parte). Uno solo."),
     C("artshoulder", "borg", "Innesto Spalla Artificiale", OS, 1000, "Molto Oneroso", 14, "4d6", "Due Cyberbraccia sotto le braccia normali. Uno solo."),
