@@ -40,7 +40,10 @@ function ammoAdd(x, fam, id, n) {
 function cbReload(id, i, type) {
   const e = state.entries.find(x => x.id === id), R = e && pcWeapon(e, i), w = R && R.w; if (!w || !Store.canEdit()) return;
   const cat = sheetWeaponCat(w), fam = famOfW(w, cat), mag = magOf(w, cat); if (!fam || !mag) return;
-  const cur = w.ammo || "", to = type == null ? cur : type || "", A = ammoOfE(e, cat, to, fam), change = to !== cur;
+  const cur = w.ammo || "";
+  // granate, razzi e armi senza Base mai caricate: si ricarica con il primo tipo che c'è nelle scorte
+  const noStd = !ammoBaseOk(fam) || noBaseW(w), first = noStd && !cur && type == null ? ammoListE(e, cat, fam).find(a => a.id && ammoStockN(e, fam, a.id)) : null;
+  const to = first ? first.id : type == null ? cur : type || "", A = ammoOfE(e, cat, to, fam), change = to !== cur;
   // granate e razzi non hanno la Base: quelle «di serie» nel caricatore non tornano nelle scorte
   const have = loadedOf(w, cat), keep = change ? 0 : have, back = change && (cur || (ammoBaseOk(fam) && !noBaseW(w))) ? have : 0;
   const need = mag - keep, take = Math.min(need, ammoStockN(e, fam, to));
