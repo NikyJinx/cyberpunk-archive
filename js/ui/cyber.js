@@ -24,10 +24,22 @@ const CYBER_SLOTS = [
   { id: "alveolo",    label: "Alveolo (Chipware)",  col: "bottom", zone: "brain",   max: 2 },
   // non è un impianto: compare con gli Occhiali Intelligenti nell'inventario, 2 slot per opzioni da Cyberocchio,
   // niente umanità persa e le opzioni contano sempre come una coppia
-  { id: "occhiali",   label: "Occhiali Intelligenti", col: "top",  zone: "",        max: 0, glasses: true },
+  { id: "occhiali",   label: "Occhiali Intelligenti", col: "top",  zone: "",        max: 0, glasses: true, ext: true },
+  { id: "guanto",     label: "Guanto",              col: "top",    zone: "",        max: 0, ext: true },
+  { id: "orecchie",   label: "Smart Ears",          col: "top",    zone: "",        max: 0, ext: true },
 ];
-const isGlasses = it => /occhiali intelligenti|smart\s*glasses/i.test((it && it.name) || "");
-const hasGlasses = e => ((e.gear && e.gear.items) || []).some(it => isGlasses(it) && num(it.qty || 1) > 0);
+// oggetti indossati con slot per opzioni (non impianti: niente umanità persa): quanti slot dà ciascuno
+const EXT_HOLD = {
+  occhiali: [[/occhiali intelligenti|smart\s*glasses/i, 2]],
+  guanto: [[/guanto da battaglia|battleglove/i, 3], [/cyberdude smart glove/i, 2], [/xtra-dex smart glove/i, 2]],
+  orecchie: [[/smart ears/i, 2]],
+};
+const extOwned = (e, slot) => ((e.gear && e.gear.items) || []).filter(it => num(it.qty || 1) > 0).map(it => ({ it, n: ((EXT_HOLD[slot] || []).find(([re]) => re.test(it.name || "")) || [])[1] })).filter(x => x.n);
+const extSlots = (e, slot) => Math.max(0, ...extOwned(e, slot).map(x => x.n));
+const hasExt = (e, slot) => extSlots(e, slot) > 0;
+const isExtSlot = slot => !!EXT_HOLD[slot];
+const isGlasses = it => EXT_HOLD.occhiali[0][0].test((it && it.name) || "");
+const hasGlasses = e => hasExt(e, "occhiali");
 const BODY_ZONES = [
   ["", "Nessuna"], ["brain", "Testa / cervello"], ["eye_r", "Occhio destro"], ["eye_l", "Occhio sinistro"], ["ears", "Orecchie"],
   ["skin", "Pelle / esterno"], ["fashion", "Pelle (fashion)"], ["torso", "Torso / interno"], ["core", "Centro del corpo"],
@@ -36,7 +48,7 @@ const BODY_ZONES = [
 // slot base + slot personalizzati della scheda (alternati a sinistra e destra)
 // e.cyber.hidden = slot standard rimossi da questa scheda
 const hiddenSlots = e => (e.cyber && e.cyber.hidden) || [];
-const slotsOf = e => [...CYBER_SLOTS.filter(s => !hiddenSlots(e).includes(s.id) && (!s.glasses || hasGlasses(e) || ((((e.cyber || {}).slots || {}).occhiali) || []).length)), ...((e.cyber && e.cyber.extra) || []).map((x, i) => ({
+const slotsOf = e => [...CYBER_SLOTS.filter(s => !hiddenSlots(e).includes(s.id) && (!s.ext || hasExt(e, s.id) || ((((e.cyber || {}).slots || {})[s.id]) || []).length)).map(s => s.ext && hasExt(e, s.id) && s.id !== "occhiali" ? { ...s, label: extOwned(e, s.id).sort((a, b) => b.n - a.n)[0].it.name } : s), ...((e.cyber && e.cyber.extra) || []).map((x, i) => ({
   id: x.id, label: x.label || "Slot personalizzato", zone: x.zone || "", col: i % 2 ? "r" : "l",
   max: x.max === "" || x.max == null ? 2 : Number(x.max), custom: true,
 }))];
@@ -58,7 +70,7 @@ const GEAR_CATS = [
 const isPerson = e => e.kind === "npc" || e.kind === "pg";
 const num = v => (v === "" || v == null || isNaN(Number(v))) ? 0 : Number(v);
 const fmtEb = n => `${Math.round(n).toLocaleString("it-IT")} eb`;
-const cyberItems = e => Object.entries((e.cyber && e.cyber.slots) || {}).flatMap(([slot, list]) => (list || []).map(it => slot === "occhiali" ? { ...it, slot, pair: true, ...(hasGlasses(e) ? {} : { installed: false }) } : { ...it, slot }));
+const cyberItems = e => Object.entries((e.cyber && e.cyber.slots) || {}).flatMap(([slot, list]) => (list || []).map(it => isExtSlot(slot) ? { ...it, slot, ...(slot === "occhiali" ? { pair: true } : {}), ...(hasExt(e, slot) ? {} : { installed: false }) } : { ...it, slot }));
 const cyberCount = e => cyberItems(e).filter(it => it.installed !== false && !isBaseItem(it)).length + baseCyber(e).length;
 // cyberware fondamentale (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito):
 // non è un impianto dello slot, si attiva sullo slot stesso · e.cyber.bases[slot] = { on, slots, cost, hl, max }
@@ -66,7 +78,7 @@ const cyberCount = e => cyberItems(e).filter(it => it.installed !== false && !is
 const slotKind = id => String(id).replace(/_(dx|sx)$/, "");
 const isBaseItem = it => { const c = CW.byId(it.ref) || CW.byName(it.name); return !!(c && c.base); };
 function baseState(e, slotId) {
-  const kind = slotKind(slotId), B = SLOT_BASE[kind], F = SLOT_FIXED[kind];
+  const kind = slotKind(slotId), B = SLOT_BASE[kind], F = isExtSlot(kind) ? extSlots(e, kind) || SLOT_FIXED[kind] : SLOT_FIXED[kind];
   if (!B && !F) return null;
   const saved = ((e.cyber || {}).bases || {})[slotId];
   if (F) return { fixed: true, on: true, slots: saved && hasVal(saved.slots) ? num(saved.slots) : F, std: F };
@@ -148,7 +160,7 @@ function cyberStats(e) {
   const plan = all.filter(it => it.installed === false && !it.stored && it.slot !== "idle"), stored = all.filter(it => it.installed === false && it.stored);
   const bases = baseCyber(e), storedBases = slotsOf(e).map(sl => baseState(e, sl.id)).filter(b => b && !b.fixed && b.stored);
   const cost = inst.reduce((t, it) => t + num(it.cost), 0) + bases.reduce((t, x) => t + x.b.cost, 0);
-  const hl = inst.filter(it => it.slot !== "occhiali").reduce((t, it) => t + num(it.hl), 0) + bases.reduce((t, x) => t + x.b.hl, 0)
+  const hl = inst.filter(it => !isExtSlot(it.slot)).reduce((t, it) => t + num(it.hl), 0) + bases.reduce((t, x) => t + x.b.hl, 0)
     + stored.reduce((t, it) => t + num(it.hl), 0) + storedBases.reduce((t, b) => t + b.hl, 0);
   const maxLoss = inst.reduce((t, it) => t + itemMax(e, it), 0) + bases.reduce((t, x) => t + x.b.max, 0);
   const start = e.cyber && hasVal(e.cyber.humanity) ? num(e.cyber.humanity) : null;
@@ -188,7 +200,7 @@ const BODY_SVG = `
 // Alveolo: si attiva sul suo slot e tiene 1 chip (Chip di Memoria, Chip Abilità, Antidolorifico…); gli slot si aumentano
 // installando altri Alveoli. Ogni slot dell'Alveolo occupa uno slot del Collegamento Neurale.
 const SLOT_BASE = { occhio: ["cybereye", 3, "Cyberocchio"], braccio: ["cyberarm", 4, "Cyberbraccio"], gamba: ["cyberleg", 3, "Cybergamba"], neural: ["neurallink", 5, "Collegamento Neurale"], audio: ["cyberaudio", 3, "Sistema Cyberudito"], alveolo: ["chipslot", 1, "Alveolo"] };
-const SLOT_FIXED = { fashion: 7, interni: 7, esterni: 7, occhiali: 2 };
+const SLOT_FIXED = { fashion: 7, interni: 7, esterni: 7, occhiali: 2, guanto: 3, orecchie: 2 };
 function slotUse(slotId, items, base, extra = 0) {
   if (!base) return null;
   const kind = slotKind(slotId), limb = kind === "braccio" || kind === "gamba", alv = kind === "alveolo";
@@ -215,7 +227,7 @@ function slotCard(e, s) {
   const sumC = inst.reduce((t, it) => t + num(it.cost), 0) + (bOn ? b.cost : 0), sumH = inst.reduce((t, it) => t + num(it.hl), 0) + (bOn ? b.hl : 0);
   return `
     <section class="cy-slot ${inst.length || bOn ? "has" : ""} ${items.length || bOn ? "" : "vacant"} ${s.custom ? "custom" : ""}" data-zone="${s.zone}">
-      <header><span class="cy-title">${esc(s.label)}</span>${s.glasses ? (hasGlasses(e) ? `<span class="cy-cap" title="Non è un impianto: niente umanità, le opzioni contano come una coppia">esterni</span>` : `<span class="cy-cap over" title="Gli Occhiali Intelligenti non sono nell'inventario: le opzioni non hanno effetto">⚠ occhiali non nell'inventario</span>`) : ""}${slotUseHtml(slotUse(s.id, items, b, s.id === "neural" ? alveoloSlots(e) : 0))}
+      <header><span class="cy-title">${esc(s.label)}</span>${s.ext ? (hasExt(e, s.id) ? `<span class="cy-cap" title="Non è un impianto: niente umanità${s.glasses ? ", le opzioni contano come una coppia" : ""}">esterno</span>` : `<span class="cy-cap over" title="L'oggetto non è nell'inventario: le opzioni non hanno effetto">⚠ non nell'inventario</span>`) : ""}${slotUseHtml(slotUse(s.id, items, b, s.id === "neural" ? alveoloSlots(e) : 0))}
         ${inst.length || bOn ? `<span class="cy-sum">${fmtEb(sumC)} · ${sumH} HL</span>` : ""}</header>
       ${b && !b.fixed ? `<div class="cy-base ${b.on ? "on" : ""}" title="Cyberware fondamentale: si attiva sullo slot">${b.on ? `◆ <b>${esc(b.name)}</b> · ${b.slots} slot${b.slots !== b.std ? ` (standard ${b.std})` : ""} <small>${b.cost.toLocaleString("it-IT")} eb · ${b.hl} HL · −${b.max}</small>` : b.stored ? `⬚ ${esc(b.name)} disinstallato <small>(in Equipaggiamento · ${b.hl} HL restano)</small>` : `○ ${esc(b.name)} non installato${slotKind(s.id) === "braccio" || slotKind(s.id) === "gamba" ? " <small>(arto di carne: 1 opzione)</small>" : ""}`}</div>`
         : b && b.slots !== b.std ? `<div class="cy-base on"><small>${b.slots} slot opzioni (standard ${b.std})</small></div>` : ""}
@@ -633,7 +645,7 @@ function editCyber(id) {
       if (items.length) out[fs.dataset.slot] = items;
     }
     const hum = form.humanity.value, th = form.therapy.value;
-    const hidden = CYBER_SLOTS.filter(s => !s.glasses && !$(`fieldset[data-slot="${s.id}"]`, form)).map(s => s.id);   // gli occhiali compaiono da soli
+    const hidden = CYBER_SLOTS.filter(s => !s.ext && !$(`fieldset[data-slot="${s.id}"]`, form)).map(s => s.id);   // gli occhiali compaiono da soli
     try {
       const saved = await Store.save("entries", { ...e, cyber: {
         humanity: hum === "" ? null : num(hum), therapy: th === "" ? null : num(th), slots: { ...out, ...(idleCyber(e).length ? { idle: e.cyber.slots.idle } : {}) }, extra, hidden, bases,

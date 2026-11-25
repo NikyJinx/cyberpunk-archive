@@ -11,7 +11,7 @@ const cbMem = {};
 function finishSrc(X) {
   const w = X.w, T = CPR.weaponType(X.cat) || {};
   X.T = T; X.melee = CPR.isMelee(X.cat);
-  X.autoMax = num(w.auto) || T.auto || 0;
+  X.autoMax = hasVal(w.auto) ? num(w.auto) : T.auto || 0;   // 0 = niente autofire (es. Railgun)
   X.RT = X.melee ? null : CPR.rangeById(w.range || CPR.rangeDefault(X.cat));
   X.AT = X.autoMax ? CPR.autoById(w.autoRange || CPR.autoDefault(X.cat) || "smg") : null;
   X.ammo = X.ent ? ammoOfE(X.ent, X.cat, w.ammo || "") : ammoOf(X.cat, w.ammo || "");
@@ -35,6 +35,9 @@ function finishSrc(X) {
   const mk = MK.byId(w.market || "") || {};
   X.autoOnly = !!(w.autoOnly || mk.autoOnly) && !!X.autoMax;
   X.noAim = !!(w.noAim || mk.noAim);
+  // armi a batteria senza munizioni (Taser, Microwaver, Urlatore): niente caricatore, ogni colpo consuma una carica
+  X.noAmmo = !!(w.noAmmo || mk.noAmmo); if (X.noAmmo) { X.mag = 0; X.loaded = null; }
+  X.noCrit = !!(w.noCrit || mk.noCrit); X.nodmg = !!(w.nodmg || mk.nodmg);
   X.base = X.single.reduce((t, p) => t + p.v, 0);
   X.afBase = X.auto.reduce((t, p) => t + p.v, 0);
   X.attrs = `data-src="${X.kind}" data-id="${esc(X.id)}" data-i="${X.i}"${X.tok ? ` data-tok="${esc(X.tok)}"` : ""}`;
@@ -118,7 +121,9 @@ function cbRoll(X, mode = "single") {
   if (mode === "single" && X.autoOnly) return toast(`${X.w.name} spara solo in autofire e fuoco di soppressione`, "err");
   if (aimLoc && (X.noAim || X.ammo.noAim)) return toast(`${X.noAim ? X.w.name : X.ammo.name}: niente colpi mirati`, "err");
   // effetti speciali attivati sull'attacco (es. In Fiamme dei Nastri): consumano cariche
-  const RD = X.kind === "pc" && !X.isSub ? spRiders(X) : { cost: 0, note: "" }, chL = RD.cost ? chargesLeftOf(X.w) : null;
+  const RD = X.kind === "pc" && !X.isSub ? spRiders(X) : { cost: 0, note: "" };
+  if (X.kind === "pc" && X.noAmmo && chargesLeftOf(X.w) != null) RD.cost += 1;
+  const chL = RD.cost ? chargesLeftOf(X.w) : null;
   if (RD.cost && chL != null && chL < RD.cost) return toast(`${X.w.name}: cariche finite (${chL}). Serve una batteria nuova`, "err");
   if (shots && X.loaded < shots) return toast(`${X.w.name}: ${X.loaded ? `solo ${X.loaded} colpi, ne servono ${shots}` : "caricatore vuoto"}. Ricarica dalla tab Combattimento`, "err");
   const r = CPR.check(cbParts(X, mode, aimLoc));
@@ -141,7 +146,7 @@ function cbRoll(X, mode = "single") {
 }
 function cbDamage(X, mult) {
   if (!X) return;
-  if (X.w.nodmg) return X.post({ kind: "damage", label: `${X.w.name} · nessun danno`, total: 0, dice: [], mods: [], note: X.w.note || "" });
+  if (X.w.nodmg || X.nodmg) return X.post({ kind: "damage", label: `${X.w.name} · nessun danno`, total: 0, dice: [], mods: [], note: X.w.note || "" });
   if (X.ammo.nodmg) {
     const r = X.ammo.sdmg ? CPR.rollExpr(X.ammo.sdmg, { damage: true }) : null;
     return X.post({ kind: "damage", label: `${X.w.name} · ${X.ammo.name}${r ? ` · danni se fallisce la prova` : ""}`, ...(r || { total: 0, dice: [], mods: [] }), crit: "", note: X.ammoEff });
@@ -150,6 +155,7 @@ function cbDamage(X, mult) {
   const r = CPR.rollExpr(auto ? X.afDmg : X.dmg, { damage: true });
   if (!r) return toast(`Danno non valido: "${auto ? X.afDmg : X.dmg}"`, "err");
   if (auto && mult > 1) { const raw = r.total - (r.crit === "injury" ? 5 : 0), add = raw * (mult - 1); r.mods.push({ l: `× ${mult} autofire`, v: add }); r.total += add; }
+  if (X.noCrit && r.crit === "injury") { r.crit = ""; r.total -= 5; r.mods = (r.mods || []).filter(m => m.l !== "Critical Injury"); r.note = "Quest'arma non causa Critical Injury"; }
   const weak = X.weakness && (cbMem[X.key] || {}).weak ? [{ l: "Individuare Debolezze", v: X.weakness }] : [];
   [...(num(X.ammo.dmgMod) ? [{ l: X.ammo.name, v: num(X.ammo.dmgMod) }] : []), ...modsFor(X.mods, ["damage"]), ...weak].forEach(m => { r.mods.push({ l: m.l, v: m.v }); r.total += m.v; });
   const aimed = L && L.aim && !auto ? CPR.AIMED.find(a => a.id === L.aim) : null;
