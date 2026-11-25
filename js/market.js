@@ -227,7 +227,7 @@ window.MK = (() => {
     const s = weaponStats(it), T = (window.CPR && CPR.weaponType(it.cat)) || {};
     const note = [it.quality && it.quality !== "standard" ? qualityLabel(it.quality) : "", it.exotic ? "Exotic" : "", it.special].filter(Boolean).join(" · ");
     return { cat: it.cat || "", name: it.name, skill: s.skill, dmg: s.dmg, rof: s.rof, mag: s.mag === "" ? "" : String(s.mag), ...(it.auto != null && it.auto !== T.auto ? { auto: it.auto } : {}),
-      ...(it.quality && it.quality !== "standard" ? { quality: it.quality } : {}), ...(it.range ? { range: it.range } : {}), ...(it.autoRange ? { autoRange: it.autoRange } : {}), note, market: it.id };
+      ...(it.quality && it.quality !== "standard" ? { quality: it.quality } : {}), ...(it.afDmg ? { afDmg: it.afDmg } : {}), ...(num(it.afShots) ? { afShots: num(it.afShots) } : {}), ...(it.range ? { range: it.range } : {}), ...(it.autoRange ? { autoRange: it.autoRange } : {}), note, market: it.id };
   };
 
   // ---------- formato a blocchi ----------

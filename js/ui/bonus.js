@@ -13,7 +13,20 @@ const bonusItemOk = (e, b) => !b.item || gearItems(e).some(it => norm2(it.name) 
 const bonusActive = (e, b) => b.on !== false && num(b.v) && bonusItemOk(e, b);
 // bonus manuali e degli oggetti per un bersaglio, nel formato dei tiri { l, v }
 const extraBonus = (e, target) => bonusesOf(e).filter(b => b.target === target && bonusActive(e, b)).map(b => ({ l: b.name || b.item || "Bonus", v: num(b.v), manual: true }));
-const statExtra = (e, id) => { const l = [...extraBonus(e, "STAT:" + id), ...agentBonus(e, "STAT:" + id)], t = l.reduce((x, b) => x + b.v, 0); return t + frameBonus(e, id, statBase(e, id) + t).reduce((x, b) => x + b.v, 0); };
+// cyberware che alza una STAT (fx «stat»): si somma alla base, senza superare il massimo dell'impianto
+function cyberStatBonus(e, id, cur) {
+  if (!cyberItems(e).length) return [];
+  const out = [];
+  for (const b of cyberFx(e).stat[id] || []) {
+    const add = Math.max(0, Math.min(b.v, (b.max ?? 99) - cur));
+    if (add) { out.push({ l: `${b.l} (cyberware${b.max ? `, max ${b.max}` : ""})`, v: add }); cur += add; }
+  }
+  return out;
+}
+const statExtra = (e, id) => {
+  const l = [...extraBonus(e, "STAT:" + id), ...agentBonus(e, "STAT:" + id), ...cyberStatBonus(e, id, statBase(e, id))], t = l.reduce((x, b) => x + b.v, 0);
+  return t + frameBonus(e, id, statBase(e, id) + t).reduce((x, b) => x + b.v, 0);
+};
 
 // bersagli selezionabili: STAT e abilità (anche le custom)
 function bonusTargets(e) {
@@ -30,7 +43,8 @@ function bonusRows(e) {
     if (st.id === "EMP") { const cs = cyberStats(e); if (cs.current != null) { const emp = Math.max(0, Math.floor(cs.current / 10)); if (emp !== raw) auto.push({ l: "Umanità (EMP = umanità / 10)", v: emp - raw }); } }
     if (CPR.PEN_STATS.includes(st.id) && pcPen(e)) auto.push({ l: "Armatura pesante", v: pcPen(e) });
     auto.push(...agentBonus(e, t));
-    auto.push(...frameBonus(e, st.id, statBase(e, st.id) + [...extraBonus(e, t), ...agentBonus(e, t)].reduce((x, b) => x + b.v, 0)));
+    const cyS = cyberStatBonus(e, st.id, statBase(e, st.id)); auto.push(...cyS);
+    auto.push(...frameBonus(e, st.id, statBase(e, st.id) + [...extraBonus(e, t), ...agentBonus(e, t), ...cyS].reduce((x, b) => x + b.v, 0)));
     const man = bonusesOf(e).filter(b => b.target === t);
     if (auto.length || man.length) rows.push({ t, label: st.id, kind: "stat", base: raw, baseTxt: `${raw}`, auto, man, total: statEff(e, st.id) });
   }
@@ -76,7 +90,8 @@ function bnAuto(e, target, lvl) {
     if (id === "EMP") { const cs = cyberStats(e); if (cs.current != null) { const emp = Math.max(0, Math.floor(cs.current / 10)); if (emp !== raw) out.push({ l: "Umanità", v: emp - raw }); } }
     if (CPR.PEN_STATS.includes(id) && pcPen(e)) out.push({ l: "Armatura", v: pcPen(e) });
     out.push(...agentBonus(e, target));
-    out.push(...frameBonus(e, id, statBase(e, id) + [...bnForm.list.filter(b => b.target === target && bnOn(b)), ...agentBonus(e, target)].reduce((x, b) => x + num(b.v), 0)));
+    const cyS = cyberStatBonus(e, id, statBase(e, id)); out.push(...cyS);
+    out.push(...frameBonus(e, id, statBase(e, id) + [...bnForm.list.filter(b => b.target === target && bnOn(b)), ...agentBonus(e, target), ...cyS].reduce((x, b) => x + num(b.v), 0)));
   } else if (kind === "skill") {
     const fx = cyberFx(e);
     out.push(...roleSkillBonus(e, id).map(b => ({ l: b.l + " (Ruolo)", v: b.v })), ...CW.skillBonus(fx, id, lvl).map(b => ({ l: b.l, v: b.v })), ...agentBonus(e, target));

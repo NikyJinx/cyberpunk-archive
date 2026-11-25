@@ -22,6 +22,7 @@ function finishSrc(X) {
   X.dmg = X.ammo.dmg && CPR.parse(X.ammo.dmg) ? X.ammo.dmg : (X.baseDmg || w.dmg || T.dmg || "");
   // autofire: danno e moltiplicatore massimo si possono cambiare per l'arma (es. modificata dal Tech)
   X.afDmg = w.afDmg && CPR.parse(w.afDmg) ? String(w.afDmg).replace(/\s+/g, "") : "2d6";
+  X.afShots = num(w.afShots) || 10;
   X.base = X.single.reduce((t, p) => t + p.v, 0);
   X.afBase = X.auto.reduce((t, p) => t + p.v, 0);
   X.attrs = `data-src="${X.kind}" data-id="${esc(X.id)}" data-i="${X.i}"${X.tok ? ` data-tok="${esc(X.tok)}"` : ""}`;
@@ -94,8 +95,8 @@ function cbRoll(X, mode = "single") {
   if (!X) return;
   const M = cbMem[X.key] = cbMem[X.key] || {};
   const auto = mode === "auto" || mode === "supp", aimLoc = !auto && M.aim ? (M.loc || "head") : "";
-  // ogni attacco spara un colpo, autofire e soppressione 10
-  const shots = X.mag ? (auto ? 10 : 1) : 0;
+  // ogni attacco spara un colpo, autofire e soppressione 10 (l'autofire di alcune armi ne spara di più: afShots)
+  const shots = X.mag ? (mode === "auto" ? X.afShots : auto ? 10 : 1) : 0;
   // effetti speciali attivati sull'attacco (es. In Fiamme dei Nastri): consumano cariche
   const RD = X.kind === "pc" && !X.isSub ? spRiders(X) : { cost: 0, note: "" }, chL = RD.cost ? chargesLeftOf(X.w) : null;
   if (RD.cost && chL != null && chL < RD.cost) return toast(`${X.w.name}: cariche finite (${chL}). Serve una batteria nuova`, "err");
@@ -173,7 +174,7 @@ function cbCard(X) {
       ${btn(`data-action="cb-roll" ${A} data-mode="single"`, `⌖ Attack <b>${X.base}</b>`, "btn small", "Tira per colpire: il risultato si segna sulla tabella delle VD")}
       <label class="check cb-aim" title="Colpo mirato: −8 al tiro"><input type="checkbox" data-cb-aim ${A} ${M.aim ? "checked" : ""}> Mirato −8</label>
       <select class="cb-loc" data-cb-loc ${A} aria-label="Dove miri" ${M.aim ? "" : "disabled"}>${CPR.AIMED.map(a => `<option value="${a.id}" ${a.id === (M.loc || "head") ? "selected" : ""}>${a.label}</option>`).join("")}</select>
-      ${X.autoMax ? btn(`data-action="cb-roll" ${A} data-mode="auto"`, `Autofire <b>${X.afBase}</b> ×${X.autoMax}`, "btn small ghost", `REF + Autofire ${X.afLvl} + 1d10, 10 colpi: danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}`) + btn(`data-action="cb-roll" ${A} data-mode="supp"`, "Soppressione", "btn small ghost", "Fuoco di soppressione, 10 colpi") : ""}
+      ${X.autoMax ? btn(`data-action="cb-roll" ${A} data-mode="auto"`, `Autofire <b>${X.afBase}</b> ×${X.autoMax}`, "btn small ghost", `REF + Autofire ${X.afLvl} + 1d10, ${X.afShots} colpi: danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}`) + btn(`data-action="cb-roll" ${A} data-mode="supp"`, "Soppressione", "btn small ghost", "Fuoco di soppressione, 10 colpi") : ""}
       ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo ${A} ${X.edit ? "" : "disabled"} title="${X.mag ? "Cambiando tipo, i colpi nel caricatore tornano nelle scorte e ricarichi con il nuovo tipo" : "Tipo di munizioni"}">${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}${X.mag ? ` (${ammoStockN(state.entries.find(x => x.id === X.id), ammoFam(X.cat), a.id)})` : ""}</option>`).join("")}</select></label>` : ""}
       ${X.mag && X.edit ? btn(`data-action="cb-reload" data-id="${esc(X.id)}" data-i="${X.i}"`, `⟳ Ricarica <small>${ammoStockN(state.entries.find(x => x.id === X.id), ammoFam(X.cat), X.ammo.id)} in scorta</small>`, "btn small ghost cyan", `Riempie il caricatore con le munizioni ${ammoFam(X.cat)} · ${X.ammo.name} dell'inventario`) : ""}
       ${X.weakness ? `<label class="check cb-aim" title="Individuare Debolezze: +${X.weakness} al danno del primo colpo a segno del round (prima dell'armatura)"><input type="checkbox" data-cb-weak ${A} ${M.weak ? "checked" : ""}> 1° colpo del round +${X.weakness}</label>` : ""}
@@ -346,7 +347,7 @@ function editSheet(id) {
     <input data-f="afDmg" placeholder="Autofire 2d6" title="Danno dell'autofire (vuoto = 2d6). Vale anche 3d6kh2 = tira 3d6 e tieni i 2 più alti" value="${esc(w.afDmg || "")}">
     <input data-f="auto" type="number" min="0" max="10" placeholder="× max" title="Moltiplicatore massimo dell'autofire (vuoto = quello della categoria: SMG 3, fucile d'assalto 4; 0 o vuoto su armi senza autofire)" value="${esc(w.auto ?? "")}">
     <input data-f="note" placeholder="Note (Smartgun, Excellent…)" value="${esc(w.note)}">
-    <input type="hidden" data-f="away" value="${w.away ? "1" : ""}"><input type="hidden" data-f="quality" value="${esc(w.quality || "")}"><input type="hidden" data-f="market" value="${esc(w.market || "")}"><input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}"><input type="hidden" data-f="loaded" value="${esc(w.loaded ?? "")}"><input type="hidden" data-f="slots" value="${esc(w.slots ?? "")}"><input type="hidden" data-f="attach" value="${esc(w.attach && w.attach.length ? JSON.stringify(w.attach) : "")}"><input type="hidden" data-f="xtra" value="${esc(w.specials || w.charges ? JSON.stringify({ specials: w.specials, charges: w.charges, chargesLeft: w.chargesLeft, batteryCost: w.batteryCost }) : "")}">
+    <input type="hidden" data-f="away" value="${w.away ? "1" : ""}"><input type="hidden" data-f="afShots" value="${esc(w.afShots || "")}"><input type="hidden" data-f="quality" value="${esc(w.quality || "")}"><input type="hidden" data-f="market" value="${esc(w.market || "")}"><input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}"><input type="hidden" data-f="loaded" value="${esc(w.loaded ?? "")}"><input type="hidden" data-f="slots" value="${esc(w.slots ?? "")}"><input type="hidden" data-f="attach" value="${esc(w.attach && w.attach.length ? JSON.stringify(w.attach) : "")}"><input type="hidden" data-f="xtra" value="${esc(w.specials || w.charges ? JSON.stringify({ specials: w.specials, charges: w.charges, chargesLeft: w.chargesLeft, batteryCost: w.batteryCost }) : "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
   const modRow = (m = {}) => `<div class="sh-row mod-row">
     <label class="check" title="Attivo"><input type="checkbox" data-f="on" ${m.on === false ? "" : "checked"}></label>
@@ -454,7 +455,7 @@ function editSheet(id) {
     for (const st of CPR.STATS) { const x = nv("st-" + st.id); if (x != null) stats[st.id] = x; }
     for (const k of CPR.SKILLS) { const x = nv("sk-" + k.id); if (x) skills[k.id] = x; }
     const custom = readRows(form, "#sh-cus .sh-row").filter(c => c.name).map(c => ({ ...c, lvl: num(c.lvl) }));
-    const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name).map(({ away, loaded, slots, attach, xtra, ...w }) => ({ ...(xtra ? (() => { try { return JSON.parse(xtra); } catch { return {}; } })() : {}), ...w, auto: w.auto === "" ? "" : num(w.auto), ...(away ? { away: true } : {}),
+    const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name).map(({ away, loaded, slots, attach, xtra, afShots, ...w }) => ({ ...(xtra ? (() => { try { return JSON.parse(xtra); } catch { return {}; } })() : {}), ...w, auto: w.auto === "" ? "" : num(w.auto), ...(away ? { away: true } : {}), ...(num(afShots) ? { afShots: num(afShots) } : {}),
       ...(loaded !== "" && loaded != null ? { loaded: num(loaded) } : {}), ...(slots !== "" && slots != null ? { slots: num(slots) } : {}), ...(attach ? (() => { try { return { attach: JSON.parse(attach) }; } catch { return {}; } })() : {}) }));
     const badW = weapons.filter(w => (w.dmg && !CPR.parse(w.dmg)) || (w.afDmg && !CPR.parse(w.afDmg)));
     if (badW.length) return toast(`Danno non valido in: ${badW.map(w => w.name).join(", ")} (es. 3d6, 2d6+2, 3d6kh2)`, "err");

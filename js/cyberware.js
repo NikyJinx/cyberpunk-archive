@@ -7,8 +7,9 @@
 //    body   → +v al BODY (max)              setBody → BODY fissato
 //    pain   → ignora Seriously Wounded      chip  → abilità scelta a livello 3 o 4 (it.lvl)
 //    weapon → arma da aggiungere alla scheda
+//    stat   → +v a una STAT (stat: "COOL"), fino a max      chip con skill/lvl → abilità fissa (chip homebrew)
 //  cond = vale solo quando lo attivi (es. Sandevistan, percezione con la vista)
-//  key  = effetti con la stessa chiave non si sommano (installazioni multiple non cumulative)
+//  key  = effetti con la stessa chiave non si sommano (installazioni multiple non cumulative): vale il più forte
 // ============================================================
 window.CW = (() => {
   const GROUPS = [
@@ -196,17 +197,26 @@ window.CW = (() => {
     if (opts.chipCap != null) { let n = 0; inst = inst.filter(x => !x.c.chip || ++n <= opts.chipCap); }
     const have = id => inst.filter(x => x.c.id === id).length;
     const count = id => inst.filter(x => x.c.id === id || x.c.as === id).length;   // «as»: conta come un altro impianto
-    const out = { skill: {}, mods: [], body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0, warn: [] };
-    const seen = new Set();
+    const out = { skill: {}, mods: [], stat: {}, body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0, warn: [] };
     let body = +baseBody || 0, frame = null; const frames = [];
+    // effetti validi; con la stessa chiave resta il più forte (es. Analizzatore di Stress potenziato sul normale)
+    const ok = [], best = {};
     for (const { it, c } of inst) for (const f of c.fx || []) {
       if (f.cond) out.cond.push({ c, f, on: !!it.on, it });
       if (f.cond && !it.on) continue;
       if (f.needs && !have(f.needs)) continue;
       if (f.min && count(f.count || c.id) < f.min) continue;
-      if (f.key) { if (seen.has(f.key)) continue; seen.add(f.key); }
+      const x = { it, c, f }; ok.push(x);
+      if (f.key && (!best[f.key] || num(f.v) > num(best[f.key].f.v))) best[f.key] = x;
+    }
+    for (const x of ok) {
+      const { it, c, f } = x;
+      if (f.key && best[f.key] !== x) continue;
       if (f.t === "skill") for (const s of f.skills) (out.skill[s] = out.skill[s] || []).push({ l: c.name, v: f.v });
-      if (f.t === "chip" && it.param) (out.skill[it.param] = out.skill[it.param] || []).push({ l: c.name, chip: +it.lvl === 4 ? 4 : 3 });
+      // Chip Abilità: abilità e livello scelti all'acquisto; un chip homebrew li ha fissi (f.skill, f.lvl)
+      const chipSk = f.skill || it.param, chipLv = f.lvl || it.lvl;
+      if (f.t === "chip" && chipSk) (out.skill[chipSk] = out.skill[chipSk] || []).push({ l: c.name, chip: +chipLv === 4 ? 4 : 3 });
+      if (f.t === "stat" && f.stat) (out.stat[f.stat] = out.stat[f.stat] || []).push({ l: c.name, v: num(f.v), max: f.max });
       if (f.t === "mod") out.mods.push({ name: c.name, target: f.target, value: f.v });
       if (f.t === "body") body = Math.min(f.max || 99, body + f.v);
       // Telaio Lineare: si controlla e si applica dopo i Lacci (vedi sotto)

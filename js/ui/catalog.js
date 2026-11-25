@@ -50,6 +50,7 @@ function cyberFxHtml(e, compact = false) {
   // abilità raggruppate per impianto (in Combattimento non servono)
   if (!compact) { const by = {}; Object.entries(fx.skill).forEach(([sk, list]) => { const k = CPR.skill(sk); list.forEach(b => { (by[b.l] = by[b.l] || []).push(b.chip ? `${k ? k.label : sk} a livello ${b.chip}` : `+${b.v} ${k ? k.label : sk}`); }); });
     Object.entries(by).forEach(([n, l]) => lines.push(`${esc(n)}: ${esc(l.join(", "))}`)); }
+  Object.entries(fx.stat || {}).forEach(([st, l]) => l.forEach(b => lines.push(`${esc(b.l)}: ${st} +${b.v}${b.max ? ` (massimo ${b.max})` : ""}`)));
   fx.mods.forEach(m => lines.push(`${esc(m.name)}: ${m.value > 0 ? "+" : ""}${m.value} ${esc((CPR.MOD_TARGETS.find(t => t[0] === m.target) || [, m.target])[1])}`));
   if (fx.body !== rawBody(e)) lines.push(`BODY ${rawBody(e)} → <b>${fx.body}</b> (PF, soglie delle ferite e Death Save aggiornati)`);
   (fx.warn || []).forEach(w => lines.push(`⚠ ${esc(w.name)} non ha effetto: serve ${esc(w.miss.join(" e "))}`));
@@ -109,11 +110,13 @@ function editCyberHb(cid) {
         <div class="field"><label>Richiede</label><input name="req" value="${esc(old.req || "")}" placeholder="es. Cyberbraccio, 2 Slot"></div>
         <div class="field full"><label>Descrizione</label><textarea name="desc" rows="3">${esc(old.desc || "")}</textarea></div>
         <h3 class="sh-h field full">Effetto nei tiri <small>facoltativo</small></h3>
-        <div class="field"><label>Tipo di effetto</label><select name="ft">${[["", "Nessuno"], ["skill", "Bonus a un'abilità"], ["mod", "Bonus a un tipo di tiro"], ["body", "+ BODY"], ["weapon", "Arma integrata"], ["pain", "Ignora Seriously Wounded"]].map(([v, l]) => `<option value="${v}" ${v === (f0.t || "") ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-        <div class="field"><label>Valore (±)</label><input name="fv" type="number" min="-10" max="10" value="${esc(f0.v ?? 2)}"></div>
-        <div class="field"><label>Abilità (bonus a un'abilità)</label><select name="fs">${skOpts((f0.skills || [])[0] || "")}</select></div>
+        <div class="field"><label>Tipo di effetto</label><select name="ft">${[["", "Nessuno"], ["skill", "Bonus a un'abilità"], ["mod", "Bonus a un tipo di tiro"], ["stat", "Bonus a una STAT"], ["chip", "Chip: abilità a livello fisso"], ["body", "+ BODY"], ["weapon", "Arma integrata"], ["pain", "Ignora Seriously Wounded"], ["smart", "Collegamento Smartgun"]].map(([v, l]) => `<option value="${v}" ${v === (f0.t || "") ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="field"><label>Valore (±) · livello per un chip</label><input name="fv" type="number" min="-10" max="10" value="${esc(f0.v ?? f0.lvl ?? 2)}" title="Per un chip: il livello (3 o 4)"></div>
+        <div class="field"><label>Abilità (bonus o chip)</label><select name="fs">${skOpts((f0.skills || [])[0] || f0.skill || "")}</select></div>
         <div class="field"><label>Seconda abilità</label><select name="fs2">${skOpts((f0.skills || [])[1] || "")}</select></div>
         <div class="field"><label>Tipo di tiro (bonus a un tipo)</label><select name="fm">${CPR.MOD_TARGETS.map(([v, l]) => `<option value="${v}" ${v === (f0.target || "attack") ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="field"><label>STAT (bonus a una STAT)</label><select name="fst">${CPR.STATS.map(st => `<option ${st.id === (f0.stat || "COOL") ? "selected" : ""}>${st.id}</option>`).join("")}</select></div>
+        <div class="field"><label>Massimo della STAT</label><input name="fmax" type="number" min="1" max="20" value="${esc(f0.max ?? 10)}"></div>
         <div class="field"><label>Solo a comando (es. «Attivato»)</label><input name="fc" value="${esc(f0.cond || "")}" placeholder="vuoto = sempre attivo"></div>
         <div class="field"><label>Arma: categoria</label><select name="fwc">${CPR.WEAPON_TYPES.map(t => `<option value="${t.id}" ${t.id === (f0.cat || "mmelee") ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</select></div>
         <div class="field"><label>Arma: danno</label><input name="fwd" value="${esc(f0.dmg || "2d6")}"></div>
@@ -139,9 +142,16 @@ function editCyberHb(cid) {
     const v = k => form.elements[k].value.trim(), ft = v("ft");
     if (ft === "weapon" && !CPR.parse(v("fwd"))) return toast("Danno dell'arma non valido (es. 2d6)", "err");
     const fx = !ft ? [] : [{ t: ft, v: num(v("fv")), ...(ft === "skill" ? { skills: [v("fs"), v("fs2")].filter(Boolean) } : {}), ...(ft === "mod" ? { target: v("fm") } : {}),
-      ...(ft === "body" ? { max: 10 } : {}), ...(ft === "weapon" ? { name: v("name"), cat: v("fwc"), dmg: v("fwd"), rof: (CPR.weaponType(v("fwc")) || {}).rof || 1 } : {}), ...(v("fc") ? { cond: v("fc") } : {}) }];
+      ...(ft === "body" ? { max: 10 } : {}), ...(ft === "stat" ? { stat: v("fst"), max: num(v("fmax")) || 10 } : {}), ...(ft === "chip" ? { skill: v("fs"), lvl: num(v("fv")) === 4 ? 4 : 3 } : {}), ...(ft === "weapon" ? { name: v("name"), cat: v("fwc"), dmg: v("fwd"), rof: (CPR.weaponType(v("fwc")) || {}).rof || 1 } : {}), ...(v("fc") ? { cond: v("fc") } : {}), ...(f0.key && f0.t === ft ? { key: f0.key } : {}) }];
+    // più di due abilità (es. SURESHOT): se le prime due non cambiano, le altre restano
+    if (ft === "skill" && f0.t === "skill" && (f0.skills || []).length > 2 && fx[0].skills.join() === f0.skills.slice(0, 2).join()) fx[0].skills = [...f0.skills];
     if (ft === "skill" && !fx[0].skills.length) return toast("Scegli almeno un'abilità", "err");
-    const item = { id: old.id || "cw-" + NET.uid(), name: v("name"), g: v("g"), inst: v("inst"), cost: num(v("cost")), cat: v("cat"), pu: num(v("pu")), dice: v("dice") || "N/A", slots: num(v("slots")), req: v("req"), desc: v("desc"), fx };
+    if (ft === "chip" && !fx[0].skill) return toast("Scegli l'abilità del chip", "err");
+    // effetti in più (es. un impianto che ne unisce due) restano com'erano: il modulo cambia solo il primo
+    if (fx.length && (old.fx || []).length > 1) fx.push(...old.fx.slice(1));
+    const item = { ...old, id: old.id || "cw-" + NET.uid(), name: v("name"), g: v("g"), inst: v("inst"), cost: num(v("cost")), cat: v("cat"), pu: num(v("pu")), dice: v("dice") || "N/A", slots: num(v("slots")), req: v("req"), desc: v("desc"), fx,
+      ...(ft === "chip" || (old.chip && ft === "") ? { chip: true } : {}) };
+    delete item.custom;
     save(old.id ? R.items.map(x => x.id === old.id ? item : x) : [...(R.items || []), item]);
   });
 }

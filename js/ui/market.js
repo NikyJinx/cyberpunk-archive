@@ -439,6 +439,7 @@ const MK_FORMS = {
     ["skill", "Abilità", "select", { opts: [["", "quella della categoria"], ...CPR.WEAPON_SKILLS.map(k => [k, CPR.skill(k).label])] }],
     ["dmg", "Danno", "text", { ph: "vuoto = quello della categoria" }], ["mag", "Caricatore", "num"], ["rof", "ROF", "num"], ["hands", "Mani", "num", { def: 1 }],
     ["auto", "Autofire (× massimo)", "num", { ph: "vuoto = categoria" }],
+    ["afDmg", "Danno dell'autofire", "text", { ph: "vuoto = 2d6 · 3d6kh2 = tieni i 2 più alti" }], ["afShots", "Colpi per attacco in autofire", "num", { ph: "vuoto = 10" }],
     ["quality", "Qualità", "select", { opts: [["standard", "Standard"], ["poor", "Poor"], ["excellent", "Excellent (+1 a colpire)"]] }],
     ["conceal", "Occultabile", "chk"], ["exotic", "Esotica", "chk"],
     ["cost", "Costo (eb)", "num", { def: 500 }], ["src", "Fonte", "text"],
@@ -499,7 +500,8 @@ function editMkItem(type, id) {
   });
   form.addEventListener("submit", async ev => {
     ev.preventDefault();
-    const E = form.elements, out = { id: old.id || "mk-" + NET.uid(), type };
+    // i campi che il modulo non mostra (es. bonus e effetti degli oggetti) restano
+    const E = form.elements, out = { ...Object.fromEntries(Object.entries(old).filter(([k]) => !F.fields().some(f => f[0] === k) && k !== "custom")), id: old.id || "mk-" + NET.uid(), type };
     for (const [k, , kind] of F.fields()) {
       if (k === "gdest" || k === "mtarget" || k === "mv") continue;
       if (kind === "chk") { if (E[k].checked) out[k] = true; continue; }
@@ -507,6 +509,7 @@ function editMkItem(type, id) {
       out[k] = kind === "num" ? num(raw) : raw;
     }
     if (type === "weapon" && out.dmg && !CPR.parse(out.dmg)) return toast("Danno non valido (es. 3d6)", "err");
+    if (type === "weapon" && out.afDmg && !CPR.parse(out.afDmg)) return toast("Danno dell'autofire non valido (es. 2d6 o 3d6kh2)", "err");
     if (type === "deckprog" && out.dmg && !CPR.parse(out.dmg)) return toast("Danno non valido (es. 2d6)", "err");
     if (type === "armor" && out.pen) out.pen = -Math.abs(out.pen);
     if (type === "gear") { out.gcat = E.gdest.value || "equip"; if (out.gcat === "veicoli" && !out.label) out.label = "Veicolo"; if (out.gcat === "vestiti" && !out.label) out.label = "Vestito";
