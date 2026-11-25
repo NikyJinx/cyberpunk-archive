@@ -21,6 +21,17 @@ const AMMO_BASE = [
   { id: "ap", name: "Perforanti", fams: [...AM_P, AM_S, AM_A, AM_G, AM_R], cost: 100, eff: "Ablano l'armatura di 2 invece che di 1." },
   { id: "smart", name: "Smart", fams: [AM_A, ...AM_P, AM_R, AM_S], cost: 500, eff: "Serve il cyberware Mirino. Colpo singolo fallito di 4 o meno: ritenti subito contro la stessa VD, con 10 al posto del d10 (si può spendere LUCK; chi schiva i proiettili può schivare anche questo)." },
   { id: "sleep", name: "Soporifere", fams: [AM_A, AM_G], cost: 500, nodmg: true, dv: 13, eff: "Nessun danno: la vittima supera Resist Torture/Drugs VD {dv} o cade Prona e Priva di Sensi per 1 minuto (si sveglia se subisce danni o se qualcuno usa un'Azione per scuoterla)." },
+  // Solo of Fortune 2045 · atkSingle/atkAimed/atkAuto: bonus solo in quel modo di fuoco · req "prec": abilità dell'arma 7+ o Combat Awareness · lot: pezzi per acquisto
+  { id: "burrow", name: "Burrowing", fams: [AM_A, ...AM_P, AM_S], cost: 40, src: "Solo of Fortune 2045", eff: "Le Critical Injury che causa non si possono rappezzare con un Quick Fix, salvo che il Quick Fix le tolga per sempre; Quick Fix e Treatment di queste ferite hanno VD +2." },
+  { id: "hprec", name: "High Precision", fams: [AM_A, ...AM_P, AM_S], cost: 100, atkSingle: 1, atkAimed: 2, req: "prec", src: "Solo of Fortune 2045", eff: "Servono l'abilità dell'arma a 7 o più o Combat Awareness 1 o più: +1 a colpire in colpo singolo, +2 nei colpi mirati (già contati nei tiri se hai i requisiti)." },
+  { id: "explosive", name: "Esplosive", fams: [AM_A, ...AM_P, AM_S], cost: 100, atk: -2, noAim: true, src: "Solo of Fortune 2045", eff: "Niente colpi mirati. −2 a colpire (già contato). I 5 sui dadi del danno contano come 6, solo per vedere se l'attacco causa una Critical Injury." },
+  { id: "hvel", name: "High Velocity", fams: [...AM_P], cost: 40, src: "Solo of Fortune 2045", eff: "Chi prova a schivare l'attacco ha −2." },
+  { id: "hyper", name: "Hyper Expansive", fams: [AM_A, ...AM_P, AM_S], cost: 100, src: "Solo of Fortune 2045", eff: "Quando causa una Critical Injury, la vittima ritira finché esce una ferita che non ha già e subisce anche quella (senza Bonus Damage)." },
+  { id: "hollow", name: "Hollow Point / Frecce seghettate", fams: [AM_A, ...AM_P, AM_S], cost: 30, src: "Solo of Fortune 2045", eff: "La prima volta che causa una Critical Injury nell'attacco, la penalità base del Death Save della vittima sale di 1 (oltre a quella della ferita). Se la ferita è Foreign Object, la vittima ritira finché esce un'altra ferita e subisce anche quella (con Bonus Damage)." },
+  { id: "tracer", name: "Traccianti", fams: [...AM_P], cost: 40, atkAuto: 1, src: "Solo of Fortune 2045", eff: "+1 a colpire in autofire (già contato)." },
+  { id: "arrowhypo", name: "Arrowhypo", fams: [AM_A], cost: 100, lot: 1, nodmg: true, src: "Solo of Fortune 2045", eff: "Nessun danno: chi è colpito riceve la dose di droga da strada caricata nella freccia (una per freccia). Si recupera come una freccia normale." },
+  { id: "airburst", name: "Airburst", fams: [AM_G, AM_R], cost: 125, lot: 1, nodmg: true, src: "Solo of Fortune 2045", eff: "Si carica con tre dosi della stessa droga da strada. Nessun danno: chi è colpito è esposto a una dose (gas). Filtri Nasali, maschere antigas e simili proteggono." },
+  { id: "minic9", name: "Mini C9 (Stickybomb)", fams: [AM_G], cost: 60, lot: 1, dmg: "6d6", src: "Solo of Fortune 2045", eff: "Solo per la Stickybomb Launcher. Colpito il bersaglio, la carica si pianta con Demolitions VD 17: 6d6 se riesce, 4d6 se fallisce, come una granata perforante. Esplode solo a distanza, con un'Azione, dopo 30 secondi (10 round)." },
 ].map(a => ({ ...a, id: "cpr-" + a.id, builtin: true }));
 // la Base c'è per tutti i calibri tranne granate e razzi
 const ammoBaseOk = fam => fam !== AM_G && fam !== AM_R;
@@ -77,13 +88,18 @@ function ammoModEdit(id, gi) {
 
 // ---------- ACCESSORI DELLE ARMI ----------
 // arma: w.slots (slot accessori, di base 3, si cambiano con − / +), w.attach = [{ name, ref }] (montati: escono dall'inventario)
-// voce del Night Market: attach = { slots, sa (solo armi con Shoulder Arms), nobow, mag: "ext" | "drum", smart, scope }
+// voce del Night Market: attach = { slots, sa (solo armi con Shoulder Arms), nobow, mag: "ext" | "drum", smart, scope,
+//   cats (solo queste categorie), exoticOk (anche su armi esotiche), one (uno solo di quel tipo), dv (Weaponstech per montarlo),
+//   autofire { table, mult, up (se Excellent o già con autofire), shots (colpi per raffica) } }
 const ATT_SLOTS = 3;
 const MAG_TABLE = { mpistol: [12, 18, 36], hpistol: [8, 14, 28], vhpistol: [8, 14, 28], smg: [30, 40, 50], hsmg: [40, 50, 60], shotgun: [4, 8, 16], ar: [25, 35, 45], sniper: [4, 8, 12], gl: [2, 4, 6], rl: [1, 2, 3] };
 const attCatalog = it => { const m = MK.all().find(x => x.type === "gear" && x.attach && (x.id === it.ref || norm2(x.name) === norm2(it.name))); return m || null; };
 const attOf = w => (w.attach || []).map(a => ({ ...a, A: (attCatalog(a) || {}).attach || { slots: 1 } }));
 const slotsOfW = w => hasVal(w.slots) ? num(w.slots) : ATT_SLOTS;
-const slotsUsed = w => attOf(w).reduce((t, a) => t + num(a.A.slots || 1), 0);
+const attSlotsN = A => num((A || {}).slots ?? 1);
+const slotsUsed = w => attOf(w).reduce((t, a) => t + attSlotsN(a.A), 0);
+// accessorio che cambia l'autofire (Pistol Autosear, Shotgun Automatic Control Group, SMG Cyclic Internals)
+const attAutofire = w => (attOf(w).find(a => a.A.autofire) || {}).A;
 const hasAtt = (w, k) => attOf(w).some(a => a.A[k]);
 // caricatore con gli accessori: Esteso o Tamburo dalla tabella dei caricatori
 const magWithAtt = (w, cat) => { const m = attOf(w).find(a => a.A.mag), T = MAG_TABLE[cat]; return m && T ? T[m.A.mag === "drum" ? 2 : 1] : 0; };
@@ -92,8 +108,8 @@ function attHtml(e, i, w, edit) {
   const list = attOf(w), used = slotsUsed(w), max = slotsOfW(w), id = esc(e.id);
   const inv = gearItems(e).map((it, gi) => ({ it, gi, m: attCatalog(it) })).filter(x => x.m && num(x.it.qty || 1) > 0);
   return `<div class="cb-att"><span class="sh-k">Accessori ${used}/${max}</span>
-    ${list.map((a, k) => `<span class="cb-att-chip" title="${esc(((attCatalog(a) || {}).desc) || "")}">${esc(a.name)}${num(a.A.slots) > 1 ? ` <small>${a.A.slots} slot</small>` : ""}${edit ? `<button type="button" data-action="att-off" data-id="${id}" data-i="${i}" data-k="${k}" aria-label="Smonta ${esc(a.name)}" title="Smonta: torna nell'inventario">×</button>` : ""}</span>`).join("")}
-    ${edit && inv.length ? `<select data-att-on data-id="${id}" data-i="${i}" aria-label="Monta un accessorio"><option value="">+ Monta…</option>${inv.map(x => `<option value="${x.gi}">${esc(x.it.name)} (${x.m.attach.slots || 1} slot)</option>`).join("")}</select>` : ""}
+    ${list.map((a, k) => `<span class="cb-att-chip" title="${esc(((attCatalog(a) || {}).desc) || "")}">${esc(a.name)}${attSlotsN(a.A) !== 1 ? ` <small>${attSlotsN(a.A)} slot</small>` : ""}${edit ? `<button type="button" data-action="att-off" data-id="${id}" data-i="${i}" data-k="${k}" aria-label="Smonta ${esc(a.name)}" title="Smonta: torna nell'inventario">×</button>` : ""}</span>`).join("")}
+    ${edit && inv.length ? `<select data-att-on data-id="${id}" data-i="${i}" aria-label="Monta un accessorio"><option value="">+ Monta…</option>${inv.map(x => `<option value="${x.gi}">${esc(x.it.name)} (${attSlotsN(x.m.attach)} slot)</option>`).join("")}</select>` : ""}
     ${edit ? `<span class="cb-att-sl"><button type="button" class="gp-btn" data-action="att-slots" data-id="${id}" data-i="${i}" data-d="-1" title="Uno slot in meno" aria-label="Uno slot in meno">−</button><button type="button" class="gp-btn" data-action="att-slots" data-id="${id}" data-i="${i}" data-d="1" title="Uno slot in più" aria-label="Uno slot in più">+</button></span>` : ""}
     ${list.filter(a => (attCatalog(a) || {}).desc).map(a => `<small class="cb-att-note">${esc(a.name)}: ${esc(shortAtt(attCatalog(a)))}</small>`).join("")}</div>`;
 }
@@ -110,7 +126,10 @@ async function attOn(id, i, gi) {
   const e = state.entries.find(x => x.id === id), w = e && (sheetOf(e).weapons || [])[i], it = e && gearItems(e)[gi], m = it && attCatalog(it); if (!w || !m || !Store.canEdit()) return;
   const A = m.attach, cat = sheetWeaponCat(w), T = CPR.weaponType(cat) || {};
   const why = [CPR.isMelee(cat) ? "è un'arma da mischia" : "", A.sa && (w.skill || T.skill) !== "shoulderarms" ? "serve un'arma con Shoulder Arms" : "", A.nobow && cat === "bow" ? "non va su archi e balestre" : "",
-    A.mag && hasAtt(w, "mag") ? "c'è già un caricatore speciale" : "", isExoticW(w) ? "l'arma è esotica" : "", slotsUsed(w) + num(A.slots || 1) > slotsOfW(w) ? `servono ${A.slots || 1} slot liberi (ne restano ${slotsOfW(w) - slotsUsed(w)})` : ""].filter(Boolean);
+    A.mag && hasAtt(w, "mag") ? "c'è già un caricatore speciale" : "", isExoticW(w) && !A.exoticOk ? "l'arma è esotica" : "",
+    A.cats && !A.cats.includes(cat) ? "non è adatto a questa categoria di arma" : "", A.one && attOf(w).some(a => a.A.one === A.one) ? "ne ha già uno dello stesso tipo" : "",
+    slotsUsed(w) + attSlotsN(A) > slotsOfW(w) ? `servono ${attSlotsN(A)} slot liberi (ne restano ${slotsOfW(w) - slotsUsed(w)})` : ""].filter(Boolean);
+  if (A.dv && !why.length && !(await askConfirm(`Per montare ${m.name} serve una prova di Weaponstech VD ${A.dv}. Riuscita?`, "Monta"))) return refreshSheetView(id);
   if (why.length && !(await askConfirm(`${m.name} su ${w.name}: ${why.join(", ")}. Montarlo comunque?`, "Monta"))) return refreshSheetView(id);
   entryPatch(id, x => {
     const W = x.sheet.weapons[i], g = x.gear.items[gi]; if (!W || !g) return null;

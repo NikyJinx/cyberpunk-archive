@@ -41,7 +41,7 @@ function bonusRows(e) {
     const t = "STAT:" + st.id, raw = num((s.stats || {})[st.id]), auto = [];
     if (st.id === "BODY" && statBase(e, "BODY") !== raw) auto.push({ l: "Cyberware", v: statBase(e, "BODY") - raw });
     if (st.id === "EMP") { const cs = cyberStats(e); if (cs.current != null) { const emp = Math.max(0, Math.floor(cs.current / 10)); if (emp !== raw) auto.push({ l: "Umanità (EMP = umanità / 10)", v: emp - raw }); } }
-    if (CPR.PEN_STATS.includes(st.id) && pcPen(e)) auto.push({ l: "Armatura pesante", v: pcPen(e) });
+    if (CPR.PEN_STATS.includes(st.id) && pcPen(e, st.id)) auto.push({ l: "Armatura pesante", v: pcPen(e, st.id) });
     auto.push(...agentBonus(e, t));
     const cyS = cyberStatBonus(e, st.id, statBase(e, st.id)); auto.push(...cyS);
     auto.push(...frameBonus(e, st.id, statBase(e, st.id) + [...extraBonus(e, t), ...agentBonus(e, t), ...cyS].reduce((x, b) => x + b.v, 0)));
@@ -88,7 +88,7 @@ function bnAuto(e, target, lvl) {
     const raw = num((s.stats || {})[id]);
     if (id === "BODY" && statBase(e, "BODY") !== raw) out.push({ l: "Cyberware", v: statBase(e, "BODY") - raw });
     if (id === "EMP") { const cs = cyberStats(e); if (cs.current != null) { const emp = Math.max(0, Math.floor(cs.current / 10)); if (emp !== raw) out.push({ l: "Umanità", v: emp - raw }); } }
-    if (CPR.PEN_STATS.includes(id) && pcPen(e)) out.push({ l: "Armatura", v: pcPen(e) });
+    if (CPR.PEN_STATS.includes(id) && pcPen(e, id)) out.push({ l: "Armatura", v: pcPen(e, id) });
     out.push(...agentBonus(e, target));
     const cyS = cyberStatBonus(e, id, statBase(e, id)); out.push(...cyS);
     out.push(...frameBonus(e, id, statBase(e, id) + [...bnForm.list.filter(b => b.target === target && bnOn(b)), ...agentBonus(e, target), ...cyS].reduce((x, b) => x + num(b.v), 0)));

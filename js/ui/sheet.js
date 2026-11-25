@@ -13,17 +13,21 @@ const statBase = (e, id) => id === "BODY" && cyberItems(e).length ? CW.effects(c
 // l'EMP segue l'umanità del cyberware: EMP = umanità attuale / 10
 // l'armatura pesante toglie a REF, DEX e MOVE (−2 Medium/Heavy Armorjack, −4 Flak/Metalgear), salvo armatura migliorata
 const sheetArmorType = a => a.type || ((CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(a.name)) || {}).id) || "custom";
-const pcPen = e => {
+// stat: il malus per quella STAT (alcune armature, es. Heavy Metalgear, ne hanno uno diverso per REF, DEX e MOVE)
+const pcPen = (e, stat) => {
   const s = sheetOf(e), ar = s.armor || {};
   if (s.armorNoPen) return 0;
-  const pens = ["head", "body"].map(l => { const a = ar[l] || {}; return hasVal(a.pen) ? -Math.abs(num(a.pen)) : ((CPR.armorType(sheetArmorType(a)) || {}).pen || 0); });
+  const pens = ["head", "body"].map(l => { const a = ar[l] || {};
+    if (stat && a.penBy && hasVal(a.penBy[stat])) return -Math.abs(num(a.penBy[stat]));
+    return hasVal(a.pen) ? -Math.abs(num(a.pen)) : ((CPR.armorType(sheetArmorType(a)) || {}).pen || 0); });
   return Math.min(0, ...pens);
 };
+const pcPenTxt = e => { const v = CPR.PEN_STATS.map(st => [st, pcPen(e, st)]); return v.every(x => x[1] === v[0][1]) ? `${v[0][1]} a REF, DEX e MOVE` : v.map(([st, n]) => `${n} a ${st}`).join(", "); };
 // + i bonus manuali e degli oggetti alla STAT (riquadro «Bonus a STAT e abilità»); non cambiano HP e Death Save
 function statEff(e, id) {
   let v = null;
   if (id === "EMP") { const cs = cyberStats(e); if (cs.current != null) v = Math.max(0, Math.floor(cs.current / 10)); }
-  if (v == null) v = CPR.PEN_STATS.includes(id) ? Math.max(0, statBase(e, id) + pcPen(e)) : statBase(e, id);
+  if (v == null) v = CPR.PEN_STATS.includes(id) ? Math.max(0, statBase(e, id) + pcPen(e, id)) : statBase(e, id);
   return Math.max(0, v + statExtra(e, id));
 }
 const hpMaxOf = e => { const s = sheetOf(e); return hasVal(s.hpMax) ? num(s.hpMax) : CPR.hpMax(statBase(e, "BODY"), statBase(e, "WILL")); };
@@ -218,7 +222,7 @@ function sheetHtml(e) {
           ${edit ? `<span class="sh-adj"><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="-1" title="Spendi 1 punto">−</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="1">+</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="reset" title="Ripristina (nuova sessione)">↺</button></span>` : ""}</div>
         <div class="sh-box"><span class="l">Move</span><span class="n">${statEff(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statEff(e, "MOVE")} squares · Run ${runOf(e)} m</span></div>
       </div>
-      ${pcPen(e) ? `<div class="en-pen">Armatura pesante: ${pcPen(e)} a REF, DEX e MOVE (già calcolato nei valori e nei tiri)</div>` : ""}
+      ${pcPen(e) ? `<div class="en-pen">Armatura pesante: ${pcPenTxt(e)} (già calcolato nei valori e nei tiri)</div>` : ""}
       ${(s.status || []).length ? `<div class="sh-status"><span class="sh-k">Stati</span>${statusChips(s.status, null)}</div>` : ""}
 
       <div class="sh-stats">${CPR.STATS.map(st => roll("stat:" + st.id, `<span class="k">${st.id}</span><span class="v">${statEff(e, st.id)}</span>${statEff(e, st.id) !== statBase(e, st.id) ? `<small>base ${statBase(e, st.id)}</small>` : ""}`, "sh-stat", `${st.label}: ${st.id} + 1d10`)).join("")}</div>
