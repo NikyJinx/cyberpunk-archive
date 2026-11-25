@@ -274,6 +274,12 @@ window.Store = (() => {
               rec.custom = out;
             }
             if (Array.isArray(r.tags) && Array.isArray(old.tags)) rec.tags = [...new Set([...old.tags, ...r.tags])];
+            // cataloghi homebrew (meta markethb, cyberhb…): le voci del file si aggiungono o aggiornano per id, le altre restano
+            if (Array.isArray(r.items) && Array.isArray(old.items)) {
+              const out = old.items.map(x => ({ ...x }));
+              for (const x of r.items) { const i = out.findIndex(y => y.id === x.id); if (i >= 0) out[i] = x; else out.push(x); }
+              rec.items = out;
+            }
           }
         }
         await save(col, { ...rec, createdAt: rec.createdAt });
