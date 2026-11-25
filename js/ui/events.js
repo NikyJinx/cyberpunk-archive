@@ -378,6 +378,7 @@ document.addEventListener("click", ev => {
 document.addEventListener("change", ev => {
   const t = ev.target;
   // armi: mirato (solo su questo dispositivo), munizioni e tabelle (nell'arma)
+  if (t.matches("[data-cb-qual]")) { const X = wSrc(t.dataset.src, t.dataset.id, t.dataset.i, t.dataset.tok); if (X && X.edit) X.save("quality", t.value === "standard" ? "" : t.value); return; }
   if (t.matches("[data-cb-aim], [data-cb-loc], [data-cb-ammo], [data-cb-table], [data-cb-atable], [data-cb-weak]")) {
     const X = wSrc(t.dataset.src, t.dataset.id, t.dataset.i, t.dataset.tok); if (!X) return;
     if (t.matches("[data-cb-aim], [data-cb-loc], [data-cb-weak]")) {

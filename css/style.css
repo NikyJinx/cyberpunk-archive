@@ -1235,7 +1235,7 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .sh-rows { display: grid; gap: 6px; margin: 6px 0 8px; }
 .sh-row { display: grid; gap: 6px; align-items: center; }
 .sh-row.cus { grid-template-columns: 1fr 130px 80px 70px 28px; }
-.sh-row.wpn-row { grid-template-columns: 140px 1.3fr 1fr 80px 50px 50px 90px 60px 1fr 28px; }
+.sh-row.wpn-row { grid-template-columns: 140px 1.3fr 1fr 80px 50px 50px 90px 60px 110px 1fr 28px; }
 .sh-row input, .sh-row select { min-width: 0; font-size: 14px; padding: 6px 8px; }
 
 /* ---------- log dei dadi ---------- */

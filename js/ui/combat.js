@@ -46,6 +46,7 @@ function finishSrc(X) {
 }
 // qualità Excellent: +1 a colpire (le armi del Night Market la salvano nell'arma)
 const qualBonus = w => w.quality === "excellent" ? [{ l: "Excellent", v: 1 }] : [];
+const WQ = [["standard", "Standard"], ["excellent", "Excellent (HQ, +1)"], ["poor", "Poor"]];
 const isSmartgun = w => /smart\s*gun|smartgun/i.test(`${w.name || ""} ${w.note || ""}`) || hasAtt(w, "smart");
 const smartBonus = (e, w) => isSmartgun(w) && cyberItems(e).length && cyberFx(e).smart ? [{ l: "Smartgun Link", v: 1 }] : [];
 function pcSrc(e, i) {
@@ -203,12 +204,14 @@ function cbCard(X) {
       ${X.noAim || X.ammo.noAim ? `<span class="hint">niente colpi mirati</span>` : `<label class="check cb-aim" title="Colpo mirato: −8 al tiro"><input type="checkbox" data-cb-aim ${A} ${M.aim ? "checked" : ""}> Mirato −8</label>
       <select class="cb-loc" data-cb-loc ${A} aria-label="Dove miri" ${M.aim ? "" : "disabled"}>${CPR.AIMED.map(a => `<option value="${a.id}" ${a.id === (M.loc || "head") ? "selected" : ""}>${a.label}</option>`).join("")}</select>`}`}
       ${X.autoMax ? btn(`data-action="cb-roll" ${A} data-mode="auto"`, `Autofire <b>${X.afBase}</b> ×${X.autoMax}`, "btn small ghost", `REF + Autofire ${X.afLvl} + 1d10, ${X.afShots} colpi: danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}`) + btn(`data-action="cb-roll" ${A} data-mode="supp"`, "Soppressione", "btn small ghost", `Fuoco di soppressione, ${X.suppShots} colpi`) : ""}
+      ${X.kind === "pc" && !X.isSub ? `<label class="cb-ammo"><span class="sh-k">Qualità</span><select data-cb-qual ${A} ${X.edit ? "" : "disabled"} title="Excellent: +1 agli attacchi · Poor: si inceppa con un 1">${WQ.map(([v, l]) => `<option value="${v}" ${v === (X.w.quality || "standard") ? "selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
       ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo ${A} ${X.edit ? "" : "disabled"} title="${X.mag ? "Cambiando tipo, i colpi nel caricatore tornano nelle scorte e ricarichi con il nuovo tipo" : "Tipo di munizioni"}">${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}${X.mag ? ` (${ammoStockN(state.entries.find(x => x.id === X.id), X.fam, a.id)})` : ""}</option>`).join("")}</select></label>` : ""}
       ${X.mag && X.edit ? btn(`data-action="cb-reload" data-id="${esc(X.id)}" data-i="${X.i}"`, `⟳ Ricarica <small>${ammoStockN(state.entries.find(x => x.id === X.id), X.fam, X.ammo.id)} in scorta</small>`, "btn small ghost cyan", `Riempie il caricatore con le munizioni ${X.fam} · ${X.ammo.name} dell'inventario`) : ""}
       ${X.weakness ? `<label class="check cb-aim" title="Individuare Debolezze: +${X.weakness} al danno del primo colpo a segno del round (prima dell'armatura)"><input type="checkbox" data-cb-weak ${A} ${M.weak ? "checked" : ""}> 1° colpo del round +${X.weakness}</label>` : ""}
       <span class="cb-dmg">${dmg}</span>
     </div>
     ${X.ammoEff ? `<p class="hint">${esc(X.ammo.name)}: ${esc(X.ammoEff)}</p>` : ""}
+    ${X.kind === "pc" && X.w.quality === "poor" ? `<p class="hint">Poor: con un 1 sul d10 l'arma si inceppa (un'Azione per sbloccarla).</p>` : ""}
     ${X.kind === "pc" && !X.isSub ? spHtml(X) : ""}
     ${X.kind === "pc" && !X.melee && !X.isSub ? attHtml(X.ent, X.i, X.w, X.edit) : ""}
     ${X.kind === "pc" && !X.isSub ? attAttacks(X.ent, X.i).map(x => cbCard(pcSrc(X.ent, `${X.i}.${x.k}`))).join("") : ""}
@@ -374,8 +377,9 @@ function editSheet(id) {
     <input data-f="mag" placeholder="Mag" value="${esc(w.mag)}">
     <input data-f="afDmg" placeholder="Autofire 2d6" title="Danno dell'autofire (vuoto = 2d6). Vale anche 3d6kh2 = tira 3d6 e tieni i 2 più alti" value="${esc(w.afDmg || "")}">
     <input data-f="auto" type="number" min="0" max="10" placeholder="× max" title="Moltiplicatore massimo dell'autofire (vuoto = quello della categoria: SMG 3, fucile d'assalto 4; 0 o vuoto su armi senza autofire)" value="${esc(w.auto ?? "")}">
-    <input data-f="note" placeholder="Note (Smartgun, Excellent…)" value="${esc(w.note)}">
-    <input type="hidden" data-f="away" value="${w.away ? "1" : ""}"><input type="hidden" data-f="afShots" value="${esc(w.afShots || "")}"><input type="hidden" data-f="quality" value="${esc(w.quality || "")}"><input type="hidden" data-f="market" value="${esc(w.market || "")}"><input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}"><input type="hidden" data-f="loaded" value="${esc(w.loaded ?? "")}"><input type="hidden" data-f="slots" value="${esc(w.slots ?? "")}"><input type="hidden" data-f="attach" value="${esc(w.attach && w.attach.length ? JSON.stringify(w.attach) : "")}"><input type="hidden" data-f="xtra" value="${esc(w.specials || w.charges || w.autoOnly || w.noAim || w.suppShots ? JSON.stringify({ specials: w.specials, charges: w.charges, chargesLeft: w.chargesLeft, batteryCost: w.batteryCost, autoOnly: w.autoOnly, noAim: w.noAim, suppShots: w.suppShots }) : "")}">
+    <select data-f="quality" title="Qualità: Excellent dà +1 agli attacchi; Poor si inceppa con un 1">${WQ.map(([v, l]) => `<option value="${v}" ${v === (w.quality || "standard") ? "selected" : ""}>${l}</option>`).join("")}</select>
+    <input data-f="note" placeholder="Note (Smartgun…)" value="${esc(w.note)}">
+    <input type="hidden" data-f="away" value="${w.away ? "1" : ""}"><input type="hidden" data-f="afShots" value="${esc(w.afShots || "")}"><input type="hidden" data-f="market" value="${esc(w.market || "")}"><input type="hidden" data-f="ammo" value="${esc(w.ammo || "")}"><input type="hidden" data-f="range" value="${esc(w.range || "")}"><input type="hidden" data-f="autoRange" value="${esc(w.autoRange || "")}"><input type="hidden" data-f="loaded" value="${esc(w.loaded ?? "")}"><input type="hidden" data-f="slots" value="${esc(w.slots ?? "")}"><input type="hidden" data-f="attach" value="${esc(w.attach && w.attach.length ? JSON.stringify(w.attach) : "")}"><input type="hidden" data-f="xtra" value="${esc(w.specials || w.charges || w.autoOnly || w.noAim || w.suppShots ? JSON.stringify({ specials: w.specials, charges: w.charges, chargesLeft: w.chargesLeft, batteryCost: w.batteryCost, autoOnly: w.autoOnly, noAim: w.noAim, suppShots: w.suppShots }) : "")}">
     <button type="button" class="gp-btn del" data-row-del aria-label="Rimuovi">✕</button></div>`;
   const modRow = (m = {}) => `<div class="sh-row mod-row">
     <label class="check" title="Attivo"><input type="checkbox" data-f="on" ${m.on === false ? "" : "checked"}></label>
@@ -483,7 +487,7 @@ function editSheet(id) {
     for (const st of CPR.STATS) { const x = nv("st-" + st.id); if (x != null) stats[st.id] = x; }
     for (const k of CPR.SKILLS) { const x = nv("sk-" + k.id); if (x) skills[k.id] = x; }
     const custom = readRows(form, "#sh-cus .sh-row").filter(c => c.name).map(c => ({ ...c, lvl: num(c.lvl) }));
-    const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name).map(({ away, loaded, slots, attach, xtra, afShots, ...w }) => ({ ...(xtra ? (() => { try { return JSON.parse(xtra); } catch { return {}; } })() : {}), ...w, auto: w.auto === "" ? "" : num(w.auto), ...(away ? { away: true } : {}), ...(num(afShots) ? { afShots: num(afShots) } : {}),
+    const weapons = readRows(form, "#sh-wpn .sh-row").filter(w => w.name).map(({ away, loaded, slots, attach, xtra, afShots, quality, ...w }) => ({ ...(quality && quality !== "standard" ? { quality } : {}), ...(xtra ? (() => { try { return JSON.parse(xtra); } catch { return {}; } })() : {}), ...w, auto: w.auto === "" ? "" : num(w.auto), ...(away ? { away: true } : {}), ...(num(afShots) ? { afShots: num(afShots) } : {}),
       ...(loaded !== "" && loaded != null ? { loaded: num(loaded) } : {}), ...(slots !== "" && slots != null ? { slots: num(slots) } : {}), ...(attach ? (() => { try { return { attach: JSON.parse(attach) }; } catch { return {}; } })() : {}) }));
     const badW = weapons.filter(w => (w.dmg && !CPR.parse(w.dmg)) || (w.afDmg && !CPR.parse(w.afDmg)));
     if (badW.length) return toast(`Danno non valido in: ${badW.map(w => w.name).join(", ")} (es. 3d6, 2d6+2, 3d6kh2)`, "err");
