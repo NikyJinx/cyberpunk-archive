@@ -7,8 +7,11 @@
 const rules = () => state.rules || { id: "rules", ammo: [], status: CPR.DEFAULT_STATUS };
 const STD_AMMO = { id: "", name: "Base", atk: 0, dmg: "", dmgMod: 0, eff: "" };
 // tipi per un'arma: Base, quelli del manuale (arms.js) e quelli del GM per il suo calibro
-const ammoList = cat => ammoTypesFor((CPR.weaponType(cat) || {}).ammo || "");
-const ammoOf = (cat, id) => ammoList(cat).find(a => a.id === id) || STD_AMMO;
+const ammoList = (cat, fam) => ammoTypesFor(fam || (CPR.weaponType(cat) || {}).ammo || "");
+// calibro di un'arma: di solito quello della categoria, ma alcune armi esotiche ne usano un altro (Pistola a Dardi: Frecce)
+const famOfW = (w, cat) => (w && (w.fam || (MK.byId(w.market || "") || {}).fam)) || ((CPR.weaponType(cat) || {}).ammo || "");
+const noBaseW = w => !!(w && (w.noBase || (MK.byId(w.market || "") || {}).noBase));
+const ammoOf = (cat, id, fam) => ammoList(cat, fam).find(a => a.id === id) || STD_AMMO;
 
 // ---------- MUNIZIONI: caricatore, scorte e ricarica ----------
 // arma della scheda: w.loaded = colpi nel caricatore (vuoto = pieno: armi già in scheda o appena comprate), w.ammo = tipo caricato
@@ -21,7 +24,7 @@ const ammoFam = cat => (CPR.weaponType(cat) || {}).ammo || "";
 const ammoTypesFor = fam => !fam ? [STD_AMMO] : [...(ammoBaseOk(fam) ? [STD_AMMO] : []), ...(fam ? AMMO_BASE.filter(a => a.fams.includes(fam)) : []), ...(rules().ammo || []).filter(a => !a.fam || a.fam === fam)];
 const ammoCost = (fam, a) => a.id ? num(a.cost) : num(((rules().stdCost || {})[fam]) ?? AMMO_STD_COST[fam] ?? 10);
 const magOf = (w, cat) => magWithAtt(w, cat) || num(w.mag) || (CPR.weaponType(cat) || {}).mag || 0;
-const loadedOf = (w, cat) => hasVal(w.loaded) ? clamp(num(w.loaded), 0, magOf(w, cat)) : !w.ammo && ammoFam(cat) && !ammoBaseOk(ammoFam(cat)) ? 0 : magOf(w, cat);
+const loadedOf = (w, cat) => { const f = famOfW(w, cat); return hasVal(w.loaded) ? clamp(num(w.loaded), 0, magOf(w, cat)) : !w.ammo && f && (!ammoBaseOk(f) || noBaseW(w)) ? 0 : magOf(w, cat); };
 const ammoStock = (e, fam, id) => gearItems(e).find(it => it.cat === "munizioni" && it.fam === fam && (it.ammo || "") === (id || ""));
 const ammoStockN = (e, fam, id) => { const g = ammoStock(e, fam, id); return g ? num(g.qty) : 0; };
 // aggiunge (o toglie, n negativo) colpi alle scorte di un record; toglie la voce a zero
@@ -36,10 +39,10 @@ function ammoAdd(x, fam, id, n) {
 // ricarica dalle scorte; con un tipo diverso i colpi rimasti tornano nelle scorte
 function cbReload(id, i, type) {
   const e = state.entries.find(x => x.id === id), R = e && pcWeapon(e, i), w = R && R.w; if (!w || !Store.canEdit()) return;
-  const cat = sheetWeaponCat(w), fam = ammoFam(cat), mag = magOf(w, cat); if (!fam || !mag) return;
-  const cur = w.ammo || "", to = type == null ? cur : type || "", A = ammoOfE(e, cat, to), change = to !== cur;
+  const cat = sheetWeaponCat(w), fam = famOfW(w, cat), mag = magOf(w, cat); if (!fam || !mag) return;
+  const cur = w.ammo || "", to = type == null ? cur : type || "", A = ammoOfE(e, cat, to, fam), change = to !== cur;
   // granate e razzi non hanno la Base: quelle «di serie» nel caricatore non tornano nelle scorte
-  const have = loadedOf(w, cat), keep = change ? 0 : have, back = change && (cur || ammoBaseOk(fam)) ? have : 0;
+  const have = loadedOf(w, cat), keep = change ? 0 : have, back = change && (cur || (ammoBaseOk(fam) && !noBaseW(w))) ? have : 0;
   const need = mag - keep, take = Math.min(need, ammoStockN(e, fam, to));
   if (!change && !need) return toast("Il caricatore è già pieno", "ok");
   if (!change && !take) return toast(`Niente ${fam} · ${A.name} nelle scorte: comprale al Night Market (Munizioni)`, "err");
@@ -48,7 +51,7 @@ function cbReload(id, i, type) {
     ammoAdd(x, fam, cur, back); ammoAdd(x, fam, to, -take);
     W.ammo = to; W.loaded = keep + take;
     return x;
-  }, `${w.name}: ${keep + take}/${mag} ${A.name}${back ? ` · ${back} ${ammoOfE(e, cat, cur).name} tornati nelle scorte` : ""}${take < need ? (take || keep ? " · scorte finite" : " · niente nelle scorte") : ""}`);
+  }, `${w.name}: ${keep + take}/${mag} ${A.name}${back ? ` · ${back} ${ammoOfE(e, cat, cur, fam).name} tornati nelle scorte` : ""}${take < need ? (take || keep ? " · scorte finite" : " · niente nelle scorte") : ""}`);
 }
 const statusList = () => rules().status || [];
 const statusOf2 = id => statusList().find(s => s.id === id);

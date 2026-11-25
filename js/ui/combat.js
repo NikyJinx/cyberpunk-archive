@@ -14,10 +14,11 @@ function finishSrc(X) {
   X.autoMax = hasVal(w.auto) ? num(w.auto) : T.auto || 0;   // 0 = niente autofire (es. Railgun)
   X.RT = X.melee ? null : CPR.rangeById(w.range || CPR.rangeDefault(X.cat));
   X.AT = X.autoMax ? CPR.autoById(w.autoRange || CPR.autoDefault(X.cat) || "smg") : null;
-  X.ammo = X.ent ? ammoOfE(X.ent, X.cat, w.ammo || "") : ammoOf(X.cat, w.ammo || "");
+  X.ammo = X.ent ? ammoOfE(X.ent, X.cat, w.ammo || "", famOfW(w, X.cat)) : ammoOf(X.cat, w.ammo || "", famOfW(w, X.cat));
   X.ammoEff = ammoEff(X.ammo);
   // caricatore: solo le armi della scheda con un caricatore (i nemici del GM non contano i colpi)
-  X.mag = X.kind === "pc" && !X.melee && ammoFam(X.cat) ? magOf(w, X.cat) : 0;
+  X.fam = famOfW(w, X.cat); X.noBase = noBaseW(w);
+  X.mag = X.kind === "pc" && !X.melee && X.fam ? magOf(w, X.cat) : 0;
   X.loaded = X.mag ? loadedOf(w, X.cat) : null;
   X.dmg = X.ammo.dmg && CPR.parse(X.ammo.dmg) ? X.ammo.dmg : (X.baseDmg || w.dmg || T.dmg || "");
   // autofire: danno e moltiplicatore massimo si possono cambiare per l'arma (es. modificata dal Tech)
@@ -185,7 +186,7 @@ function cbCard(X) {
   if (!X) return "";
   const M = cbMem[X.key] || {}, L = M.last, A = X.attrs;
   const btn = (attrs, inner, cls, title = "") => `<button type="button" class="${cls}" ${attrs} ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
-  const ammoOpts = X.ent ? ammoListE(X.ent, X.cat) : ammoList(X.cat);
+  const ammoOpts = (X.ent ? ammoListE(X.ent, X.cat, X.fam) : ammoList(X.cat, X.fam)).filter(a => !X.noBase || a.id || a.id === (X.w.ammo || "x"));
   let dmg = "";
   if (L && L.mode === "auto") dmg = [...new Set(L.bands.filter(b => b.mult).map(b => b.mult))].sort((a, b) => a - b).map(m => btn(`data-action="cb-dmg" ${A} data-mult="${m}"`, `Danno ${esc(X.afDmg)} × ${m}`, "btn small yellow")).join("");
   if (X.ammo.nodmg) dmg = btn(`data-action="cb-dmg" ${A}`, X.ammo.sdmg ? `${esc(X.ammo.name)}: ${esc(X.ammo.sdmg)} se fallisce` : `Effetto ${esc(X.ammo.name)}`, "btn small yellow", X.ammoEff);
@@ -202,8 +203,8 @@ function cbCard(X) {
       ${X.noAim || X.ammo.noAim ? `<span class="hint">niente colpi mirati</span>` : `<label class="check cb-aim" title="Colpo mirato: −8 al tiro"><input type="checkbox" data-cb-aim ${A} ${M.aim ? "checked" : ""}> Mirato −8</label>
       <select class="cb-loc" data-cb-loc ${A} aria-label="Dove miri" ${M.aim ? "" : "disabled"}>${CPR.AIMED.map(a => `<option value="${a.id}" ${a.id === (M.loc || "head") ? "selected" : ""}>${a.label}</option>`).join("")}</select>`}`}
       ${X.autoMax ? btn(`data-action="cb-roll" ${A} data-mode="auto"`, `Autofire <b>${X.afBase}</b> ×${X.autoMax}`, "btn small ghost", `REF + Autofire ${X.afLvl} + 1d10, ${X.afShots} colpi: danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}`) + btn(`data-action="cb-roll" ${A} data-mode="supp"`, "Soppressione", "btn small ghost", `Fuoco di soppressione, ${X.suppShots} colpi`) : ""}
-      ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo ${A} ${X.edit ? "" : "disabled"} title="${X.mag ? "Cambiando tipo, i colpi nel caricatore tornano nelle scorte e ricarichi con il nuovo tipo" : "Tipo di munizioni"}">${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}${X.mag ? ` (${ammoStockN(state.entries.find(x => x.id === X.id), ammoFam(X.cat), a.id)})` : ""}</option>`).join("")}</select></label>` : ""}
-      ${X.mag && X.edit ? btn(`data-action="cb-reload" data-id="${esc(X.id)}" data-i="${X.i}"`, `⟳ Ricarica <small>${ammoStockN(state.entries.find(x => x.id === X.id), ammoFam(X.cat), X.ammo.id)} in scorta</small>`, "btn small ghost cyan", `Riempie il caricatore con le munizioni ${ammoFam(X.cat)} · ${X.ammo.name} dell'inventario`) : ""}
+      ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo ${A} ${X.edit ? "" : "disabled"} title="${X.mag ? "Cambiando tipo, i colpi nel caricatore tornano nelle scorte e ricarichi con il nuovo tipo" : "Tipo di munizioni"}">${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}${X.mag ? ` (${ammoStockN(state.entries.find(x => x.id === X.id), X.fam, a.id)})` : ""}</option>`).join("")}</select></label>` : ""}
+      ${X.mag && X.edit ? btn(`data-action="cb-reload" data-id="${esc(X.id)}" data-i="${X.i}"`, `⟳ Ricarica <small>${ammoStockN(state.entries.find(x => x.id === X.id), X.fam, X.ammo.id)} in scorta</small>`, "btn small ghost cyan", `Riempie il caricatore con le munizioni ${X.fam} · ${X.ammo.name} dell'inventario`) : ""}
       ${X.weakness ? `<label class="check cb-aim" title="Individuare Debolezze: +${X.weakness} al danno del primo colpo a segno del round (prima dell'armatura)"><input type="checkbox" data-cb-weak ${A} ${M.weak ? "checked" : ""}> 1° colpo del round +${X.weakness}</label>` : ""}
       <span class="cb-dmg">${dmg}</span>
     </div>

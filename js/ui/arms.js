@@ -40,14 +40,14 @@ const ammoEff = a => String(a.eff || "").replace(/\{dv\}/g, a.dv ?? "").replace(
 // ---------- MUNIZIONI MODIFICATE ----------
 // e.gear.ammoMods = { "<tipo>~<uid>": { base, name, atk, dmg, dmgMod, dv, sdmg, eff } } · le scorte le usano come tipo «ammo»
 const ammoModsOf = e => ((e && e.gear) || {}).ammoMods || {};
-function ammoOfE(e, cat, id) {
-  if (!id || !String(id).includes("~")) return ammoOf(cat, id || "");
+function ammoOfE(e, cat, id, fam) {
+  if (!id || !String(id).includes("~")) return ammoOf(cat, id || "", fam);
   const m = ammoModsOf(e)[id]; if (!m) return ammoOf(cat, String(id).split("~")[0]);
-  const base = ammoTypesFor(ammoFam(cat)).find(t => t.id === m.base) || STD_AMMO;
+  const base = ammoTypesFor(fam || ammoFam(cat)).find(t => t.id === m.base) || STD_AMMO;
   return { ...base, ...m, id, name: m.name || `${base.name} (mod.)`, mod: true };
 }
 // tipi che un'arma della scheda può caricare: quelli del calibro più le munizioni modificate nelle scorte
-const ammoListE = (e, cat) => [...ammoList(cat), ...Object.entries(ammoModsOf(e)).filter(([id]) => ammoStockN(e, ammoFam(cat), id) || (sheetOf(e).weapons || []).some(w => w.ammo === id && sheetWeaponCat(w) === cat)).map(([id]) => ammoOfE(e, cat, id))];
+const ammoListE = (e, cat, fam) => [...ammoList(cat, fam), ...Object.entries(ammoModsOf(e)).filter(([id]) => ammoStockN(e, fam || ammoFam(cat), id) || (sheetOf(e).weapons || []).some(w => w.ammo === id && sheetWeaponCat(w) === cat)).map(([id]) => ammoOfE(e, cat, id, fam))];
 // ✎ su una voce delle scorte: si modificano alcuni colpi (o tutti) e diventano un tipo a parte
 function ammoModEdit(id, gi) {
   const e = state.entries.find(x => x.id === id), g = e && gearItems(e)[gi]; if (!g || g.cat !== "munizioni" || !Store.canEdit()) return;
@@ -141,7 +141,7 @@ async function attOn(id, i, gi) {
 function attOff(id, i, k) {
   const e = state.entries.find(x => x.id === id), w = e && (sheetOf(e).weapons || [])[i], a = w && (w.attach || [])[k]; if (!a || !Store.canEdit()) return;
   entryPatch(id, x => {
-    const W = x.sheet.weapons[i], cat = sheetWeaponCat(W), fam = ammoFam(cat), was = magOf(W, cat), had = loadedOf(W, cat);
+    const W = x.sheet.weapons[i], cat = sheetWeaponCat(W), fam = famOfW(W, cat), was = magOf(W, cat), had = loadedOf(W, cat);
     const spec = ((attCatalog(a) || {}).attach || {}).wpn, sfam = spec ? ammoFam(spec.cat) : "";
     if (sfam && spec.mag) { const n = loadedOf({ ...spec, ammo: a.ammo || "", loaded: a.loaded, attach: [] }, spec.cat); if (n && (a.ammo || ammoBaseOk(sfam))) ammoAdd(x, sfam, a.ammo || "", n); }
     W.attach = (W.attach || []).filter((_, j) => j !== k);
