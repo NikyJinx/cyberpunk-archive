@@ -154,7 +154,7 @@ window.MK = (() => {
     W("e-microwaver", "Microwaver", "vhpistol", 500, { exotic: true, nodmg: true, noAmmo: true, charges: 8, batteryCost: 50, hands: 1,
       special: "Niente danni: Cybertech VD 15 o due pezzi di cyberware o dispositivi (scelti dal GM) si spengono per 1 minuto · A batteria: 8 colpi, batteria di scorta 50 eb", desc: "Un cyberarto spento è come smembrato (Critical Injury), anche se resta attaccato.",
       specials: [{ id: "mw", name: "Microonde", mode: "passive", note: "La vittima supera Cybertech VD 15 o due suoi pezzi di cyberware o dispositivi elettronici (scelti dal GM) si spengono per 1 minuto; un cyberarto spento è come smembrato." }] }),
-    W("e-dartgun", "Pistola a Dardi", "vhpistol", 100, { exotic: true, mag: 8, hands: 1,
+    W("e-dartgun", "Pistola a Dardi", "vhpistol", 100, { exotic: true, mag: 8, hands: 1, fam: "Frecce", noBase: true,
       special: "Solo frecce non Base · Caricatore da 8, si ricarica come una Very Heavy Pistol", desc: "Pistola esotica che spara dardi." }),
     W("e-airpistol", "Pistola Pneumatica", "mpistol", 100, { exotic: true, nodmg: true, noCrit: true, hands: 1,
       special: "Pallini di plastica: niente danni · Con l'Acido toglie 1 SP all'armatura della zona colpita per ogni colpo a segno · Niente Critical Injury · Munizioni al prezzo delle Base da Pistola Media", desc: "Ottima per prendere qualcuno vivo.",
