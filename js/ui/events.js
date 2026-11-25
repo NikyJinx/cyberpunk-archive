@@ -309,7 +309,7 @@ document.addEventListener("click", async ev => {
       break;
     }
     case "tt-dsp": {   // penalità del Death Save dal pannello del token
-      const t = state.tokens.find(x => x.id === tt.sel); if (!t || !Store.canEdit()) break;
+      const t = state.tokens.find(x => x.id === tt.sel); if (!t || !Store.canEdit() || (!tokSheet(t) && !gmTools())) break;
       const e = tokEntry(t), d = num(el.dataset.d);
       if (e && isPerson(e) && hasSheet(e)) sheetPatch(e.id, s => { s.dsp = Math.max(0, num(s.dsp) + d); return s; });
       else saveToken({ ...t, dsp: Math.max(0, num(t.dsp) + d) });

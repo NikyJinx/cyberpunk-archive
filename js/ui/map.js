@@ -257,18 +257,18 @@ function renderSel() {
     box.innerHTML = `<h4>Token</h4><p class="hint">Clicca un token per selezionarlo. Trascinalo per muoverlo (o usa le frecce della tastiera). Il GM copia i nemici con Ctrl+C / Ctrl+V. Rotella = zoom, trascina lo sfondo per spostare la vista.</p>`;
     return;
   }
-  const e = tokEntry(t), hp = tokHp(t), edit = Store.canEdit(), gmt = gmTools();
+  const e = tokEntry(t), hp = tokHp(t), edit = Store.canEdit(), gmt = gmTools(), editHp = edit && (!!tokSheet(t) || gmt);
   const enemy = e && e.kind === "nemico" && e.enemy, sh = tokSheet(t), ED = enemy ? enemyD(e) : null;
   const w = hp && (sh ? woundOf(sh) : ED && ED.painImmune ? (w0 => w0.pen ? { ...w0, pen: 0, label: w0.label + " · ignora le ferite" } : w0)(CPR.wound(hp.hp, hp.max)) : CPR.painFix(CPR.wound(hp.hp, hp.max), !!(ED && ED.painEditor)));
-  const sp = loc => { const a = tokArmor(t, loc); return a ? spBar(loc === "head" ? "Head SP" : "Body SP", a, edit && (d => `data-action="tt-sp" data-loc="${loc}" data-d="${d}"`)) : ""; };
+  const sp = loc => { const a = tokArmor(t, loc); return a ? spBar(loc === "head" ? "Head SP" : "Body SP", a, editHp && (d => `data-action="tt-sp" data-loc="${loc}" data-d="${d}"`)) : ""; };
   box.innerHTML = `
     <h4 style="color:${safeColor(t.color)}">${t.hidden ? "🔒 " : ""}${esc(tokName(t))}</h4>
     ${isGm() && tokHidden(t) ? `<p class="hint gm-hint">Nascosto ai giocatori${!t.hidden ? " (perché la mappa è nascosta)" : ""}.</p>` : ""}
     ${hp ? `<div class="tt-hpblock w-${w.id}">
       <div class="tt-hpline"><span>HP <b>${hp.hp}</b> / ${hp.max}</span><span class="hint">${esc(w.label)}${w.pen ? ` · ${w.pen}` : ""}</span></div>
       <span class="sh-hpbar"><i style="width:${clamp(hp.hp / hp.max * 100, 0, 100)}%"></i><b style="left:${clamp(CPR.seriousAt(hp.max) / hp.max * 100, 0, 100)}%"></b></span>
-      ${edit ? `<span class="sh-adj">${[-5, -1, 1, 5].map(d => `<button type="button" class="gp-btn" data-action="tt-hp" data-d="${d}">${d > 0 ? "+" : "−"}${Math.abs(d) === 1 ? "" : Math.abs(d)}</button>`).join("")}</span>` : ""}
-      ${hp.hp <= 0 ? tokDeathHtml(t, e, enemy, edit) : ""}
+      ${editHp ? `<span class="sh-adj">${[-5, -1, 1, 5].map(d => `<button type="button" class="gp-btn" data-action="tt-hp" data-d="${d}">${d > 0 ? "+" : "−"}${Math.abs(d) === 1 ? "" : Math.abs(d)}</button>`).join("")}</span>` : ""}
+      ${hp.hp <= 0 ? tokDeathHtml(t, e, enemy, editHp) : ""}
     </div>` : ""}
     ${sp("head")}${sp("body")}
     <div class="tt-st"><span class="sh-k">Stati</span>${statusChips(tokStatusIds(t), edit ? (op, st) => `${op === "add" ? "" : `data-action="tok-status" `}data-st-tok="${esc(t.id)}" data-st-op="${op}" data-st="${esc(st)}"` : null)}</div>
@@ -638,14 +638,14 @@ async function tableAction(a, el) {
     }
     case "tt-select": return selectToken(el.dataset.tok);
     case "tt-hp": {
-      if (!t) return;
+      if (!t || (!tokSheet(t) && !gmTools())) return;   // nemici e token generici: solo il GM
       const e = tokSheet(t), d = num(el.dataset.d);
       if (e) return sheetPatch(e.id, s => ({ ...s, hp: clamp(hpOf(e) + d, 0, hpMaxOf(e)) }));
       const hp = tokHp(t); if (!hp) return;
       return saveToken({ ...t, hp: clamp(hp.hp + d, 0, hp.max) });
     }
     case "tt-sp": {
-      if (!t) return;
+      if (!t || (!tokSheet(t) && !gmTools())) return;
       const loc = el.dataset.loc, d = el.dataset.d, e = tokSheet(t);
       if (e) {
         return sheetPatch(e.id, s => armorPatch(s, e, loc, d));
