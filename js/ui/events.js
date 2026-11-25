@@ -328,6 +328,8 @@ document.addEventListener("click", async ev => {
     case "att-off": attOff(id, num(el.dataset.i), num(el.dataset.k)); break;
     case "att-slots": attSlots(id, num(el.dataset.i), num(el.dataset.d)); break;
     case "ammo-mod": ammoModEdit(id, num(el.dataset.i)); break;
+    case "cb-ammo-shop": mkAmmoFor(id, el.dataset.i); break;
+    case "cb-buy-ammo": { const e = state.entries.find(x => x.id === id); mkBack = { id, tab: "combat" }; mkBuy(el.dataset.key, e); break; }
     case "cb-reload": cbReload(id, el.dataset.i); break;
     case "cb-dmg": cbDamage(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.mult)); break;
     case "sheet-status": { const e = state.entries.find(x => x.id === el.dataset.stSheet); if (e && Store.canEdit()) statusOp(el, sheetStatusApply(e)); break; }

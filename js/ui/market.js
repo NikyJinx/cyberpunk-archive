@@ -107,6 +107,24 @@ function ammoShopBody() {
         <td class="gl-n">${r.lot > 1 ? `${r.lot} colpi` : "1"}</td>${mkCostCell(r.cost)}${buy ? mkBuyCell(r.key, r.cost) : ""}</tr>`).join("")).join("")}</tbody></table></div>
     <p class="hint">Le munizioni comprate vanno nell'Equipaggiamento (Munizioni) e si caricano con «⟳ Ricarica» nella tab Combattimento: ogni attacco spara un colpo, autofire e soppressione 10. I tipi oltre la Standard (perforanti, incendiarie…) li definisce il GM in «Tipi di munizioni e stati», con il prezzo.</p>`;
 }
+// munizioni dalla tab Combattimento: i tipi del calibro dell'arma, con prezzo e scorte
+function mkAmmoFor(id, i) {
+  const e = state.entries.find(x => x.id === id), R = e && pcWeapon(e, i), w = R && R.w; if (!w) return;
+  if (!mkCanBuyFor(e)) return toast(mkCfg().open || isGm() ? "Non puoi comprare per questo personaggio" : "Il Night Market è chiuso", "err");
+  const fam = famOfW(w, sheetWeaponCat(w)); if (!fam) return;
+  const list = ammoTypesFor(fam).filter(a => !(noBaseW(w) && !a.id) && (isGm() || !mkHidden(`ammo:${fam}:${a.id}`)) && ammoCost(fam, a));
+  const lot = a => num(a.lot) || AMMO_LOT(fam), money = moneyOf(e);
+  openModal(`<div class="form">
+    <div class="modal-head"><h2>// MUNIZIONI · ${esc(fam)}</h2><button type="button" class="x" data-action="open-entry-tab" data-id="${esc(id)}" data-tab="combat" aria-label="Chiudi">×</button></div>
+    <div class="modal-body">
+      <p class="hint">Per ${esc(w.name)} · ${esc(e.name)} ha ${fmtEb(money)}. Le munizioni vanno nelle scorte; poi si caricano con «⟳ Ricarica» o dal menu Munizioni.</p>
+      <div class="gl-wrap"><table class="gl-t mk-t"><thead><tr><th>Munizioni</th><th>Effetto</th><th>Lotto</th><th>In scorta</th><th>Costo</th><th></th></tr></thead><tbody>
+      ${list.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(ammoEff(a) || (a.id ? "" : "Munizioni base"))}</td><td class="gl-n">${lot(a) > 1 ? `${lot(a)} colpi` : "1"}</td>
+        <td class="gl-n">${ammoStockN(e, fam, a.id)}</td>${mkCostCell(ammoCost(fam, a))}<td class="mk-buy"><button type="button" class="btn small" data-action="cb-buy-ammo" data-id="${esc(id)}" data-key="${esc(`ammo:${fam}:${a.id}`)}">Compra</button></td></tr>`).join("")}
+      </tbody></table></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-action="open-entry-tab" data-id="${esc(id)}" data-tab="combat">Torna al Combattimento</button></div></div>`);
+}
 // tab Cyberdeck: deck, programmi, Black ICE e hardware (questi ultimi dal catalogo NET)
 const netShop = () => [
   ...NET.PROGRAMS.map(p => ({ key: "net:prog:" + p.id, grp: "Programmi", name: p.name, info: `${(NET.CLASSES[p.cls] || {}).label || ""} · ATK ${p.atk} · DEF ${p.def} · REZ ${p.rez}`, desc: p.eff, cost: p.cost, src: p.src })),
@@ -149,8 +167,11 @@ const mkItemOf = key => {
   return (it => it && { ...it, key })(MK.byId(key));
 };
 
-function mkBuy(key) {
-  const e = mkWho(), it = mkItemOf(key); if (!e || !it || !mkCanBuy()) return;
+let mkBack = null;   // dopo l'acquisto si torna qui (es. la tab Combattimento di chi compra)
+const mkCanBuyFor = e => !!e && Store.canEdit() && (mkCfg().open || isGm()) && mkBuyers().some(x => x.id === e.id);
+function mkBuy(key, who) {
+  const e = who || mkWho(), it = mkItemOf(key); if (!e || !it || !(who ? mkCanBuyFor(e) : mkCanBuy())) return;
+  if (!who) mkBack = null;
   const gm = isGm(), price = mkPrice(it.cost), money = moneyOf(e);
   let extra = "";
   if (it.type === "weapon") extra = `<p class="hint">Va nella tab Combattimento: ${esc(MK.weaponStats(it).dmg)} · ROF ${MK.weaponStats(it).rof}${it.special ? ` · ${esc(it.special)}` : ""}</p>`;
@@ -298,7 +319,7 @@ async function mkCommit(e0, it, paid, qty, o) {
   try {
     const saved = await Store.save("entries", e);
     upsert(state.entries, saved); liveSend("entries", saved);
-    closeModal(); route(); refreshParty();
+    closeModal(); if (mkBack) { const b = mkBack; mkBack = null; openEntry(b.id, b.tab); } else route(); refreshParty();
     toast(`${it.name}${qty > 1 ? ` ×${qty}` : ""} comprato${paid ? ` (−${fmtEb(paid)})` : ""}${it.type === "cyber" ? (o.slot === "idle" ? " · in idle" : isExtSlot(o.slot) ? ` · in ${slotDef(e, o.slot).label}` : ` · −${o.hl} umanità`) : ""}`, "ok");
   } catch (err) { fail(err); }
 }
