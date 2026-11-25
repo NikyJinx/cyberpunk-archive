@@ -5,7 +5,9 @@
 
 // ---------- HQ della crew ----------
 // meta "hq" = { name, place, notes, lost (accesso perso), ip, log[{ at, kind: earn|buy|lost, amount, why, imp, from, to }],
-//              owned{ id: livello }, floors[{ id, name, image, notes }], items[] (migliorie custom o modificate) }
+//              owned{ id: livello }, floors[{ id, name, image, notes }], items[] (migliorie custom o modificate),
+//              projects[{ id, imp: "workshop"|"studio", name, who (id del PG), weeks, bonus }] (lavori in corso, +2 a settimana),
+//              gear[{ id, ref (voce del Night Market), name, cost, desc, maker }] (oggetti della base; maker = bonus ai tiri da Maker) }
 // Livello: 0 = non comprata, 1 = comprata, 1 + n = n upgrade.
 const hqRec = () => state.hq || { id: "hq", name: "", ip: 0, log: [], owned: {}, floors: [], items: [] };
 const hqLvl = (H, id) => num((H.owned || {})[id]);
@@ -24,8 +26,9 @@ async function hqSave(fn, msg, full = false) {
 }
 
 function hqRefresh() {
-  const H = hqRec(), edit = Store.canEdit(), a = $("#hq-ipbox"), b = $("#hq-imps");
+  const H = hqRec(), edit = Store.canEdit(), a = $("#hq-ipbox"), b = $("#hq-imps"), c = $("#hq-proj");
   if (a) a.innerHTML = hqIpHtml(H, edit);
+  if (c) c.innerHTML = hqProjHtml(H, edit);
   if (b) b.innerHTML = hqImpsHtml(H, edit);
 }
 function viewHq() {
@@ -51,7 +54,84 @@ function viewHq() {
           ${cur.image && gmTools() ? `<button type="button" class="btn ghost small cyan" data-action="hq-floor-map" data-id="${esc(cur.id)}" title="Crea una mappa tattica con questa piantina (nascosta ai giocatori finché non la mostri)">🗺 Apri sulla Mappa</button>` : ""}</div>` : ""}
       </div>` : `<div class="empty"><div class="big">// NESSUN PIANO</div>${edit ? `Aggiungi i piani della base con le loro piantine.` : ""}</div>`}
 
+    <div id="hq-proj">${hqProjHtml(H, edit)}</div>
+    ${hqGearHtml(H, edit)}
     <div id="hq-imps">${hqImpsHtml(H, edit)}</div>`;
+}
+// ---------- progetti in corso (Studio e Workshop potenziati) ----------
+// ogni settimana di downtime sul progetto +2 alle prove (si accumula); un 1 naturale su una prova azzera il bonus
+const hqProjImps = H => HQ.all().filter(it => it.projects && hqLvl(H, it.id) >= 2);
+const hqProjects = (H = hqRec()) => (H.projects || []).filter(p => !H.lost);
+function hqProjHtml(H, edit) {
+  const imps = hqProjImps(H), list = H.projects || [];
+  if (!imps.length && !list.length) return "";
+  const who = id => { const e = state.entries.find(x => x.id === id); return e ? e.name : "—"; };
+  const pcs = state.entries.filter(e => e.kind === "pg" || (e.kind === "npc" && hasSheet(e)));
+  return `<h3 class="sh-h">Progetti in corso <small>${imps.map(it => it.name).join(" e ") || "nessuna miglioria potenziata"} · +2 a settimana, un 1 naturale azzera il bonus</small></h3>
+    ${list.length ? `<div class="gl-wrap"><table class="gl-t hq-t hq-proj ${H.lost ? "off" : ""}"><thead><tr><th>Progetto</th><th>Chi</th><th>Dove</th><th>Settimane</th><th>Bonus</th>${edit ? "<th></th>" : ""}</tr></thead><tbody>
+      ${list.map(p => `<tr><td><b>${esc(p.name || "Progetto")}</b></td><td>${esc(who(p.who))}</td><td>${esc((HQ.byId(p.imp) || {}).name || p.imp)}</td><td class="gl-n">${num(p.weeks)}</td><td class="gl-n"><b class="hq-bonus">+${num(p.bonus)}</b></td>
+        ${edit ? `<td class="hq-proj-act"><button type="button" class="btn small" data-action="hq-proj-week" data-id="${esc(p.id)}" title="Un'altra settimana di downtime sul progetto: +2">+ Settimana (+2)</button>
+          <button type="button" class="btn ghost small danger" data-action="hq-proj-fumble" data-id="${esc(p.id)}" title="Un 1 naturale su una prova del progetto: i bonus svaniscono">1 naturale</button>
+          <button type="button" class="btn ghost small" data-action="hq-proj-done" data-id="${esc(p.id)}" title="Finito o abbandonato: esce dalla lista">✓ Finito</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<p class="hint">Nessun progetto in corso.</p>`}
+    ${edit && imps.length ? `<form class="hq-earn hq-proj-add" data-hq-proj><input name="name" placeholder="Nome del progetto (es. TEMPEST-15 migliorata)" aria-label="Nome del progetto" required>
+      <select name="who" aria-label="Chi ci lavora">${pcs.map(e => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join("")}</select>
+      <select name="imp" aria-label="Dove">${imps.map(it => `<option value="${esc(it.id)}">${esc(it.name)}</option>`).join("")}</select>
+      <button type="submit" class="btn small">+ Progetto</button></form>` : ""}
+    <p class="hint">Il bonus del progetto si sceglie nei tiri da Creatore (tab Ruoli del Tech) e, con un 1 naturale, si azzera da solo.</p>`;
+}
+function hqProjAdd(form) {
+  const E = form.elements, name = E.name.value.trim(); if (!name) return;
+  hqSave(h => { h.projects = [...(h.projects || []), { id: NET.uid(), imp: E.imp.value, name, who: E.who.value, weeks: 0, bonus: 0 }]; }, `Progetto «${name}» in corso`);
+}
+function hqProjOp(op, id) {
+  const p = (hqRec().projects || []).find(x => x.id === id); if (!p) return;
+  if (op === "week") return hqSave(h => { const x = h.projects.find(y => y.id === id); x.weeks = num(x.weeks) + 1; x.bonus = num(x.bonus) + 2; }, `${p.name}: +2 (totale +${num(p.bonus) + 2})`);
+  if (op === "fumble") return hqSave(h => { const x = h.projects.find(y => y.id === id); x.bonus = 0; }, `${p.name}: 1 naturale, i bonus svaniscono`);
+  if (op === "done") return askConfirm(`«${p.name}» è finito o abbandonato? Esce dalla lista con il suo bonus.`, "Finito").then(ok => ok && hqSave(h => { h.projects = h.projects.filter(y => y.id !== id); }, `${p.name}: fuori dalla lista`));
+}
+
+// ---------- oggetti della base (comprati dalla crew; il prezzo è solo annotato) ----------
+// bonus ai tiri da Creatore: dal campo maker dell'oggetto o dall'effetto «maker» della voce del Night Market; vale il più alto
+const hqGearMaker = g => num(g.maker) || num(((MK.byId(g.ref) || {}).fx || []).find(f => f.t === "maker")?.v);
+function hqMakerBonus(H = hqRec()) {
+  if (H.lost) return [];
+  const best = (H.gear || []).map(g => ({ l: `${g.name} (HQ)`, v: hqGearMaker(g) })).filter(b => b.v).sort((a, b) => b.v - a.v)[0];
+  return best ? [best] : [];
+}
+function hqGearHtml(H, edit) {
+  const list = H.gear || [];
+  return `<h3 class="sh-h">Oggetti della base ${edit ? `<button type="button" class="btn ghost small cyan" data-action="hq-gear">+ Oggetto</button>` : ""}</h3>
+    ${list.length ? `<div class="gl-wrap"><table class="gl-t hq-t ${H.lost ? "off" : ""}"><thead><tr><th>Oggetto</th><th>Cosa fa</th><th>Prezzo</th>${edit ? "<th></th>" : ""}</tr></thead><tbody>
+      ${list.map(g => `<tr><td><b>${esc(g.name)}</b>${hqGearMaker(g) ? `<small>+${hqGearMaker(g)} ai tiri da Creatore nell'HQ</small>` : ""}</td><td>${esc(g.desc || (MK.byId(g.ref) || {}).desc || "")}</td><td class="gl-n">${num(g.cost) ? fmtEb(num(g.cost)) : "—"}</td>
+        ${edit ? `<td class="gl-n"><button type="button" class="gp-btn" data-action="hq-gear" data-id="${esc(g.id)}" aria-label="Modifica">✎</button></td>` : ""}</tr>`).join("")}</tbody></table></div>`
+      : `<p class="hint">Nessun oggetto: aggiungi quelli comprati dalla crew e tenuti nella base (es. un Master Mechanic's Tool Kit).</p>`}`;
+}
+function hqGearEdit(id) {
+  if (!Store.canEdit()) return;
+  const g = (hqRec().gear || []).find(x => x.id === id) || {};
+  const cat = MK.all().filter(x => x.type === "gear").sort((a, b) => a.name.localeCompare(b.name, "it"));
+  openModal(`<form class="form" id="hqg-form">
+    <div class="modal-head"><h2>// OGGETTO DELLA BASE</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+    <div class="modal-body"><div class="fields">
+      <div class="field full"><label>Dal Night Market</label><select name="ref"><option value="">— scritto a mano —</option>${cat.map(x => `<option value="${esc(x.id)}" ${x.id === g.ref ? "selected" : ""}>${x.custom ? "★ " : ""}${esc(x.name)} · ${fmtEb(num(x.cost))}</option>`).join("")}</select></div>
+      <div class="field full"><label class="req">Nome</label><input name="name" required value="${esc(g.name || "")}"></div>
+      <div class="field"><label>Prezzo pagato (eb, solo annotato)</label><input name="cost" type="number" min="0" value="${esc(g.cost ?? "")}"></div>
+      <div class="field"><label>Bonus ai tiri da Creatore nell'HQ</label><input name="maker" type="number" min="0" max="10" value="${esc(g.maker ?? "")}" placeholder="vuoto = quello del Night Market"></div>
+      <div class="field full"><label>Descrizione</label><textarea name="desc" rows="3" placeholder="vuoto = quella del Night Market">${esc(g.desc || "")}</textarea></div>
+    </div><p class="hint">Gli eddies non si scalano da soli: toglieteli voi dalle schede di chi ha pagato.</p></div>
+    <div class="modal-foot">${g.id ? `<button type="button" class="btn ghost small left danger" data-hqg-del>Togli dalla base</button>` : `<button type="button" class="btn ghost small left" data-action="close">Annulla</button>`}<button type="submit" class="btn">Salva</button></div></form>`, true);
+  const form = $("#hqg-form"), E = form.elements;
+  E.ref.addEventListener("change", () => { const m = MK.byId(E.ref.value); if (!m) return; E.name.value = m.name; if (!E.cost.value) E.cost.value = num(m.cost); });
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    const rec = { id: g.id || NET.uid(), ref: E.ref.value, name: E.name.value.trim(), cost: num(E.cost.value), desc: E.desc.value.trim(), ...(E.maker.value !== "" ? { maker: num(E.maker.value) } : {}) };
+    hqSave(h => { h.gear = h.gear || []; const i = h.gear.findIndex(x => x.id === rec.id); if (i >= 0) h.gear[i] = rec; else h.gear.push(rec); }, `${rec.name} nella base`, true).then(closeModal);
+  });
+  const del = $("[data-hqg-del]", form);
+  del && del.addEventListener("click", async () => {
+    if (!(await askConfirm(`Togliere «${g.name}» dagli oggetti della base?`, "Togli"))) return;
+    hqSave(h => { h.gear = (h.gear || []).filter(x => x.id !== g.id); }, "Tolto", true).then(closeModal);
+  });
 }
 function hqImpsHtml(H, edit) {
   const owned = HQ.all().filter(it => hqLvl(H, it.id));
@@ -244,4 +324,8 @@ function hqItemEdit(id) {
   });
 }
 
-document.addEventListener("submit", ev => { if (ev.target.matches && ev.target.matches("[data-hq-earn]")) { ev.preventDefault(); hqEarn(ev.target); } });
+document.addEventListener("submit", ev => {
+  if (!ev.target.matches) return;
+  if (ev.target.matches("[data-hq-proj]")) { ev.preventDefault(); hqProjAdd(ev.target); }
+  else if (ev.target.matches("[data-hq-earn]")) { ev.preventDefault(); hqEarn(ev.target); }
+});
