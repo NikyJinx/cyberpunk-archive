@@ -83,7 +83,7 @@ function armorInfo(it) {
   const pen = hasVal(it.pen) ? num(it.pen) : mk ? num(mk.pen) : T ? T.pen : 0;
   const both = !!(it.both || (mk && mk.both) || it.loc === "both");
   // zone dove si può indossare: quella scelta all'acquisto; senza zona (oggetti vecchi o scritti a mano) testa o corpo
-  return { name: it.name, sp, pen, type: T ? T.id : "custom", both, locs: both ? ["head", "body"] : it.loc === "head" || it.loc === "body" ? [it.loc] : ["head", "body"], fixed: both || it.loc === "head" || it.loc === "body" };
+  return { name: it.name, sp, pen, ...(mk && mk.penBy ? { penBy: mk.penBy } : {}), type: T ? T.id : "custom", both, locs: both ? ["head", "body"] : it.loc === "head" || it.loc === "body" ? [it.loc] : ["head", "body"], fixed: both || it.loc === "head" || it.loc === "body" };
 }
 const ARMOR_LOC = { head: "testa", body: "corpo", both: "testa e corpo" };
 // quali zone occupa ogni armatura dell'inventario (gi → zone) e le armature indossate che nell'inventario non ci sono
@@ -116,7 +116,7 @@ function wearArmor(id, gi, loc) {
     // una tuta intera tolta da una zona si toglie anche dall'altra
     locs.forEach(l => { const old = s.armor[l], o = old && armorItems(e).find(x => norm2(x.it.name) === norm2(old.name));
       if (o && armorInfo(o.it).both) ["head", "body"].forEach(z => { if (s.armor[z] && norm2(s.armor[z].name) === norm2(old.name)) delete s.armor[z]; }); });
-    locs.forEach(l => { s.armor[l] = { name: it.name, sp: A.sp, cur: A.sp, type: A.type, pen: A.pen }; }); return s; });
+    locs.forEach(l => { s.armor[l] = { name: it.name, sp: A.sp, cur: A.sp, type: A.type, pen: A.pen, ...(A.penBy ? { penBy: A.penBy } : {}) }; }); return s; });
   toast(`${it.name} indossata (${A.both ? "testa e corpo" : ARMOR_LOC[locs[0]]})`, "ok");
 }
 function takeOffArmor(id, locs) {

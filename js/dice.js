@@ -153,6 +153,8 @@ window.CPR = (() => {
     { id: "hsmg",     label: "Heavy SMG",         skill: "handgun",      dmg: "3d6", rof: 1, mag: 40, auto: 3, ammo: "Pistola Pesante" },
     { id: "shotgun",  label: "Shotgun",           skill: "shoulderarms", dmg: "5d6", rof: 1, mag: 4,  ammo: "Slug" },
     { id: "ar",       label: "Assault Rifle",     skill: "shoulderarms", dmg: "5d6", rof: 1, mag: 25, auto: 4, ammo: "Fucile" },
+    // Solo of Fortune 2045: ogni Machine Gun è unica; munizioni da fucile d'assalto, accessori come un Assault Rifle
+    { id: "mg",       label: "Machine Gun",       skill: "heavyweapons", dmg: "5d6", rof: 1, mag: 60, auto: 5, ammo: "Fucile" },
     { id: "sniper",   label: "Sniper Rifle",      skill: "shoulderarms", dmg: "5d6", rof: 1, mag: 4,  ammo: "Fucile" },
     { id: "bow",      label: "Bow / Crossbow",    skill: "archery",      dmg: "4d6", rof: 1, ammo: "Frecce" },
     { id: "gl",       label: "Grenade Launcher",  skill: "heavyweapons", dmg: "6d6", rof: 1, mag: 2,  ammo: "Granate" },
@@ -212,9 +214,9 @@ window.CPR = (() => {
     RT("ar", "Assault Rifle", [22, 20, 17, 20, 25]),
     RT("mg", "Machine Gun", [21, 18, 18, 19, 25]),
   ];
-  const RANGE_OF = { mpistol: "pistol", hpistol: "pistol", vhpistol: "pistol", smg: "smg", hsmg: "smg", shotgun: "shotgun", ar: "ar", sniper: "sniper", bow: "bow", gl: "gl", rl: "rl" };
+  const RANGE_OF = { mpistol: "pistol", hpistol: "pistol", vhpistol: "pistol", smg: "smg", hsmg: "smg", shotgun: "shotgun", ar: "ar", mg: "ar", sniper: "sniper", bow: "bow", gl: "gl", rl: "rl" };
   const rangeDefault = cat => RANGE_OF[cat] || "";
-  const autoDefault = cat => { const w = weaponType(cat); return w && w.auto ? (cat === "ar" ? "ar" : "smg") : ""; };
+  const autoDefault = cat => { const w = weaponType(cat); return w && w.auto ? (cat === "ar" ? "ar" : cat === "mg" ? "mg" : "smg") : ""; };
   const rangeById = id => RANGE_TABLES.find(t => t.id === id) || null;
   const autoById = id => AUTO_TABLES.find(t => t.id === id) || null;
   const rangeTable = cat => (rangeById(rangeDefault(cat)) || {}).dv || null;
@@ -339,7 +341,7 @@ window.CPR = (() => {
     { id: "beta", label: "Linear Frame β (Beta)", body: 14 },
   ];
   const bodyImplant = id => BODY_IMPLANTS.find(b => b.id === id) || BODY_IMPLANTS[0];
-  const FIREARMS = ["mpistol", "hpistol", "vhpistol", "smg", "hsmg", "shotgun", "ar", "sniper", "gl", "rl"];
+  const FIREARMS = ["mpistol", "hpistol", "vhpistol", "smg", "hsmg", "shotgun", "ar", "mg", "sniper", "gl", "rl"];
   const COMBAT_SKILLS = ["handgun", "shoulderarms", "autofire", "heavyweapons", "archery", "melee", "brawling", "martialarts", "evasion"];
 
   // Abilità che tutti i PNG del manuale hanno

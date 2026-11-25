@@ -96,7 +96,7 @@ function shopBody(type) {
 // tab Munizioni: ogni calibro con la Standard e i tipi del GM («Tipi di munizioni e stati»), a lotti
 function ammoShopBody() {
   const q = norm2(glossQ), buy = mkCanBuy(), who = mkWho();
-  const rows = AMMO_FAMS.flatMap(fam => ammoTypesFor(fam).map(a => ({ fam, a, key: `ammo:${fam}:${a.id}`, cost: ammoCost(fam, a), lot: AMMO_LOT(fam) })))
+  const rows = AMMO_FAMS.flatMap(fam => ammoTypesFor(fam).map(a => ({ fam, a, key: `ammo:${fam}:${a.id}`, cost: ammoCost(fam, a), lot: a.lot || AMMO_LOT(fam) })))
     .filter(r => (isGm() || !mkHidden(r.key)) && (!glossP || MK.priceCat(r.cost) === glossP) && (!q || norm2(`${r.fam} ${r.a.name} ${r.a.eff || ""}`).includes(q)));
   const weaponsOf = fam => CPR.WEAPON_TYPES.filter(t => t.ammo === fam).map(t => t.label).join(", ");
   return `${mkFilters(rows.length)}<div class="gl-wrap"><table class="gl-t mk-t">
@@ -139,7 +139,7 @@ const mkCySlots = (e, c) => {
 const mkItemOf = key => {
   if (key.startsWith("ammo:")) {
     const [, fam, aid = ""] = key.split(":"), a = ammoTypesFor(fam).find(t => t.id === aid); if (!a) return null;
-    const lot = AMMO_LOT(fam);
+    const lot = a.lot || AMMO_LOT(fam);
     return { type: "ammo", key, id: key, name: `${fam} · ${a.name}`, fam, ammo: a.id, lot, cost: ammoCost(fam, a), desc: `${lot > 1 ? `Scatola da ${lot} colpi` : "Un pezzo"} per ${CPR.WEAPON_TYPES.filter(t => t.ammo === fam).map(t => t.label).join(", ")}${a.eff ? ` · ${a.eff}` : ""}` };
   }
   if (key.startsWith("cw:")) return (c => c && { ...c, type: "cyber", key })(CW.byId(key.slice(3)));
@@ -255,12 +255,12 @@ async function mkCommit(e0, it, paid, qty, o) {
     // stessa armatura per la stessa zona: una copia in più; per l'altra zona: una voce a parte
     const old = gear.items.find(x => x.cat === "armature" && norm2(x.name) === norm2(it.name) && x.loc === gl);
     if (old) old.qty = Math.max(1, num(old.qty) || 1) + 1;
-    else gear.items.push({ cat: "armature", name: it.name, qty: 1, detail: `SP ${it.sp}${it.pen ? ` · ${it.pen} REF/DEX/MOVE` : ""} · per ${ARMOR_LOC[gl]}`, ...(mkPrice(it.cost) ? { cost: mkPrice(it.cost) } : {}), sp: it.sp, pen: num(it.pen), loc: gl, ...(it.both ? { both: true } : {}) });
+    else gear.items.push({ cat: "armature", name: it.name, qty: 1, detail: `SP ${it.sp}${it.penBy ? ` · ${CPR.PEN_STATS.map(st => `${it.penBy[st]} ${st}`).join(", ")}` : it.pen ? ` · ${it.pen} REF/DEX/MOVE` : ""} · per ${ARMOR_LOC[gl]}`, ...(mkPrice(it.cost) ? { cost: mkPrice(it.cost) } : {}), sp: it.sp, pen: num(it.pen), loc: gl, ...(it.both ? { both: true } : {}) });
     undo = { k: "armor", loc: o.wear ? gl : "", gloc: gl, prevs: {} };
     const T = CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(it.name));
     (!o.wear ? [] : gl === "both" ? ["head", "body"] : [gl]).forEach(l => {
       s.armor = s.armor || {}; undo.prevs[l] = s.armor[l] || null;
-      s.armor[l] = { name: it.name, sp: it.sp, cur: it.sp, type: T ? T.id : "custom", pen: num(it.pen) };
+      s.armor[l] = { name: it.name, sp: it.sp, cur: it.sp, type: T ? T.id : "custom", pen: num(it.pen), ...(it.penBy ? { penBy: it.penBy } : {}) };
     });
   }
   if (it.type === "deck") {
