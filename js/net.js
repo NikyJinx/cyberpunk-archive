@@ -93,6 +93,9 @@ window.NET = (() => {
     { id: "hardened", name: "Circuiti Rinforzati", slots: 1, cost: 100, eff: "Non può essere disattivato né distrutto da EMP, microonde o programmi non Black ICE." },
     { id: "backup", name: "Disco di Backup", slots: 2, cost: 100, eff: "Salva i programmi non Black ICE quando vengono Distrutti; reinstallarne uno è un'Azione IRL (se c'è lo Slot)." },
     { id: "range", name: "Portata Migliorata", slots: 1, cost: 100, eff: "Si collega ad Access Point fino a 8 m di distanza." },
+    // Going Metal
+    { id: "snaketrap", name: "Snaketrap", slots: 1, cost: 500, eff: "Blocca il primo effetto di Black ICE o programma che distruggerebbe a caso un programma del deck durante la Netrun. Più copie non servono.", src: "Going Metal" },
+    { id: "swiftyclean", name: "Swifty Clean", slots: 2, cost: 500, eff: "Con una sola NET Action tiri due volte Cloak e tieni il migliore, ma Cloak si usa una volta sola per Netrun.", src: "Going Metal" },
     // Midnight with the Upload
     { id: "aerie", name: "Aerie", slots: 2, cost: 500, eff: "Ogni Black ICE Raven del deck, col suo effetto d'attacco, distrugge un Defender Rezzato a caso del Netrunner nemico invece di derezzarlo.", src: "Midnight with the Upload" },
     { id: "bushido", name: "Bushido Accelerator", slots: 3, cost: 500, eff: "Per ogni Bushido Accelerator, +2 alla Velocità di tutti i Black ICE Killer del deck. (3 slot secondo la descrizione, 2 nella tabella.)", src: "Midnight with the Upload" },
@@ -150,7 +153,7 @@ window.NET = (() => {
   const curRez = (it, info) => it.cur == null || it.cur === "" || isNaN(+it.cur) ? info.rez : Math.max(0, Math.min(info.rez, +it.cur));
   function deckSlots(deck) {
     const d = deck || {}, items = d.items || [];
-    const base = Math.max(0, +d.slots || 7) + (d.cyberarm ? 1 : 0), hwExtra = d.bodyweight ? 1 : 0;
+    const base = Math.max(0, +d.slots || 7) + (d.cyberarm ? 1 : 0), hwExtra = (d.bodyweight ? 1 : 0) + (+d.hwShared || 0);
     const used = items.reduce((t, it) => t + itemInfo(it).slots, 0);
     const hwUsed = items.filter(it => itemInfo(it).hw).reduce((t, it) => t + itemInfo(it).slots, 0);
     const nonHw = used - hwUsed;

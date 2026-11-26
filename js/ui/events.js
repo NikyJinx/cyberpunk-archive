@@ -270,7 +270,10 @@ document.addEventListener("click", async ev => {
     case "mk-import": mkImport(); break;
     case "mk-edit": { const it = MK.byId(el.dataset.key); if (it && MK_FORMS[it.type]) editMkItem(it.type, it.id); else mkImport(el.dataset.key); break; }
     case "mk-custom": editMkItem(el.dataset.type); break;
-    case "drug-take": drugTake(id, num(el.dataset.i)); break;
+    case "drug-take": drugTake(id, num(el.dataset.i), !!el.dataset.force); break;
+    case "fbc-edit": fbcEdit(id); break;
+    case "fbc-remove": fbcRemove(id); break;
+    case "fbc-repair": fbcRepair(id); break;
     case "deck-install": { const sel = el.closest("li") && $(".g-deck", el.closest("li")); deckInstall(id, num(el.dataset.i), num(sel ? sel.value : el.dataset.deck)); break; }
     case "tt-tool": setTool(el.dataset.tool); break;
     case "hq-buy": hqBuy(el.dataset.id, el.dataset.opt); break;

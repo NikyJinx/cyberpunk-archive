@@ -9,7 +9,12 @@
 //             weapons[{name, skill, dmg, rof, mag, note}], rep, ip, crit, notes }
 const sheetOf = e => (e && e.sheet) || {};
 const hasSheet = e => !!(e && e.sheet && e.sheet.stats && Object.values(e.sheet.stats).some(hasVal));
-const statBase = (e, id) => id === "BODY" && cyberItems(e).length ? CW.effects(cyberItems(e), num((sheetOf(e).stats || {}).BODY)).body : num((sheetOf(e).stats || {})[id]);
+const statBase = (e, id) => {
+  if (id === "BODY" && (cyberItems(e).length || fbcOf(e))) return cyberFx(e).body;
+  const v = num((sheetOf(e).stats || {})[id]);
+  // Idrauliche FBC: REF, DEX e MOVE almeno al valore dell'impianto
+  return fbcOf(e) && CPR.PEN_STATS.includes(id) ? Math.max(v, cyberFx(e).statMin[id] || 0) : v;
+};
 // l'EMP segue l'umanità del cyberware: EMP = umanità attuale / 10
 // l'armatura pesante toglie a REF, DEX e MOVE (−2 Medium/Heavy Armorjack, −4 Flak/Metalgear), salvo armatura migliorata
 const sheetArmorType = a => a.type || ((CPR.ARMOR_TYPES.find(t => t.sp && norm(t.label) === norm(a.name)) || {}).id) || "custom";
@@ -32,7 +37,8 @@ function statEff(e, id) {
 }
 const hpMaxOf = e => { const s = sheetOf(e); return hasVal(s.hpMax) ? num(s.hpMax) : CPR.hpMax(statBase(e, "BODY"), statBase(e, "WILL")); };
 const hpOf = e => { const s = sheetOf(e); return hasVal(s.hp) ? num(s.hp) : hpMaxOf(e); };
-const woundOf = e => CPR.painFix(CPR.wound(hpOf(e), hpMaxOf(e)), cyberItems(e).length > 0 && cyberFx(e).pain);
+// FBC: nessun malus degli Stati di Ferita (il Death Save resta)
+const woundOf = e => { const w = CPR.painFix(CPR.wound(hpOf(e), hpMaxOf(e)), cyberItems(e).length > 0 && cyberFx(e).pain); return fbcOf(e) && w.pen ? { ...w, pen: 0, label: `${w.label} · FBC: nessun malus` } : w; };
 const luckOf = e => { const s = sheetOf(e); return hasVal(s.luck) ? num(s.luck) : statBase(e, "LUCK"); };
 const wornOf = (e, loc) => { const a = (sheetOf(e).armor || {})[loc] || {}; const sp = num(a.sp); return { name: a.name || "", sp, cur: hasVal(a.cur) ? num(a.cur) : sp }; };
 // Armatura Subdermale / Skin Weave: SP sottopelle a testa e corpo (vale la più alta, ma si ablano tutte insieme;

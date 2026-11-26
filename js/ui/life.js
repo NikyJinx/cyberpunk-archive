@@ -215,7 +215,10 @@ const expItems = e => ((e.expenses || {}).items || []).filter(x => x && x.name);
 // tutte le voci del mese: quelle scritte e gli abbonamenti dell'Agent
 function expLines(e) {
   return [...expItems(e).map(x => ({ ...x, src: "exp" })),
-    ...agentApps(e).filter(a => a.kind === "sub" && num(a.cost)).map(a => ({ id: a.id, name: a.name, type: "sub", cost: num(a.cost), on: a.on, note: a.desc ? a.desc.split("\n")[0] : "", src: "agent" }))];
+    ...agentApps(e).filter(a => a.kind === "sub" && num(a.cost)).map(a => ({ id: a.id, name: a.name, type: "sub", cost: num(a.cost), on: a.on, note: a.desc ? a.desc.split("\n")[0] : "", src: "agent" })),
+    // FBC: Soluzione di Glucosio una volta al mese (inclusa nel Lifestyle Good Prepak o migliore)
+    ...(fbcOf(e) ? [(ok => ({ id: "fbc-glucose", name: "Soluzione di Glucosio (FBC)", type: "life", cost: ok ? 0 : 100, src: "fbc",
+      note: ok ? "Inclusa nel Lifestyle Good Prepak o migliore" : "Senza: −2 a tutte le prove; due mesi di fila e il cervello muore" }))(expItems(e).some(x => x.on !== false && /good prepa|fresh food/i.test(x.name)))] : [])];
 }
 const expTotal = e => expLines(e).filter(x => x.on !== false).reduce((t, x) => t + num(x.cost), 0);
 
@@ -230,9 +233,9 @@ function expensesHtml(e) {
     </section>
     ${lines.length ? EXP_TYPES.map(([t, label]) => { const l = lines.filter(x => (x.type || "other") === t); if (!l.length) return "";
       return `<section class="ex-sec"><h4>${label} <span>${fmtEb(l.filter(x => x.on !== false).reduce((s, x) => s + num(x.cost), 0))}</span></h4><ul>${l.map(x => `
-        <li class="${x.on === false ? "off" : ""}"><span class="ex-name">${esc(x.name)}${x.src === "agent" ? ` <i class="g-tag">Agent</i>` : ""}${x.note ? `<small>${esc(x.note)}</small>` : ""}</span>
+        <li class="${x.on === false ? "off" : ""}"><span class="ex-name">${esc(x.name)}${x.src === "agent" ? ` <i class="g-tag">Agent</i>` : x.src === "fbc" ? ` <i class="g-tag">FBC</i>` : ""}${x.note ? `<small>${esc(x.note)}</small>` : ""}</span>
           <span class="ex-cost">${fmtEb(num(x.cost))}</span>
-          ${edit ? `<button type="button" class="btn ghost small g-act" data-action="${x.src === "agent" ? "agent-toggle" : "exp-toggle"}" data-id="${id}" data-app="${esc(x.id)}" title="${x.on === false ? "La rimetti nel conto del mese" : "Non la paghi questo mese (sospesa)"}">${x.on === false ? "▶ Riattiva" : "⏸ Sospendi"}</button>` : ""}</li>`).join("")}</ul></section>`; }).join("")
+          ${edit && x.src !== "fbc" ? `<button type="button" class="btn ghost small g-act" data-action="${x.src === "agent" ? "agent-toggle" : "exp-toggle"}" data-id="${id}" data-app="${esc(x.id)}" title="${x.on === false ? "La rimetti nel conto del mese" : "Non la paghi questo mese (sospesa)"}">${x.on === false ? "▶ Riattiva" : "⏸ Sospendi"}</button>` : ""}</li>`).join("")}</ul></section>`; }).join("")
     : `<div class="empty"><div class="big">// NESSUNA SPESA</div>Lifestyle, affitto, Trauma Team, siti web…: aggiungili con «Modifica spese». Gli abbonamenti dell'Agent compaiono da soli.</div>`}
   </div>`;
 }

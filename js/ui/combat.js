@@ -287,6 +287,7 @@ function combatHtml(e) {
           <span class="sh-sub">${w.label}${w.pen ? ` · ${w.pen} to all Actions` : ""}</span>
           ${ca && num(ca.deflect) ? `<span class="sh-sub rl-hint">Deflettere Danni: −${num(ca.deflect)} al primo danno subito nel round</span>` : ""}
           ${edit ? adjBtns(e.id, "hp", [-5, -1, 1, 5]) : ""}
+          ${edit && fbcOf(e) ? `<button type="button" class="btn ghost small cyan" data-action="fbc-repair" data-id="${id}" title="Cybertech VD 15, 4 ore: PF al massimo (se fallisce, almeno a metà)">🔧 Ripara FBC</button>` : ""}
         </div>
         <div class="sh-box"><span class="l">Armor · SP</span>${arm("head")}${arm("body")}</div>
         <div class="sh-box">

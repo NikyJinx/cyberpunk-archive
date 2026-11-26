@@ -587,8 +587,12 @@ async function drugSave(e0, fn, msg) {
   catch (err) { fail(err); }
 }
 // assumere una dose: la tolgo dall'inventario, tiro Resist Torture/Drugs contro la VD, segno effetto attivo e, se fallisce, il secondario
-function drugTake(id, gi) {
+function drugTake(id, gi, force) {
   const e = state.entries.find(x => x.id === id), g = gearItems(e)[gi]; if (!e || !g || !Store.canEdit()) return;
+  if (fbcOf(e) && !force) return openModal(`<div class="form"><div class="modal-head"><h2>// FULL BODY CONVERSION</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+    <div class="modal-body"><p>${esc(e.name)} è una Full Body Conversion: è immune a droghe, veleni, farmaci e malattie, salvo una dose iniettata con un <b>Airhypo nella porta del Biosystem</b>.</p></div>
+    <div class="modal-foot"><button type="button" class="btn ghost" data-action="close">Annulla</button><button type="button" class="btn cyan" data-action="drug-take" data-id="${esc(id)}" data-i="${gi}" data-force="1">💉 Iniettata con Airhypo</button></div></div>`);
+  if (force) closeModal();
   const d = drugOf(g) || { name: g.name, dv: 0, primary: g.detail || "", secondary: "" };
   const k = skillByKey(e, "skill:resist") || { label: "Resist Torture/Drugs", stat: "WILL", lvl: 0 };
   const r = CPR.check([{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...skillBonusAll(e, k), ...sheetExtra(e)]);
