@@ -140,7 +140,7 @@ function enemyHtml(e) {
           <span>${esc(s.label)}${s.elite10 ? " ⚡" : ""}${s.fromRole ? " ◈" : ""}</span><span>${esc(s.stat)} ${s.statV}</span><span>${s.lvl}</span><span>${s.nat}</span><span>${fmtBonus(s.bonus) || "—"}</span>
           <span><b>${s.eff}</b>${s.effArmor !== s.eff ? ` <span class="pen">(${s.effArmor})</span>` : ""}</span></button>`).join("")}
       </div>
-      ${(E.cyberRefs || []).length ? `<div class="block"><h4>Cyberware</h4><div class="st-chips">${E.cyberRefs.map(x => { const c = CW.byId(x.ref) || { name: x.ref }; return `<span class="st-chip" title="${esc(c.desc || "")}">${esc(c.name)}${(c.fx || []).length ? " ⚡" : ""}${x.param ? ` <small>${esc((CPR.skill(x.param) || {}).label || "")}</small>` : ""}${(c.fx || []).some(f => f.cond) ? ` <small>${x.on ? "attivo" : "spento"}</small>` : ""}</span>`; }).join("")}</div></div>` : ""}
+      ${(E.cyberRefs || []).length ? `<div class="block"><h4>Cyberware</h4><div class="st-chips">${E.cyberRefs.map(x => { const c = CW.byId(x.ref) || { name: x.ref }; return `<span class="st-chip" title="${esc(c.desc || "")}">${esc(c.name)}${(c.fx || []).length ? " ⚡" : ""}${x.param ? ` <small>${esc((CPR.skill(x.param) || {}).label || "")}</small>` : ""}${(c.fx || []).some(f => f.cond) ? ` <small>${!x.off ? "attivo" : "spento"}</small>` : ""}</span>`; }).join("")}</div></div>` : ""}
       ${E.cyber || D.extraCyber.length || E.bodyImplant ? `<div class="block"><h4>${(E.cyberRefs || []).length ? "Altro cyberware" : "Cyberware"}</h4><div class="prewrap">${esc([E.cyber, ...D.extraCyber, E.bodyImplant ? CPR.bodyImplant(E.bodyImplant).label : ""].filter(Boolean).join(", "))}</div></div>` : ""}
       ${E.gear ? `<div class="block"><h4>Gear</h4><div class="prewrap">${esc(E.gear)}</div></div>` : ""}
       ${E.notes ? `<div class="block"><h4>Note</h4><div class="prewrap">${esc(E.notes)}</div></div>` : ""}
@@ -274,7 +274,7 @@ function editEnemy(id, preset = null) {
   let cwRefs = JSON.parse(JSON.stringify(E0.cyberRefs || []));
   const renderCw = () => {
     $("#en-cw", form).innerHTML = `<div class="st-chips">${cwRefs.map((x, k) => { const c = CW.byId(x.ref) || { name: x.ref }; const cond = (c.fx || []).find(f => f.cond);
-      return `<span class="st-chip" title="${esc(c.desc || "")}">${esc(c.name)}${c.id === "skillchip" ? ` <select data-cw-lvl="${k}" class="st-add" title="Livello del chip">${[3, 4].map(n => `<option value="${n}" ${+x.lvl === n ? "selected" : ""}>liv. ${n}</option>`).join("")}</select> <select data-cw-param="${k}" class="st-add">${CPR.SKILLS.map(s => `<option value="${s.id}" ${s.id === x.param ? "selected" : ""}>${esc(s.label)}</option>`).join("")}</select>` : ""}${cond ? ` <label class="check" title="${esc(cond.cond)}"><input type="checkbox" data-cw-on="${k}" ${x.on ? "checked" : ""}> attivo</label>` : ""} <button type="button" class="gp-btn del" data-cw-del="${k}" aria-label="Togli">✕</button></span>`; }).join("")}
+      return `<span class="st-chip" title="${esc(c.desc || "")}">${esc(c.name)}${c.id === "skillchip" ? ` <select data-cw-lvl="${k}" class="st-add" title="Livello del chip">${[3, 4].map(n => `<option value="${n}" ${+x.lvl === n ? "selected" : ""}>liv. ${n}</option>`).join("")}</select> <select data-cw-param="${k}" class="st-add">${CPR.SKILLS.map(s => `<option value="${s.id}" ${s.id === x.param ? "selected" : ""}>${esc(s.label)}</option>`).join("")}</select>` : ""}${cond ? ` <label class="check" title="${esc(cond.cond)}"><input type="checkbox" data-cw-on="${k}" ${!x.off ? "checked" : ""}> attivo</label>` : ""} <button type="button" class="gp-btn del" data-cw-del="${k}" aria-label="Togli">✕</button></span>`; }).join("")}
       <select class="st-add" data-cw-add aria-label="Aggiungi cyberware">${cwOptions("")}</select></div>`;
   };
   const readForm = () => {
@@ -313,7 +313,7 @@ function editEnemy(id, preset = null) {
     if (t.matches("[data-cw-add]") && t.value) { cwRefs.push({ ref: t.value, ...(t.value === "skillchip" ? { param: "perception" } : {}) }); renderCw(); refresh(); }
     if (t.matches("[data-cw-param]")) { cwRefs[num(t.dataset.cwParam)].param = t.value; refresh(); }
     if (t.matches("[data-cw-lvl]")) { cwRefs[num(t.dataset.cwLvl)].lvl = num(t.value); refresh(); }
-    if (t.matches("[data-cw-on]")) { cwRefs[num(t.dataset.cwOn)].on = t.checked; refresh(); }
+    if (t.matches("[data-cw-on]")) { { const r = cwRefs[num(t.dataset.cwOn)]; delete r.on; if (t.checked) delete r.off; else r.off = true; } refresh(); }
     ev.stopPropagation();
   });
   $("#en-cw", form).addEventListener("click", ev => { const d = ev.target.closest("[data-cw-del]"); if (d) { cwRefs.splice(num(d.dataset.cwDel), 1); renderCw(); refresh(); } });

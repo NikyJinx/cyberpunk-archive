@@ -450,7 +450,7 @@ const cyRow = (it = {}, def = 2) => `
   <div class="cy-row ${it.ref === "skillchip" ? "chip" : ""}">
     <label class="cy-inst" title="Installato (togli la spunta se è solo pianificato)"><input type="checkbox" data-f="installed" ${it.installed === false ? "" : "checked"}><span></span></label>
     <input data-f="name" placeholder="Nome impianto" list="dl-cyber" value="${esc(it.name)}">
-    <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="stored" value="${it.stored ? "1" : ""}"><input type="hidden" data-f="withBase" value="${it.withBase ? "1" : ""}"><input type="hidden" data-f="on" value="${it.on ? "1" : ""}"><input type="hidden" data-f="up" value="${it.up ? "1" : ""}">
+    <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="stored" value="${it.stored ? "1" : ""}"><input type="hidden" data-f="withBase" value="${it.withBase ? "1" : ""}"><input type="hidden" data-f="off" value="${it.off ? "1" : ""}"><input type="hidden" data-f="up" value="${it.up ? "1" : ""}">
     <select data-f="lvl" class="cy-param cy-lvl" title="Livello a cui il chip porta l'abilità">${[3, 4].map(n => `<option value="${n}" ${+it.lvl === n ? "selected" : ""}>liv. ${n}</option>`).join("")}</select>
     <select data-f="param" class="cy-param" title="Abilità del Chip Abilità"><option value="">abilità del chip…</option>${CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === it.param ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
     <input data-f="cost" type="number" min="0" step="1" placeholder="eb" title="Costo in eddies" value="${esc(it.cost ?? "")}">
@@ -648,7 +648,7 @@ function editCyber(id) {
       const items = readRows(fs, ".cy-row").filter(it => it.name && !isBaseItem(it)).map(it => ({
         name: it.name, installed: it.installed, cost: it.cost === "" ? null : num(it.cost), hl: it.hl === "" ? null : num(it.hl),
         max: it.max === "" ? null : num(it.max), note: it.note,
-        ...(it.ref ? { ref: it.ref } : {}), ...(it.on ? { on: true } : {}), ...(it.up ? { up: 1 } : {}), ...(it.stored && it.installed === false ? { stored: true, ...(it.withBase ? { withBase: true } : {}) } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param, lvl: +it.lvl === 4 ? 4 : 3 } : {}),
+        ...(it.ref ? { ref: it.ref } : {}), ...(it.off ? { off: true } : {}), ...(it.up ? { up: 1 } : {}), ...(it.stored && it.installed === false ? { stored: true, ...(it.withBase ? { withBase: true } : {}) } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param, lvl: +it.lvl === 4 ? 4 : 3 } : {}),
       }));
       if (fs.classList.contains("custom")) {
         const label = $("[data-slot-f=label]", fs).value.trim();

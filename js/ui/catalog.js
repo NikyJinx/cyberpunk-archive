@@ -64,7 +64,7 @@ function cyberFxHtml(e, compact = false) {
   if (!lines.length && !conds.length && !wpn.length) return compact ? "" : `<p class="hint">Gli impianti scelti dal catalogo con un effetto (bonus alle abilità, iniziativa, BODY…) lo applicano da soli ai tiri.</p>`;
   return `<div class="cy-fx ${compact ? "compact" : ""}">
     ${compact ? `<span class="sh-k">Cyberware</span>` : `<h4>Effetti del cyberware e degli oggetti</h4>`}
-    ${conds.length ? `<div class="st-chips">${conds.map(x => { const f = x.c.fx.find(z => z.cond); return `<button type="button" class="chip ${x.it.on ? "active" : ""}" ${edit ? `data-action="cy-on" data-id="${id}" data-slot="${esc(x.slot)}" data-i="${x.i}"` : "disabled"} title="${esc(f.cond)}">${x.it.on ? "◉" : "○"} ${esc(x.c.name)} <small>${esc(f.cond)}</small></button>`; }).join("")}</div>` : ""}
+    ${conds.length ? `<div class="st-chips">${conds.map(x => { const f = x.c.fx.find(z => z.cond); return `<button type="button" class="chip ${!x.it.off ? "active" : ""}" ${edit ? `data-action="cy-on" data-id="${id}" data-slot="${esc(x.slot)}" data-i="${x.i}"` : "disabled"} title="${esc(f.cond)}${!x.it.off ? " · attivo (clic per spegnerlo)" : " · spento (clic per riattivarlo)"}">${!x.it.off ? "◉" : "○"} ${esc(x.c.name)} <small>${esc(f.cond)}</small></button>`; }).join("")}</div>` : ""}
     ${!compact && lines.length ? `<ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul>` : compact && lines.length ? `<span class="hint">${lines.join(" · ")}</span>` : ""}
     ${wpn.length && !compact ? `<div class="cy-wpn"><span class="sh-k">Armi integrate</span> ${wpn.join(" · ")}</div>` : ""}
   </div>`;

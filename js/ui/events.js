@@ -244,7 +244,7 @@ document.addEventListener("click", async ev => {
     case "log-clear": ls.set("nc-log-cleared", new Date().toISOString()); renderLogs(); toast("Dice log pulito su questo dispositivo: i tiri restano salvati"); break;
     case "log-wipe": wipeLog(); break;
     case "log-unclear": ls.set("nc-log-cleared", ""); renderLogs(); break;
-    case "cy-on": cyberPatch(id, c => { const it = ((c.slots || {})[el.dataset.slot] || [])[num(el.dataset.i)]; if (it) it.on = !it.on; return c; }); break;
+    case "cy-on": cyberPatch(id, c => { const it = ((c.slots || {})[el.dataset.slot] || [])[num(el.dataset.i)]; if (it) { delete it.on; if (it.off) delete it.off; else it.off = true; } return c; }); break;
     case "cy-weapon": {
       const e = state.entries.find(x => x.id === id), w = e && cyberFx(e).weapons.find(x => x.name === el.dataset.name); if (!w || !Store.canEdit()) break;
       const T = CPR.weaponType(w.cat) || {};
