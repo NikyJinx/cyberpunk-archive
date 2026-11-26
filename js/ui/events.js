@@ -98,11 +98,11 @@ document.addEventListener("click", async ev => {
           (cy.slots && cy.slots[slot] || []).forEach(it => { if (out && it.installed !== false) { it.installed = false; it.stored = true; it.withBase = true; } else if (!out && it.withBase) { it.installed = true; delete it.stored; delete it.withBase; } });
           return cy; });
       } else cyberPatch(id, cy => { const list = (cy.slots || {})[slot] || [], it = list[i]; if (!it) return cy;
-        // un'opzione tolta va in idle: da lì si installa in qualsiasi slot
+        // un'opzione tolta va in idle: da lì si installa negli slot adatti
         if (out) { list.splice(i, 1); cy.slots.idle = [...(cy.slots.idle || []), { ...it, installed: false, stored: true, from: slot }]; }
         else { it.installed = true; delete it.stored; delete it.withBase; }
         return cy; });
-      toast(out ? (i < 0 ? "Disinstallato con le sue opzioni: resta in Equipaggiamento (l'umanità persa non torna)" : "Disinstallato: è in idle, lo puoi installare in qualsiasi slot (l'umanità persa non torna)") : `Reinstallato${i < 0 ? " con le sue opzioni" : ""}`, "ok");
+      toast(out ? (i < 0 ? "Disinstallato con le sue opzioni: resta in Equipaggiamento (l'umanità persa non torna)" : "Disinstallato: è in idle, lo puoi installare in uno slot adatto (l'umanità persa non torna)") : `Reinstallato${i < 0 ? " con le sue opzioni" : ""}`, "ok");
       break;
     }
     case "edit-cyber": editCyber(id); break;

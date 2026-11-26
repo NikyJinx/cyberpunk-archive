@@ -236,7 +236,7 @@ function chipOff(e, it) {
   return i >= alveoliOf(e);
 }
 function slotCard(e, s) {
-  const items = ((e.cyber && e.cyber.slots && e.cyber.slots[s.id]) || []).map(it => ({ ...it, slot: s.id })).filter(it => !isBaseItem(it));
+  const items = ((e.cyber && e.cyber.slots && e.cyber.slots[s.id]) || []).map((it, k) => ({ ...it, slot: s.id, k })).filter(it => !isBaseItem(it)), canOut = Store.canEdit();
   const inst = items.filter(it => it.installed !== false), b = baseState(e, s.id), bOn = b && !b.fixed && b.on;
   const sumC = inst.reduce((t, it) => t + num(it.cost), 0) + (bOn ? b.cost : 0), sumH = inst.reduce((t, it) => t + num(it.hl), 0) + (bOn ? b.hl : 0);
   return `
@@ -250,7 +250,7 @@ function slotCard(e, s) {
         return `
         <li class="${it.installed === false ? (it.stored ? "planned stored" : "planned") : ""}" ${it.note || cwOf(it) ? `title="${esc([(cwOf(it) || {}).desc, it.note].filter(Boolean).join(" · "))}"` : ""}>
           <span class="cy-chk" aria-label="${it.installed === false ? (it.stored ? "disinstallato" : "pianificato") : "installato"}">${it.installed === false ? (it.stored ? "⬚" : "◇") : "◆"}</span>
-          <span class="cy-name">${esc(it.name)}${chipOff(e, it) ? ` <i class="cy-off" title="Non c'è posto nell'Alveolo: il chip non è montato e non ha effetto. Aumenta gli slot dell'Alveolo o installane un altro.">⚠ ${alveoliOf(e) ? "Alveolo pieno" : "senza Alveolo"}</i>` : ""}${cwOf(it) && (cwOf(it).fx || []).length ? ` <i class="gl-fx" title="Effetto applicato ai tiri">⚡</i>` : ""}${it.ref === "skillchip" && it.param ? ` <small>${esc((CPR.skill(it.param) || {}).label || "")} ${+it.lvl === 4 ? 4 : 3}</small>` : ""}${it.note ? `<small>${esc(it.note)}</small>` : ""}</span>
+          <span class="cy-name">${esc(it.name)}${canOut && (it.installed !== false || it.stored) ? `<button type="button" class="gp-btn cy-out" data-action="gear-cy" data-id="${esc(e.id)}" data-op="out" data-slot="${esc(s.id)}" data-i="${it.k}" title="Disinstalla: va in idle, poi lo installi in uno slot adatto">⇩</button>` : ""}${chipOff(e, it) ? ` <i class="cy-off" title="Non c'è posto nell'Alveolo: il chip non è montato e non ha effetto. Aumenta gli slot dell'Alveolo o installane un altro.">⚠ ${alveoliOf(e) ? "Alveolo pieno" : "senza Alveolo"}</i>` : ""}${cwOf(it) && (cwOf(it).fx || []).length ? ` <i class="gl-fx" title="Effetto applicato ai tiri">⚡</i>` : ""}${it.ref === "skillchip" && it.param ? ` <small>${esc((CPR.skill(it.param) || {}).label || "")} ${+it.lvl === 4 ? 4 : 3}</small>` : ""}${it.note ? `<small>${esc(it.note)}</small>` : ""}</span>
           <span class="cy-cost">${hasVal(it.cost) ? esc(num(it.cost).toLocaleString("it-IT")) : "—"}</span>
           <span class="cy-hl">${hasVal(it.hl) ? esc(it.hl) : "—"}</span>
           <span class="cy-max ${changed ? "changed" : ""}" title="Umanità massima tolta${changed ? " (modificata, standard " + s.max + ")" : ""}">${m ? "−" + m : "0"}</span>
@@ -263,7 +263,7 @@ function slotCard(e, s) {
 const idleCyber = e => ((((e.cyber || {}).slots || {}).idle) || []).filter(it => it && it.name);
 function idleHtml(e) {
   const list = idleCyber(e), edit = Store.canEdit(), id = esc(e.id); if (!list.length) return "";
-  return `<section class="cy-idle"><header><span class="cy-title">⏸ Idle</span><span class="hint">non installato: niente effetti${list.some(it => it.fresh) ? " · l'umanità si perde quando lo installi" : ""} · va in qualsiasi slot</span></header>
+  return `<section class="cy-idle"><header><span class="cy-title">⏸ Idle</span><span class="hint">non installato: niente effetti${list.some(it => it.fresh) ? " · l'umanità si perde quando lo installi" : ""} · va negli slot adatti</span></header>
     <ul>${list.map((it, i) => `<li><span class="cy-name">${esc(it.name)}${it.from ? ` <small>tolto da ${esc(slotDef(e, it.from).label)}</small>` : ""}${it.ref === "skillchip" && it.param ? ` <small>${esc((CPR.skill(it.param) || {}).label || "")} ${+it.lvl === 4 ? 4 : 3}</small>` : ""}</span>
       <span class="cy-cost">${hasVal(it.cost) ? esc(num(it.cost).toLocaleString("it-IT")) : "—"}</span><span class="cy-hl" title="${it.fresh ? "Umanità che perderai installandolo" : "Umanità già persa"}">${hasVal(it.hl) ? esc(it.hl) : "—"}${it.fresh ? "*" : ""}</span>
       ${edit ? `<button type="button" class="btn ghost small g-act" data-action="cy-install" data-id="${id}" data-i="${i}">⇧ Installa</button>` : ""}</li>`).join("")}</ul></section>`;
@@ -271,12 +271,15 @@ function idleHtml(e) {
 // installa dall'idle: si sceglie lo slot (prima quelli adatti), e per un pezzo nuovo l'umanità persa
 function cyInstall(id, i) {
   const e = state.entries.find(x => x.id === id), it = e && idleCyber(e)[i]; if (!it || !Store.canEdit()) return;
+  // solo gli slot adatti al pezzo (un'opzione del braccio: braccio dx, sx o guanto); un pezzo fuori catalogo va ovunque
   const c = CW.byId(it.ref) || CW.byName(it.name), { fit, other } = c ? mkCySlots(e, c) : { fit: slotsOf(e), other: [] };
-  const opt = s => `<option value="${esc(s.id)}" ${it.from === s.id ? "selected" : ""}>${esc(s.label)}</option>`;
+  const okSlot = s => { const u = slotUse(s.id, [...((((e.cyber || {}).slots || {})[s.id]) || []), { name: it.name, ref: it.ref }], baseState(e, s.id)); return !u || (!u.missing && !u.over); };
+  const fitOk = [...fit].sort((a, b) => okSlot(b) - okSlot(a)), pick = (fitOk.find(s => s.id === it.from && okSlot(s)) || fitOk.find(okSlot) || fitOk[0] || {}).id;
+  const opt = s => `<option value="${esc(s.id)}" ${s.id === pick ? "selected" : ""}>${esc(s.label)}${okSlot(s) ? "" : " (non c'è posto)"}</option>`;
   openModal(`<form class="form" id="cy-inst">
     <div class="modal-head"><h2>// INSTALLA · ${esc(it.name)}</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
     <div class="modal-body"><div class="fields">
-      <div class="field full"><label for="ci-slot">Slot</label><select id="ci-slot" name="slot">${fit.map(opt).join("")}${other.length ? `<optgroup label="Altri slot">${other.map(opt).join("")}</optgroup>` : ""}</select></div>
+      <div class="field full"><label for="ci-slot">Slot</label><select id="ci-slot" name="slot">${fitOk.map(opt).join("")}</select>${c && other.length ? `<span class="hint">Solo dove può stare: ${esc(fitOk.map(s => s.label).join(", "))}.</span>` : ""}</div>
       ${it.fresh ? `<div class="field"><label for="ci-hl">Umanità persa (HL)</label><div class="mk-hl"><input id="ci-hl" name="hl" type="number" min="0" value="${esc(num(it.hl))}">${c && c.dice && c.dice !== "N/A" ? `<button type="button" class="gp-btn" data-ci-pu title="Tira ${esc(c.dice)}">⚄</button>` : ""}</div><span class="hint">${c && c.dice && c.dice !== "N/A" ? `${esc(c.dice)}, media ${c.pu}` : "si perde ora, all'installazione"}</span></div>` : `<p class="hint field full">L'umanità di questo pezzo è già stata persa quando l'hai installato la prima volta.</p>`}
       <p class="mk-warn field full" data-ci-cap></p>
     </div></div>
@@ -332,7 +335,7 @@ function cyberInner(e) {
     </div>`;
   return `
     ${idleHtml(e)}
-    <div class="cy-legend"><span>◆ installato</span><span>◇ pianificato</span><span>⏸ idle (non installato, va in qualsiasi slot)</span><span>⬚ disinstallato (resta in Equipaggiamento)</span><span>○ base non installata</span><span>colonne: costo (eb) · HL = umanità persa · −N = umanità massima tolta (in giallo se modificata)</span></div>
+    <div class="cy-legend"><span>◆ installato</span><span>◇ pianificato</span><span>⏸ idle (non installato, va negli slot adatti)</span><span>⬚ disinstallato (resta in Equipaggiamento)</span><span>○ base non installata</span><span>colonne: costo (eb) · HL = umanità persa · −N = umanità massima tolta (in giallo se modificata)</span></div>
     <div class="cy-layout">
       <div class="cy-col">${col("l")}</div>
       <div class="cy-center">
@@ -396,10 +399,10 @@ function gearInner(e) {
       const arm = ((cwOf(it) || {}).fx || []).find(f => f.t === "armor");
       rows.cyber.push({ name: it.name, detail: [sl.label, hasVal(it.hl) ? `${num(it.hl)} HL` : "", arm ? `SP ${arm.sp + num(it.up)}${num(it.up) ? " (upgrade +1)" : ""}` : ""].filter(Boolean).join(" · "), note: it.note, cls: st === "in" ? "" : st,
         tag: { in: "◆ installato", stored: "⬚ disinstallato", plan: "◇ pianificato" }[st],
-        act: (arm && edit ? cyUpBtn(id, sl.id, i, it) : "") + (st === "in" ? cyBtn("out", sl.id, i, "⇩ Disinstalla", "Lo togli dal corpo: resta nell'inventario") : st === "stored" ? cyBtn("in", sl.id, i, "⇧ Reinstalla", "Lo rimetti nel corpo") : "") });
+        act: (arm && edit ? cyUpBtn(id, sl.id, i, it) : "") + (st === "in" ? cyBtn("out", sl.id, i, "⇩ Disinstalla", "Lo togli dal corpo: resta nell'inventario") : st === "stored" ? cyBtn("in", sl.id, i, "⇧ Reinstalla", "Lo rimetti nel corpo") + cyBtn("out", sl.id, i, "⏸ In idle", "Lo togli dallo slot: dall'idle lo installi in uno slot adatto") : "") });
     });
   });
-  // cyberware in idle: comprato o tolto, si installa in qualsiasi slot
+  // cyberware in idle: comprato o tolto, si installa negli slot adatti
   idleCyber(e).forEach((it, i) => rows.cyber.push({ name: it.name, detail: [it.from ? `tolto da ${slotDef(e, it.from).label}` : "", hasVal(it.hl) ? `${num(it.hl)} HL${it.fresh ? " (al montaggio)" : ""}` : ""].filter(Boolean).join(" · "), note: it.note, cls: "stored",
     tag: "⏸ idle", act: edit ? `<button type="button" class="btn ghost small g-act" data-action="cy-install" data-id="${id}" data-i="${i}" title="Scegli lo slot dove installarlo">⇧ Installa</button>` : "" }));
   // cyberdeck con programmi e hardware
@@ -665,13 +668,25 @@ function editCyber(id) {
       }
       if (items.length) out[fs.dataset.slot] = items;
     }
+    // tolti dal corpo con la spunta: vanno in idle (da lì si installano in uno slot adatto)
+    const idle = [...idleCyber(e)];
+    Object.keys(out).forEach(sl => {
+      const was = ((((e.cyber || {}).slots || {})[sl]) || []).filter(x => x.installed !== false);
+      out[sl] = out[sl].filter(it => {
+        if (it.installed !== false || it.stored) return true;
+        const k = was.findIndex(x => x.name === it.name && (x.ref || "") === (it.ref || "")); if (k < 0) return true;
+        was.splice(k, 1); idle.push({ ...it, installed: false, stored: true, from: sl }); return false;
+      });
+      if (!out[sl].length) delete out[sl];
+    });
     const hum = form.humanity.value, th = form.therapy.value;
     const hidden = CYBER_SLOTS.filter(s => !s.ext && !$(`fieldset[data-slot="${s.id}"]`, form)).map(s => s.id);   // gli occhiali compaiono da soli
     try {
       const saved = await Store.save("entries", { ...e, cyber: {
-        humanity: hum === "" ? null : num(hum), therapy: th === "" ? null : num(th), slots: { ...out, ...(idleCyber(e).length ? { idle: e.cyber.slots.idle } : {}) }, extra, hidden, bases,
+        humanity: hum === "" ? null : num(hum), therapy: th === "" ? null : num(th), slots: { ...out, ...(idle.length ? { idle } : {}) }, extra, hidden, bases,
       } });
-      upsert(state.entries, saved); toast("Cyberware salvato", "ok"); openEntry(saved.id, "cyber");
+      upsert(state.entries, saved); const nIdle = idle.length - idleCyber(e).length;
+      toast(nIdle > 0 ? `Cyberware salvato · ${nIdle} ${nIdle > 1 ? "pezzi tolti vanno" : "pezzo tolto va"} in idle` : "Cyberware salvato", "ok"); openEntry(saved.id, "cyber");
     } catch (err) { fail(err); }
   });
 }
