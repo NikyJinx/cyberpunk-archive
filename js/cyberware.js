@@ -203,8 +203,9 @@ window.CW = (() => {
     // effetti validi; con la stessa chiave resta il più forte (es. Analizzatore di Stress potenziato sul normale)
     const ok = [], best = {};
     for (const { it, c } of inst) for (const f of c.fx || []) {
-      if (f.cond) out.cond.push({ c, f, on: !!it.on, it });
-      if (f.cond && !it.on) continue;
+      // bonus situazionali: attivi di base, spenti solo se qualcuno li disattiva a mano (off: true; il vecchio «on» non conta)
+      if (f.cond) out.cond.push({ c, f, on: !it.off, it });
+      if (f.cond && it.off) continue;
       if (f.needs && !have(f.needs)) continue;
       if (f.min && count(f.count || c.id) < f.min) continue;
       const x = { it, c, f }; ok.push(x);
