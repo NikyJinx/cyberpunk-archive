@@ -8,6 +8,11 @@
 //    pain   → ignora Seriously Wounded      chip  → abilità scelta a livello 3 o 4 (it.lvl)
 //    weapon → arma da aggiungere alla scheda
 //    stat   → +v a una STAT (stat: "COOL"), fino a max      chip con skill/lvl → abilità fissa (chip homebrew)
+//    dodge  → schivi i proiettili qualunque sia il REF    critImmune → Critical Injury senza effetto (crits; limb: solo l'arto dove è installato)
+//    nano   → un uso al giorno per riportare la SP sottopelle al massimo
+//  cap  = l'effetto vale al massimo per N installazioni (es. Extra-Jointed: 4)
+//  base + baseOf + bslots = variante del cyberware fondamentale (Neo-Soviet Cyberarm, Discount Cyberaudio Suite)
+//  socket = conta come un Alveolo (budget: espelle il chip quando subisci danni alla testa)
 //  cond = vale solo quando lo attivi (es. Sandevistan, percezione con la vista)
 //  key  = effetti con la stessa chiave non si sommano (installazioni multiple non cumulative): vale il più forte
 // ============================================================
@@ -27,7 +32,8 @@ window.CW = (() => {
   const TECH7 = ["cybertech", "electronics", "airtech", "landtech", "weaponstech", "seatech", "basictech"];
   // C(id, gruppo, nome, installazione, costo, categoria, pu, dadi, descrizione, extra)
   const C = (id, g, name, inst, cost, cat, pu, dice, desc, x = {}) => ({ id, g, name, inst, cost, cat, pu, dice, desc, slots: 1, ...x });
-  const N = "N/A", CC = "Centro Commerciale", CL = "Clinica", OS = "Ospedale";
+  const N = "N/A", CC = "Centro Commerciale", CL = "Clinica", OS = "Ospedale", BC = "Black Chrome";
+  const HARD = "non possono essere disattivati, resi inutilizzabili o distrutti da scosse elettriche, Microwaver, impulsi EMP o programmi che non siano Black ICE.";
   const BASE = [
     // Fashionware
     C("biomonitor", "fashion", "Biomonitor", CC, 100, "Premium", 0, N, "Impianto sottocutaneo a LED che mostra battito, temperatura, respirazione, zuccheri… Si collega all'Agent per monitorare la salute."),
@@ -167,9 +173,27 @@ window.CW = (() => {
     C("faceplate", "internal", "Quick Change Faceplate Mount", OS, 1000, "Very Expensive", 14, "4d6", "Sostituisce il viso con un attacco per Faceplate intercambiabili (un'Azione). Uno è incluso, gli altri costano 100 eb.", {"src": "12 Days of REDMAS"}),
     C("quickdigits", "arm", "Rocklin Augmentics Quick Digits", CL, 250, "Premium", 3, "1d6", "Cybermano, anche come unico impianto in un braccio di carne. Con due o più: +1 a Conceal/Reveal Object, Contortionist (con le mani), First Aid, Forgery, Language (Sign), Paramedic, Pick Lock e Pick Pocket.", {"src": "12 Days of REDMAS", "fx": [{"t": "skill", "skills": ["conceal", "contortionist", "firstaid", "forgery", "paramedic", "picklock", "pickpocket"], "v": 1, "min": 2, "key": "quickdigits"}]}),
     C("skydrivers", "leg", "Rocklin Augmentics Skydrivers", OS, 1000, "Very Expensive", 14, "4d6", "Cybergambe in coppia con 2 slot ciascuna e Jump Booster inclusi (senza umanità né slot, non si tolgono). Se ti sei mosso di almeno 4 m, un attacco di Brawling o Martial Arts con le gambe contro una copertura fa +3d6.", {"src": "12 Days of REDMAS"}),
-    C("cyberspine", "internal", "Sycust Cyberspine", OS, 1000, "Very Expensive", 7, "2d6", "Immune all'effetto e ai danni bonus della Critical Injury Spina Dorsale. Hardened: immune agli EMP e ai programmi non Black ICE. +1 a Contortionist. Può ospitare un Cybersnake.", {"src": "12 Days of REDMAS", "slots": 3, "fx": [{"t": "skill", "skills": ["contortionist"], "v": 1}]}),
+    C("cyberspine", "internal", "Sycust Cyberspine", OS, 1000, "Very Expensive", 7, "2d6", "Immune all'effetto e ai danni bonus della Critical Injury Spina Dorsale. Hardened: immune agli EMP e ai programmi non Black ICE. +1 a Contortionist. Può ospitare un Cybersnake.", {"src": "12 Days of REDMAS", "slots": 3, "fx": [{"t": "skill", "skills": ["contortionist"], "v": 1}, {"t": "critImmune", "crits": ["Spinal Injury"]}]}),
     C("cyberconductor", "borg", "Zetatech CyberConductor Integrato", OS, 1000, "Very Expensive", 14, "4d6", "Solo in una Full Body Conversion. Collega fino a 3 cyberdeck più quelli installati nel corpo; cambiare deck non fa danni.", {"src": "12 Days of REDMAS", "req": "Full Body Conversion", "slots": 3}),
     C("cyberscanner", "arm", "Cyberscanner Integrato", CL, 500, "Expensive", 7, "2d6", "In un minuto, a 2 m, legge il cyberware installato di chi resta fermo (dà errore con impianti Hardened, potenziati o sconosciuti). Il risultato compare su un pannello LED, sul Chyron o sull'Agent.", {"src": "12 Days of GEARMAS", "req": "Cyberbraccio", "slots": 2}),
+    // Black Chrome
+    C("budgetchipslot", "neural", "Budget Chipware Socket", CL, 100, "Premium", 7, "2d6", "Alveolo economico sul retro del collo: tiene un Chipware, montarlo o toglierlo è un'Azione; la Perdita d'Umanità si subisce solo la prima volta per ogni chip. Se ne possono installare più d'uno. Quando subisci danni alla testa espelle il chip fino a 30 m dietro di te: 1d10, con 1 il chip si distrugge (si ritrova facilmente: fuma ed è rovente).", { src: BC, req: "Collegamento Neurale", socket: true, budget: true }),
+    C("memstim", "neural", "Explicit Memory Stimulator", N, 100, "Premium", 3, "1d6", "Chipware: +2 alle prove di Concentration per ricordare informazioni.", { src: BC, req: "Alveolo", chip: true, fx: [{ t: "skill", skills: ["concentration"], v: 2, cond: "Per ricordare informazioni" }] }),
+    C("reflexcopro", "neural", "Reflex Co-Processor", OS, 500, "Expensive", 14, "4d6", "Aiuta il Collegamento Neurale a gestire i riflessi: schivi i proiettili qualunque sia il tuo REF.", { src: BC, req: "Collegamento Neurale", fx: [{ t: "dodge" }] }),
+    C("discountaudio", "audio", "Discount Cyberaudio Suite", CL, 100, "Premium", 3, "1d6", "Sistema Cyberudito economico, con un grosso componente esterno ben visibile attorno alle orecchie: 1 Slot Opzioni. Se ne può avere uno solo.", { src: BC, base: true, baseOf: "audio", bslots: 1 }),
+    C("eyehardened", "optics", "Hardened Cybereye Casing", CL, 500, "Expensive", 3, "1d6", `L'interno del Cyberocchio è rinforzato a standard militare: l'occhio e le sue opzioni ${HARD}`, { src: BC, req: "Cyberocchio" }),
+    C("healthmonitor", "fashion", "Heuristic Health Monitor", CC, 500, "Expensive", 0, N, "Sensori in tutto il corpo collegati al Biomonitor: salute dei tessuti, densità ossea, muscoli… e la classifica «Healthy Persons» in tempo reale. Conosci a colpo d'occhio i tuoi Punti Ferita.", { src: BC, req: "Biomonitor" }),
+    C("internalhardened", "internal", "Internal Body Cyberware Hardened Shielding", OS, 1000, "Very Expensive", 14, "4d6", `Tutti gli Impianti Interni sono rinforzati a standard militare: ${HARD}`, { src: BC }),
+    C("racerbracer", "internal", "RacerBracer", OS, 500, "Expensive", 7, "2d6", "Rocklin Augmentics: sei immune alla Critical Injury Whiplash.", { src: BC, fx: [{ t: "critImmune", crits: ["Whiplash"] }] }),
+    C("nanomatrix", "internal", "Trauma Response Nanomatrix", OS, 1000, "Very Expensive", 7, "2d6", "Una volta al giorno, con un'Azione, riporta lo Skin Weave o l'Armatura Subdermale alla SP piena. Ogni installazione in più aggiunge un uso al giorno.", { src: BC, req: "Skin Weave o Armatura Subdermale", fx: [{ t: "nano" }] }),
+    C("neosovietarm", "arm", "Neo-Soviet Cyberarm", OS, 100, "Premium", 7, "2d6", "Cyberbraccio economico: 3 Slot per opzioni da Cyberbraccio o Cyberarto e una Mano Standard senza PU e senza slot. Senza BODY 8 o più hai −1 a tutti i tiri che usano questo braccio. Ingombrante: le opzioni sono sempre visibili quando è scoperto (anche le armi che altrove sarebbero occultate) e si riconosce come cyberbraccio anche sotto il RealSkinn™.", { src: BC, base: true, baseOf: "braccio", bslots: 3, minBody: 8 }),
+    C("flashbulb", "arm", "Flashbulb", CL, 500, "Expensive", 7, "2d6", "Con un'Azione costringi chi ha occhi di carne o cyberottiche entro 25 m a un Resist Torture/Drugs VD 15 (tu non tiri): se fallisce subisce Damaged Eye per un minuto. Protezioni come l'Antiriflesso lo evitano.", { src: BC, req: "Cyberbraccio, 2 Slot", slots: 2 }),
+    C("armdeckup", "arm", "Integrated Cyberdeck Upgrade", CL, 500, "Expensive", 7, "2d6", "+1 Slot per programmi o hardware al Cyberdeck integrato nello stesso Cyberbraccio (aggiungilo dalla tab Cyberdeck).", { src: BC, req: "Cyberdeck nello stesso Cyberbraccio" }),
+    C("popupnet", "arm", "Popup Net Launcher", CL, 500, "Expensive", 7, "2d6", "Lanciareti esotico a una mano nel braccio, con una rete nel caricatore: Shoulder Arms, tabella dello Shotgun, al massimo 25 m. Occultato senza prove, si estrae e si ritira senza Azioni; estratto, la mano non regge nulla. Chi è colpito resta in Presa nella rete: niente Azione di Movimento, niente armi a due mani, −2 alle Azioni fisiche. La rete ha 15 PF: chi spara dentro danneggia allo stesso modo rete e bersaglio. Per liberarsi: Contortionist VD 13 (solo chi è dentro) o Brawling VD 13 (chiunque), e la rete si distrugge. Rete di ricambio 50 eb.", { src: BC, req: "Cyberbraccio, 3 Slot", slots: 3, fx: [{ t: "weapon", name: "Popup Net Launcher", cat: "shotgun", skill: "shoulderarms", dmg: "—", rof: 1, nodmg: true, noAmmo: true, charges: 1, batteryCost: 50, exotic: true, note: "Exotic · niente danni: chi è colpito resta in Presa nella rete (niente Movimento né armi a due mani, −2 alle Azioni fisiche) · al massimo 25 m · rete 15 PF · Contortionist o Brawling VD 13 per liberarsi · carica = rete (50 eb)" }] }),
+    C("popupshotgun", "arm", "Popup Shotgun", CL, 1000, "Very Expensive", 7, "2d6", "Shotgun con 2 colpi nel Cyberbraccio, compatibile solo con il Collegamento Smartgun tra gli accessori. Occultato senza prove, si estrae e si ritira senza Azioni; estratto, la mano non regge nulla.", { src: BC, req: "Cyberbraccio, 3 Slot", slots: 3, fx: [{ t: "weapon", name: "Popup Shotgun", cat: "shotgun", dmg: "5d6", rof: 1, mag: 2, note: "Popup nel cyberbraccio · solo il Collegamento Smartgun come accessorio" }] }),
+    C("extrajointed", "limbcover", "Extra-Jointed Cyberlimb Upgrade", CL, 500, "Expensive", 3, "1d6", "Opzione del cyberarto: +2 a Contortionist. Una sola per cyberarto; valgono al massimo quattro cyberarti, fino a +8.", { src: BC, req: "Cyberbraccio o Cybergamba", fx: [{ t: "skill", skills: ["contortionist"], v: 2, cap: 4 }] }),
+    C("reinforcedlimb", "limbcover", "Reinforced Cyberlimb Upgrade", CL, 1000, "Very Expensive", 3, "1d6", "Idrauliche ridondanti e rinforzi: il cyberarto è immune a Broken Arm se è un braccio, a Broken Leg se è una gamba. Il GM decide quale arto subisce la Critical Injury.", { src: BC, req: "Cyberbraccio o Cybergamba", fx: [{ t: "critImmune", limb: true }] }),
+    C("borghardened", "borg", "Borgware Hardened Shielding", OS, 1000, "Very Expensive", 14, "4d6", `Un Borgware già installato è rinforzato a standard militare: la schermatura e il Borgware scelto ${HARD}`, { src: BC, req: "un Borgware installato" }),
   ];
   const groupOf = id => GROUPS.find(g => g.id === id) || GROUPS[0];
 
@@ -198,16 +222,18 @@ window.CW = (() => {
     const w = x => x.it.pair ? 2 : 1;   // negli Occhiali Intelligenti un'opzione conta sempre come una coppia
     const have = id => inst.filter(x => x.c.id === id).reduce((t, x) => t + w(x), 0);
     const count = id => inst.filter(x => x.c.id === id || x.c.as === id).reduce((t, x) => t + w(x), 0);   // «as»: conta come un altro impianto
-    const out = { skill: {}, mods: [], stat: {}, body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0, warn: [] };
+    const out = { skill: {}, mods: [], stat: {}, body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0, warn: [], dodge: "", critImmune: [], nano: 0 };
     let body = +baseBody || 0, frame = null; const frames = [];
     // effetti validi; con la stessa chiave resta il più forte (es. Analizzatore di Stress potenziato sul normale)
-    const ok = [], best = {};
-    for (const { it, c } of inst) for (const f of c.fx || []) {
+    const ok = [], best = {}, capN = {};
+    for (const { it, c } of inst) for (const [fi, f] of (c.fx || []).entries()) {
       // bonus situazionali: attivi di base, spenti solo se qualcuno li disattiva a mano (off: true; il vecchio «on» non conta)
       if (f.cond) out.cond.push({ c, f, on: !it.off, it });
       if (f.cond && it.off) continue;
       if (f.needs && !have(f.needs)) continue;
       if (f.min && count(f.count || c.id) < f.min) continue;
+      // cap: l'effetto conta al massimo per N installazioni (es. quattro cyberarti Extra-Jointed)
+      if (f.cap && (capN[c.id + fi] = (capN[c.id + fi] || 0) + 1) > f.cap) continue;
       const x = { it, c, f }; ok.push(x);
       if (f.key && (!best[f.key] || num(f.v) > num(best[f.key].f.v))) best[f.key] = x;
     }
@@ -229,6 +255,14 @@ window.CW = (() => {
       if (f.t === "run") out.run += f.v;                                                  // metri in più alla Corsa
       if (f.t === "armor") out.armor.push({ name: c.name, sp: f.sp + (+it.up || 0), type: f.type, up: +it.up || 0 });
       if (f.t === "weapon") out.weapons.push({ ...f, src: c.name });
+      if (f.t === "dodge") out.dodge = out.dodge || c.name;                               // schivi i proiettili con qualsiasi REF
+      if (f.t === "nano") out.nano += 1;                                                  // usi al giorno della Nanomatrix
+      // Critical Injury senza effetto; limb: solo quella dell'arto dove è installato (braccio → Broken Arm, gamba → Broken Leg)
+      if (f.t === "critImmune") {
+        const limb = /^braccio/.test(it.slot || "") ? "Broken Arm" : /^gamba/.test(it.slot || "") ? "Broken Leg" : "";
+        const crits = f.limb ? (limb ? [limb] : []) : f.crits || [];
+        crits.forEach(n => out.critImmune.push({ crit: n, name: c.name, limb: !!f.limb, slot: it.slot || "" }));
+      }
     }
     // requisiti del telaio: il BODY già alzato dai Lacci (es. 4 + Laccio = 6 basta per il Sigma) e il numero di Lacci
     for (const { f, c } of frames) {
@@ -247,5 +281,9 @@ window.CW = (() => {
     return list.filter(b => !b.chip || b.chip === best).filter((b, i, l) => !b.chip || l.findIndex(x => x.chip) === i).map(b => b.chip ? { l: `${b.l} (livello ${b.chip})`, v: Math.max(0, b.chip - (+lvl || 0)) } : { l: b.l, v: b.v }).filter(b => b.v);
   }
 
-  return { GROUPS, groupOf, BASE, all, byId, byName, setHomebrew, rollPu, effects, skillBonus };
+  // conta come un Alveolo (l'Alveolo del manuale o il Budget Chipware Socket)
+  const isSocket = c => !!c && (c.id === "chipslot" || !!c.socket);
+  // varianti del cyberware fondamentale per un tipo di slot (braccio, audio…)
+  const baseVariants = kind => all().filter(c => c.base && c.baseOf === kind);
+  return { GROUPS, groupOf, BASE, all, byId, byName, setHomebrew, rollPu, effects, skillBonus, isSocket, baseVariants };
 })();

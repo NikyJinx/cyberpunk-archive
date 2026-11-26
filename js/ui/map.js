@@ -298,7 +298,7 @@ function tokCombatHtml(e) {
     .map(k => ({ ...k, base: statEff(e, k.stat) + k.lvl })).sort((a, b) => b.base - a.base).slice(0, 3);
   return `<div class="pc-rolls tt-quick">
       ${roll("init", `Initiative <b>${statEff(e, "REF")}</b>`, "chip y", "REF + 1d10")}
-      ${roll("skill:evasion", `Evasion <b>${statEff(e, "DEX") + (ev ? ev.lvl : 0)}</b>`, "chip", `DEX + Evasion + 1d10${statEff(e, "REF") >= 8 ? " · schivi anche i proiettili" : ""}`)}
+      ${roll("skill:evasion", `Evasion <b>${statEff(e, "DEX") + (ev ? ev.lvl : 0)}</b>`, "chip", `DEX + Evasion + 1d10${dodgeTxt(e)}`)}
       ${pe ? roll("skill:perception", `Perception <b>${statEff(e, pe.stat) + pe.lvl}</b>`) : ""}
       ${top.map(k => roll(k.key, `${esc(k.label)} <b>${k.base}</b>`)).join("")}
       ${isNetrunner(e) ? netQuick(activeDeck(e), ifaceOf(e), (w, l, c) => roll("deck:" + w, l, c)) : ""}

@@ -299,7 +299,7 @@ function combatHtml(e) {
           ${edit ? adjBtns(e.id, "dsp", [-1, 1]) : ""}
         </div>
         <div class="sh-box"><span class="l">Move</span><span class="n">${statEff(e, "MOVE") * 2}<small> m/turn</small></span><span class="sh-sub">${statEff(e, "MOVE")} squares · Run ${runOf(e)} m</span></div>
-        <div class="sh-box"><span class="l">Evasion</span>${(() => { const k = skillByKey(e, "skill:evasion"); return roll("skill:evasion", `<span class="n">${statEff(e, "DEX") + (k ? k.lvl : 0)}</span><span class="sh-sub">DEX + Evasion${statEff(e, "REF") >= 8 ? " · schivi anche i proiettili" : ""}</span>`, "sh-rollbox", "Tira DEX + Evasion + 1d10"); })()}</div>
+        <div class="sh-box"><span class="l">Evasion</span>${(() => { const k = skillByKey(e, "skill:evasion"); return roll("skill:evasion", `<span class="n">${statEff(e, "DEX") + (k ? k.lvl : 0)}</span><span class="sh-sub">DEX + Evasion${dodgeTxt(e)}</span>`, "sh-rollbox", "Tira DEX + Evasion + 1d10"); })()}</div>
       </div>
       ${pcPen(e) ? `<div class="en-pen">Armatura pesante: ${pcPenTxt(e)} (già calcolato nei valori e nei tiri)</div>` : ""}
       <div class="sh-status"><span class="sh-k">Stati</span>${statusChips(s.status, edit ? sheetStatusAttrs(e) : null)}</div>

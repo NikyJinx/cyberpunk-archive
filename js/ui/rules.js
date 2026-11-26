@@ -104,11 +104,14 @@ const sheetStatusApply = e => ({
 });
 
 const lastCrit = {};
-function critRoll(who, loc, post) {
-  const r = CPR.rollCrit(loc), I = r.injury;
-  post({ kind: "check", label: `Critical Injury · ${loc === "head" ? "testa" : "corpo"}: ${I.name}`, dice: r.dice, mods: [], total: r.total, inj: I.name,
-    note: `${I.eff}${I.dsp ? " · +1 alla penalità del Death Save" : ""} · +5 danni diretti (già nel tiro di danno)` });
-  return { ...I, loc };
+// e = scheda del bersaglio: il cyberware può annullare la Critical Injury (RacerBracer, Sycust Cyberspine, Reinforced Cyberlimb)
+function critRoll(who, loc, post, e) {
+  const r = CPR.rollCrit(loc), I = r.injury, im = e ? cyberFx(e).critImmune.filter(x => x.crit === I.name) : [];
+  const full = im.find(x => !x.limb), limb = im.filter(x => x.limb);
+  const imTxt = limb.length ? ` · se colpisce ${limb.map(x => slotDef(e, x.slot).label.toLowerCase()).join(" o ")}: nessun effetto (${limb[0].name})` : "";
+  post({ kind: "check", label: `Critical Injury · ${loc === "head" ? "testa" : "corpo"}: ${I.name}${full ? " (immune)" : ""}`, dice: r.dice, mods: [], total: r.total, inj: I.name,
+    note: `${full ? `${full.name}: immune, nessun effetto né penalità al Death Save` : `${I.eff}${I.dsp ? " · +1 alla penalità del Death Save" : ""}`} · +5 danni diretti (già nel tiro di danno)${full ? "" : imTxt}` });
+  return { ...I, loc, ...(full ? { immune: full.name } : {}) };
 }
 function critBlock(e, edit) {
   const s = sheetOf(e), L = lastCrit[e.id];
@@ -117,7 +120,7 @@ function critBlock(e, edit) {
     <div class="pc-rolls">
       <button type="button" class="chip r" data-action="sheet-crit" data-id="${esc(e.id)}" data-loc="body">⚄ Critical Injury · corpo</button>
       <button type="button" class="chip r" data-action="sheet-crit" data-id="${esc(e.id)}" data-loc="head">⚄ Critical Injury · testa</button>
-      ${L && edit ? `<span class="crit-last">Uscita: <b>${esc(L.name)}</b> <button type="button" class="btn ghost small" data-action="sheet-crit-add" data-id="${esc(e.id)}">+ Aggiungi alla scheda</button></span>` : ""}
+      ${L && edit ? `<span class="crit-last">Uscita: <b>${esc(L.name)}</b> ${L.immune ? `<small>immune (${esc(L.immune)})</small>` : `<button type="button" class="btn ghost small" data-action="sheet-crit-add" data-id="${esc(e.id)}">+ Aggiungi alla scheda</button>`}</span>` : ""}
     </div></div>`;
 }
 

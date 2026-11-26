@@ -248,10 +248,20 @@ document.addEventListener("click", async ev => {
     case "cy-weapon": {
       const e = state.entries.find(x => x.id === id), w = e && cyberFx(e).weapons.find(x => x.name === el.dataset.name); if (!w || !Store.canEdit()) break;
       const T = CPR.weaponType(w.cat) || {};
-      sheetPatch(id, s => { s.weapons = [...(s.weapons || []), { name: w.name, cat: w.cat, skill: w.skill || T.skill || "melee", dmg: w.dmg, rof: w.rof || T.rof || 1, mag: "", ...(w.quality ? { quality: w.quality } : {}), note: [w.note, "cyberware"].filter(Boolean).join(" · ") }]; return s; });
+      // armi integrate: caricatore, niente danni, cariche (es. le reti del Popup Net Launcher)
+      sheetPatch(id, s => { s.weapons = [...(s.weapons || []), { name: w.name, cat: w.cat, skill: w.skill || T.skill || "melee", dmg: w.dmg, rof: w.rof || T.rof || 1, mag: w.mag ? String(w.mag) : "", ...(w.quality ? { quality: w.quality } : {}),
+        ...(w.nodmg ? { nodmg: true } : {}), ...(w.noAmmo ? { noAmmo: true } : {}), ...(num(w.charges) ? { charges: num(w.charges), batteryCost: num(w.batteryCost) } : {}), note: [w.note, "cyberware"].filter(Boolean).join(" · ") }]; return s; });
       toast(`${w.name} aggiunta alle armi`, "ok"); break;
     }
     case "cyhb-edit": editCyberHb(id); break;
+    // Budget Chipware Socket: il chip espulso si distrugge con 1 su 1d10
+    case "cy-eject": { const e = state.entries.find(x => x.id === id); if (!e) break; const v = CPR.die(10);
+      postRoll({ kind: "check", who: e.name, entryId: e.id, label: `Chip espulso: ${v === 1 ? "distrutto" : "intatto"}`, dice: [{ v, s: 10 }], mods: [], total: v, note: v === 1 ? "Con 1 il chip si distrugge in volo" : "Il chip vola fino a 30 m dietro di te: fuma ed è rovente, si ritrova facilmente" }); break; }
+    // Trauma Response Nanomatrix: SP sottopelle piena, un uso al giorno per installazione
+    case "cy-nano": { const e = state.entries.find(x => x.id === id), fx = e && cyberFx(e); if (!fx || !Store.canEdit()) break;
+      if (num(sheetOf(e).nanoUsed) >= fx.nano) { toast("Usi di oggi finiti", "err"); break; }
+      sheetPatch(id, s => { delete s.skin; s.nanoUsed = num(s.nanoUsed) + 1; return s; }); toast("Nanomatrix: SP sottopelle di nuovo piena", "ok"); break; }
+    case "cy-nano-day": if (Store.canEdit()) sheetPatch(id, s => { delete s.nanoUsed; return s; }); break;
     case "gloss-tab": ls.set("nc-gloss", el.dataset.tab); route(); break;
     case "mk-buy": mkBuy(el.dataset.key); break;
     case "mk-log": mkHistory(id); break;
@@ -335,9 +345,10 @@ document.addEventListener("click", async ev => {
     case "cb-dmg": cbDamage(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.mult)); break;
     case "sheet-status": { const e = state.entries.find(x => x.id === el.dataset.stSheet); if (e && Store.canEdit()) statusOp(el, sheetStatusApply(e)); break; }
     case "tok-status": { const t = state.tokens.find(x => x.id === el.dataset.stTok); if (t && Store.canEdit()) statusOp(el, tokStatusApply(t)); break; }
-    case "sheet-crit": { const e = state.entries.find(x => x.id === id); if (!e) break; lastCrit[id] = critRoll(e.name, el.dataset.loc, r => postRoll({ ...r, who: e.name, entryId: e.id })); refreshSheetView(id); break; }
+    case "sheet-crit": { const e = state.entries.find(x => x.id === id); if (!e) break; lastCrit[id] = critRoll(e.name, el.dataset.loc, r => postRoll({ ...r, who: e.name, entryId: e.id }), e); refreshSheetView(id); break; }
     case "sheet-crit-add": {
       const L = lastCrit[id]; if (!L || !Store.canEdit()) break;
+      if (L.immune) { toast(`${L.name}: immune grazie a ${L.immune}`, "err"); break; }
       delete lastCrit[id];
       sheetPatch(id, s => { s.crit = [s.crit, `${L.name} (${L.loc === "head" ? "testa" : "corpo"}): ${L.eff}`].filter(Boolean).join("\n"); if (L.dsp) s.dsp = num(s.dsp) + L.dsp; return s; });
       toast(`${L.name} aggiunta${L.dsp ? " · penalità del Death Save +1" : ""}`, "ok");
