@@ -239,6 +239,7 @@ document.addEventListener("click", async ev => {
     case "ip-open": openIp(id); break;
     case "ip-earn": case "ip-spend": case "ip-undo": case "ip-edit": ipAction(el); break;
     case "sheet-roll": { const e = state.entries.find(x => x.id === id); if (e) sheetRoll(e, el.dataset.roll); break; }
+    case "hack-roll": { const e = state.entries.find(x => x.id === id); if (e) hackRoll(e, el); break; }
     case "rl-op": roleOp(el); break;
     case "rl-roll": roleRoll(el); break;
     case "log-clear": ls.set("nc-log-cleared", new Date().toISOString()); renderLogs(); toast("Dice log pulito su questo dispositivo: i tiri restano salvati"); break;

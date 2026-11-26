@@ -17,7 +17,7 @@ window.MK = (() => {
   // W(id, nome, categoria, costo, extra) · le statistiche mancanti vengono dalla categoria (CPR.WEAPON_TYPES)
   const W = (id, name, cat, cost, x = {}) => ({ id, type: "weapon", name, cat, cost, ...x });
   const A = (id, name, sp, pen, cost, desc) => ({ id, type: "armor", name, sp, pen, cost, desc });
-  const SOF = "Solo of Fortune 2045";
+  const SOF = "Solo of Fortune 2045", HACK = "Hacking Agents";
   // armi con accessori già montati: att = id delle voci «Accessorio per armi», slotsFree = slot ancora liberi
   const NOMAD = "Un Nomade può riceverla quando monta il primo Vehicle Heavy Weapon Mount";
   const G = (id, name, cost, desc, x = {}) => ({ id, type: "gear", name, cost, desc, gcat: "equip", ...x });
@@ -135,6 +135,7 @@ window.MK = (() => {
     G("e-flashlight", "Torcia Elettrica", 20, "Ricaricabile: cono di luce di 100 m, 10 ore per carica.", { label: "Attrezzo" }),
     G("e-radsuit", "Tuta Antiradiazioni", 1000, "Protegge dalle radiazioni: il massimo della prevenzione nella Zona Calda.", { label: "Indossabile" }),
     G("e-glowpaint", "Vernice Fosforescente", 20, "Bomboletta di vernice luminosa per segnare luoghi o fare arte (e taggare).", { label: "Attrezzo" }),
+    G("hk-breacher", "Breacher", 500, "Agent modificato per hackerare altri Agent a distanza (20 m, in linea di vista con l'Agent o con chi lo porta; anche in tasca, non dietro un muro o una copertura). Non funziona come Agent normale e non si può hackerare. Non serve con gli Agent interni né con i telefoni usa e getta. Il tiro è nel riquadro «Hacking Agent» della tab Cyberdeck.", { label: "Elettronica", src: HACK }),
     G("e-videocam", "Videocamera", 100, "Registra fino a 12 ore di audio e video su un Chip di Memoria. Si usa con una mano.", { label: "Elettronica" }),
     G("e-bdviewer", "Visore Braindance", 1000, "Per vivere le braindance: registrazioni di eventi con tutti i sensi e le emozioni di qualcun altro.", { label: "Elettronica" }),
     G("e-virtuality", "Visore Virtuality", 100, "Proietta il cyberspazio in sovrimpressione: consigliato a tutti i Netrunner.", { label: "Netrunning" }),

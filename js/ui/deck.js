@@ -78,6 +78,56 @@ document.addEventListener("keydown", ev => {
   ev.preventDefault(); const b = $(".rez-minus", ev.target.closest(".rez-in")); if (b) b.click();
 });
 
+// ---------- HACKING AGENT (Breacher, Crunch Whistle) ----------
+// TECH + Electronics/Security Tech (+ bonus) + Interface con Crunch Whistle e Breacher, +2 con le informazioni di sicurezza, vs VD
+const HACK_Q = [["poor", "Poor Quality"], ["standard", "Standard"], ["excellent", "Excellent Quality"]];
+const HACK_DV = { remote: { poor: 17, standard: 21, excellent: 24 }, physical: { poor: 15, standard: 17, excellent: 21 } };
+const HACK_CMD = [
+  { id: "basic", label: "Funzione base", time: "3 secondi (1 round)", ex: "suoneria, torcia, silenzioso, spegnere l'Agent" },
+  { id: "core", label: "Funzione principale", time: "1 minuto (20 round)", ex: "avviare un'app, fare una chiamata, caricare o scaricare un file" },
+  { id: "secure", label: "Funzione protetta", time: "5 minuti (100 round)", ex: "cambiare le credenziali, ricevere la posizione o ascoltare chiamate e CitiNet per 24 ore, backdoor (hack riusciti in automatico per 24 ore)" },
+];
+const hasBreacher = e => gearItems(e).some(it => num(it.qty || 1) > 0 && /breacher/i.test(it.name || ""));
+const hasWhistle = e => decksOf(e).some(d => (d.items || []).some(it => it.ref === "hw:crunchwhistle" && !it.dead));
+function hackParts(e, o = {}) {
+  const k = skillByKey(e, "skill:electronics") || { id: "electronics", label: "Electronics/Security Tech", stat: "TECH", lvl: 0 };
+  return [{ l: "TECH", v: statEff(e, "TECH") }, { l: k.label, v: k.lvl }, ...skillBonusAll(e, k),
+    ...(o.iface && hasWhistle(e) && hasBreacher(e) ? [{ l: "Interface (Crunch Whistle)", v: ifaceOf(e) }] : []),
+    ...(o.info ? [{ l: "Informazioni di sicurezza", v: 2 }] : [])];
+}
+// VD per qualità dell'Agent e accesso
+function hackDvTable(br) {
+  const cols = [...(br ? [["remote", "A distanza"]] : []), ["physical", "Fisico"]];
+  return `<table class="hack-dv"><thead><tr><th>Agent</th>${cols.map(([, l]) => `<th>${l}</th>`).join("")}</tr></thead>
+    <tbody>${HACK_Q.map(([q, l]) => `<tr><td>${l}</td>${cols.map(([a]) => `<td>VD <b>${HACK_DV[a][q]}</b></td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+function hackHtml(e) {
+  const br = hasBreacher(e), wh = hasWhistle(e); if (!br && !wh) return "";
+  const id = esc(e.id), base = hackParts(e, { iface: true }).reduce((t, p) => t + num(p.v), 0);
+  return `<div class="block hack-box" data-hack="${id}"><h4>Hacking Agent</h4>
+    <div class="hack-opts">
+      <label>Agent <select data-hack-f="q">${HACK_Q.map(([v, l]) => `<option value="${v}" ${v === "standard" ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <label>Accesso <select data-hack-f="acc">${br ? `<option value="remote">A distanza (Breacher, 20 m)</option>` : ""}<option value="physical">Fisico (in mano)</option></select></label>
+      <label>Comando <select data-hack-f="cmd">${HACK_CMD.map(c => `<option value="${c.id}">${c.label} · ${c.time.split(" (")[0]}</option>`).join("")}</select></label>
+      <label class="check"><input type="checkbox" data-hack-f="info"> Info di sicurezza +2</label>
+    </div>
+    <div class="pc-rolls">
+      <button type="button" class="chip r" data-action="hack-roll" data-id="${id}" title="TECH + Electronics/Security Tech + 1d10${wh && br ? " + Interface (Crunch Whistle)" : ""} vs la VD dell'Agent">⌖ Hack <b>${base}</b></button>
+    </div>
+    ${hackDvTable(br)}
+    <p class="hint">${br ? "" : "Senza Breacher: solo con l'Agent in mano. "}${wh && !br ? "Il Crunch Whistle serve con un Breacher: comprane uno per aggiungere l'Interface. " : !wh && br ? "Con il Crunch Whistle nel deck aggiungi l'Interface. " : ""}La prova dura 1 minuto; se fallisce, l'Agent avvisa il proprietario dopo 30 secondi. Un comando per hack, dura al massimo 24 ore; un riavvio (5 minuti) stacca il Breacher e cancella i comandi. Niente Agent interni né telefoni usa e getta.</p>
+  </div>`;
+}
+function hackRoll(e, el) {
+  const box = el.closest("[data-hack]"), f = k => box && $(`[data-hack-f=${k}]`, box);
+  const q = f("q") ? f("q").value : "standard", acc = f("acc") ? f("acc").value : "remote", C = HACK_CMD.find(c => c.id === (f("cmd") ? f("cmd").value : "basic")) || HACK_CMD[0];
+  const dv = HACK_DV[acc][q], ql = (HACK_Q.find(x => x[0] === q) || [])[1];
+  const x = CPR.check([...hackParts(e, { iface: true, info: f("info") && f("info").checked }), ...sheetExtra(e)]), ok = x.total > dv;
+  const note = ok ? `${C.label}: ${C.time} · ${C.ex} · un comando per hack, dura al massimo 24 ore` : "L'SAAI si accorge del tentativo e avvisa il proprietario a metà prova (30 secondi).";
+  postRoll({ kind: "check", who: e.name, entryId: e.id, label: `Hacking Agent · ${ql}, ${acc === "remote" ? "a distanza" : "accesso fisico"}`, ...x,
+    hit: { ok, text: `vs VD ${dv} → ${ok ? `riuscito, supera di ${x.total - dv}` : "fallito"}` }, note });
+}
+
 function deckTabHtml(e) {
   const id = esc(e.id), edit = Store.canEdit(), decks = decksOf(e), cur = deckIdx(e);
   return `<div class="nd-tab" data-deck-tab="${id}">
@@ -88,6 +138,7 @@ function deckTabHtml(e) {
     ${decks.length ? deckHtml(activeDeck(e), { iface: ifaceOf(e), roll: w => `data-action="sheet-roll" data-id="${id}" data-roll="deck:${w}"`,
       adj: edit ? (i, op) => `data-action="deck-adj" data-id="${id}" data-i="${i}" data-op="${op}"` : null, reset: edit ? `data-action="deck-adj" data-id="${id}" data-op="reset"` : "" })
       : `<div class="empty"><div class="big">// NESSUN CYBERDECK</div>${edit ? `<button class="btn" data-action="edit-decks" data-id="${id}">+ Aggiungi un Cyberdeck</button>` : ""}</div>`}
+    ${hackHtml(e)}
     ${deckInvHtml(e)}
   </div>`;
 }

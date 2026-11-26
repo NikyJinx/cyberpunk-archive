@@ -104,6 +104,8 @@ window.NET = (() => {
     { id: "smithy", name: "Smithy", slots: 1, cost: 500, eff: "Con una Meat Action trasformi tutti i Sword installati in Banhammer, e tutti i Banhammer in Sword.", src: "Midnight with the Upload" },
     { id: "snaketrap", name: "Snaketrap", slots: 1, cost: 500, eff: "Blocca il primo effetto di Black ICE o programma della Netrun che distruggerebbe un programma a caso del deck. Più copie non servono.", src: "Midnight with the Upload" },
     { id: "swampmist", name: "Swamp Mist", slots: 2, cost: 500, eff: "Rimappa i Black ICE Wisp in una versione più potente, a scapito dell'efficienza. (Il testo è incompleto: l'effetto preciso lo decide il GM.)", src: "Midnight with the Upload" },
+    // Hacking Agents
+    { id: "crunchwhistle", name: "Crunch Whistle", slots: 1, cost: 100, eff: "Collega il Cyberdeck a un Breacher: aggiungi l'Interface alle prove di Electronics/Security Tech per hackerare un Agent (riquadro «Hacking Agent» nella tab Cyberdeck).", src: "Hacking Agents" },
     { id: "swiftyclean", name: "Swifty Clean", slots: 2, cost: 500, eff: "Effetto non descritto nel testo: lo decide il GM.", src: "Midnight with the Upload" },
   ];
 

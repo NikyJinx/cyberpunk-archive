@@ -1852,6 +1852,13 @@ button.en-tr:hover, button.en-tr:focus-visible { background: rgba(243,230,0,.08)
 .st-chip .gp-btn { width: 22px; height: 22px; font-size: 12px; }
 .st-add { width: auto; padding: 3px 6px; font-size: 13px; }
 .crit-block .pc-rolls { margin-top: 8px; align-items: center; }
+.hack-box .hack-opts { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 6px 0; }
+.hack-box .hack-opts label { display: flex; gap: 6px; align-items: center; font-size: 14px; min-width: 0; }
+.hack-box .hack-opts select { max-width: 100%; min-width: 0; }
+.hack-box .pc-rolls { margin-bottom: 6px; }
+.hack-dv { border-collapse: collapse; font-size: 14px; margin: 4px 0; max-width: 100%; }
+.hack-dv th, .hack-dv td { border: 1px solid var(--line, #333); padding: 3px 8px; text-align: left; }
+.hack-dv th { color: var(--cyan); font-weight: 600; background: rgba(0, 240, 255, .06); }
 .crit-last { font-size: 14px; }
 .crit-last b { color: var(--red); }
 
