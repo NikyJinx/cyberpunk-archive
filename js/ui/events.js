@@ -328,8 +328,9 @@ document.addEventListener("click", async ev => {
     case "att-off": attOff(id, num(el.dataset.i), num(el.dataset.k)); break;
     case "att-slots": attSlots(id, num(el.dataset.i), num(el.dataset.d)); break;
     case "ammo-mod": ammoModEdit(id, num(el.dataset.i)); break;
-    case "cb-ammo-shop": mkAmmoFor(id, el.dataset.i); break;
-    case "cb-buy-ammo": { const e = state.entries.find(x => x.id === id); mkBack = { id, tab: "combat" }; mkBuy(el.dataset.key, e); break; }
+    case "tt-wpns": ttWpnOpen = !ttWpnOpen; renderSel(); break;
+    case "cb-ammo-shop": mkAmmoFor(id, el.dataset.i, !el.closest("#modal")); break;
+    case "cb-buy-ammo": { const e = state.entries.find(x => x.id === id); mkBack = el.dataset.map ? { id } : { id, tab: "combat" }; mkBuy(el.dataset.key, e); break; }
     case "cb-reload": cbReload(id, el.dataset.i); break;
     case "cb-dmg": cbDamage(wSrc(el.dataset.src, id, el.dataset.i, el.dataset.tok), num(el.dataset.mult)); break;
     case "sheet-status": { const e = state.entries.find(x => x.id === el.dataset.stSheet); if (e && Store.canEdit()) statusOp(el, sheetStatusApply(e)); break; }
@@ -390,7 +391,11 @@ document.addEventListener("change", ev => {
     }
     if (!X.edit) return;
     // armi della scheda con caricatore: cambiare tipo = scaricare e ricaricare dalle scorte
-    if (t.matches("[data-cb-ammo]") && X.mag) { cbReload(X.id, X.i, t.value); return; }
+    if (t.matches("[data-cb-ammo]") && X.mag) {
+      const to = t.value;
+      if (to !== (X.w.ammo || "") && !to.includes("~") && !ammoStockN(X.ent, X.fam, to)) { t.value = X.w.ammo || ""; cbAmmoBuy(X, to, !t.closest("#modal")); return; }
+      cbReload(X.id, X.i, to); return;
+    }
     const f = t.matches("[data-cb-ammo]") ? "ammo" : t.matches("[data-cb-table]") ? "range" : "autoRange";
     if (f !== "ammo" && cbMem[X.key]) delete cbMem[X.key].last;
     X.save(f, t.value);

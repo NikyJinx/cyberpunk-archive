@@ -273,6 +273,7 @@ function renderSel() {
     ${sp("head")}${sp("body")}
     <div class="tt-st"><span class="sh-k">Stati</span>${statusChips(tokStatusIds(t), edit ? (op, st) => `${op === "add" ? "" : `data-action="tok-status" `}data-st-tok="${esc(t.id)}" data-st-op="${op}" data-st="${esc(st)}"` : null)}</div>
     ${enemy && isGm() ? enemyQuickRolls(e, t) : ""}
+    ${sh && hasSheet(sh) && edit && (isPartyMember(sh) || isGm()) ? tokCombatHtml(sh) : ""}
     <div class="row-btns" style="margin-top:8px">
       ${e && isPerson(e) ? `<button type="button" class="btn ghost small cyan" data-action="open-entry-tab" data-id="${esc(e.id)}" data-tab="sheet">Scheda</button>` : ""}
       ${enemy && isGm() ? `<button type="button" class="btn ghost small cyan" data-action="enemy-open" data-id="${esc(e.id)}">Scheda nemico</button>` : ""}
@@ -284,6 +285,31 @@ function renderSel() {
         <button type="button" class="btn ghost small" data-action="tt-edit-token">Modifica</button>
         <button type="button" class="btn ghost small danger" data-action="tt-del-token">Rimuovi</button>` : ""}
     </div>`;
+}
+// PG e NPC con scheda: i tiri più usati, la fortuna, il cyberware a comando e le armi della tab Combattimento
+let ttWpnOpen = true;   // armi aperte (schede complete) o chiuse (solo tiri rapidi)
+function tokCombatHtml(e) {
+  const id = esc(e.id), s = sheetOf(e);
+  const roll = (what, label, cls = "chip", title = "") => `<button type="button" class="${cls}" data-action="sheet-roll" data-id="${id}" data-roll="${what}"${title ? ` title="${esc(title)}"` : ""}>${label}</button>`;
+  const ev = skillByKey(e, "skill:evasion"), pe = skillByKey(e, "skill:perception");
+  const ws = (s.weapons || []).map((w, i) => ({ w, i })).filter(x => !x.w.away);
+  const wsk = new Set(ws.map(x => weaponSkillKey(x.w.skill)));
+  const top = skillsOf(e).filter(k => k.lvl > 0 && k.key !== "skill:evasion" && k.key !== "skill:perception" && !wsk.has(k.key))
+    .map(k => ({ ...k, base: statEff(e, k.stat) + k.lvl })).sort((a, b) => b.base - a.base).slice(0, 3);
+  return `<div class="pc-rolls tt-quick">
+      ${roll("init", `Initiative <b>${statEff(e, "REF")}</b>`, "chip y", "REF + 1d10")}
+      ${roll("skill:evasion", `Evasion <b>${statEff(e, "DEX") + (ev ? ev.lvl : 0)}</b>`, "chip", `DEX + Evasion + 1d10${statEff(e, "REF") >= 8 ? " · schivi anche i proiettili" : ""}`)}
+      ${pe ? roll("skill:perception", `Perception <b>${statEff(e, pe.stat) + pe.lvl}</b>`) : ""}
+      ${top.map(k => roll(k.key, `${esc(k.label)} <b>${k.base}</b>`)).join("")}
+      ${isNetrunner(e) ? netQuick(activeDeck(e), ifaceOf(e), (w, l, c) => roll("deck:" + w, l, c)) : ""}
+    </div>
+    <div class="tt-luck"><span class="sh-k">LUCK</span> <b>${luckOf(e)}</b>/${statBase(e, "LUCK")}
+      <button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="-1" title="Spendi 1 punto Fortuna">−</button><button type="button" class="gp-btn" data-action="sheet-adj" data-id="${id}" data-f="luck" data-d="1" title="Recupera 1 punto Fortuna">+</button></div>
+    ${cyberFxHtml(e, true)}
+    ${ws.length ? `<div class="tt-wpns">
+      <button type="button" class="tt-wh" data-action="tt-wpns" aria-expanded="${ttWpnOpen}">${ttWpnOpen ? "▾" : "▸"} Armi <small>${ws.length}</small></button>
+      ${ttWpnOpen ? `<div class="sh-weapons">${ws.map(x => cbCard(pcSrc(e, x.i), true)).join("")}</div>` : `<div class="pc-rolls tt-quick">${ws.map(x => cbQuick(pcSrc(e, x.i))).join("")}</div>`}
+    </div>` : ""}`;
 }
 // Death Save dal token quando è Mortally Wounded: ogni tiro alza di 1 la penalità del successivo
 // (nemici: penalità sul token; PG e NPC con scheda: quella della scheda)

@@ -64,7 +64,7 @@ function pcSrc(e, i) {
     post: r => postRoll({ ...r, who: e.name, entryId: e.id }),
     isSub: R.k != null, two: !!w.two,
     save: (f, v) => sheetPatch(e.id, x => { const W = x.weapons && x.weapons[R.wi], T = W && (R.k == null ? W : (W.attach || [])[R.k]); if (T) T[f] = v; return x; }),
-    refresh: () => refreshSheetView(e.id),
+    refresh: () => { refreshSheetView(e.id); if (onTable()) renderSel(); },
   });
 }
 // nemico: valori derivati dalla scheda (malus dell'armatura, bonus di ruolo); dal token valgono le sue ferite e i suoi stati
@@ -183,7 +183,7 @@ function cbTable(X, L) {
     <div class="cb-tables">${X.RT ? `Tabella ${sel("data-cb-table", CPR.RANGE_TABLES, X.RT.id, "Tabella delle distanze")}` : `<span class="hint">Nessuna tabella delle distanze</span>`}
       ${X.AT ? ` · autofire ${sel("data-cb-atable", CPR.AUTO_TABLES, X.AT.id, "Tabella dell'autofire")}` : ""}</div></div>`;
 }
-function cbCard(X) {
+function cbCard(X, mini = false) {
   if (!X) return "";
   const M = cbMem[X.key] || {}, L = M.last, A = X.attrs;
   const btn = (attrs, inner, cls, title = "") => `<button type="button" class="${cls}" ${attrs} ${title ? `title="${esc(title)}"` : ""}>${inner}</button>`;
@@ -194,6 +194,7 @@ function cbCard(X) {
   // solo autofire: il danno compare dopo la raffica (danno dell'autofire × quanto superi la VD)
   if (!dmg && !X.autoOnly) dmg = btn(`data-action="cb-dmg" ${A}`, `Damage ${esc(X.dmg)}`, "btn small yellow", L && L.aim ? (CPR.AIMED.find(a => a.id === L.aim) || {}).eff : "");
   const sub = X.sub || `${X.T.label ? esc(X.T.label) + " · " : ""}${esc(X.skillLabel)} · base ${X.base}${X.w.rof ? ` · ROF ${esc(X.w.rof)}` : ""}${X.w.mag && !X.mag ? ` · Mag ${esc(X.w.mag)}` : ""}`;
+  if (mini) return cbMini(X, M, L, A, btn, ammoOpts, dmg);
   return `<div class="wpn cb-wpn ${X.isSub ? "cb-sub" : ""}">
     <div class="cb-wh"><span class="wpn-n"><span class="nd-name">${esc(X.w.name)}</span>
       <small>${sub}${X.autoMax ? ` · Autofire ${esc(X.afDmg)} ×${X.autoMax}` : ""} ${X.autoOnly ? "" : ` · ${X.ammo.nodmg ? `${esc(X.ammo.name)}: niente danni` : `danno ${esc(X.dmg)}`}`}</small>${X.w.note ? `<em>${esc(X.w.note)}</em>` : ""}${X.isSub && X.two ? `<em>Solo impugnando l'arma a due mani.</em>` : ""}</span>
@@ -205,7 +206,7 @@ function cbCard(X) {
       <select class="cb-loc" data-cb-loc ${A} aria-label="Dove miri" ${M.aim ? "" : "disabled"}>${CPR.AIMED.map(a => `<option value="${a.id}" ${a.id === (M.loc || "head") ? "selected" : ""}>${a.label}</option>`).join("")}</select>`}`}
       ${X.autoMax ? btn(`data-action="cb-roll" ${A} data-mode="auto"`, `Autofire <b>${X.afBase}</b> ×${X.autoMax}`, "btn small ghost", `REF + Autofire ${X.afLvl} + 1d10, ${X.afShots} colpi: danno ${X.afDmg} × quanto superi la VD, al massimo ×${X.autoMax}`) + btn(`data-action="cb-roll" ${A} data-mode="supp"`, "Soppressione", "btn small ghost", `Fuoco di soppressione, ${X.suppShots} colpi`) : ""}
       ${X.kind === "pc" && !X.isSub ? `<label class="cb-ammo"><span class="sh-k">Qualità</span><select data-cb-qual ${A} ${X.edit ? "" : "disabled"} title="Excellent: +1 agli attacchi · Poor: si inceppa con un 1">${WQ.map(([v, l]) => `<option value="${v}" ${v === (X.w.quality || "standard") ? "selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
-      ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo ${A} ${X.edit ? "" : "disabled"} title="${X.mag ? "Cambiando tipo, i colpi nel caricatore tornano nelle scorte e ricarichi con il nuovo tipo" : "Tipo di munizioni"}">${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}${X.mag ? ` (${ammoStockN(state.entries.find(x => x.id === X.id), X.fam, a.id)})` : ""}</option>`).join("")}</select></label>` : ""}
+      ${ammoOpts.length > 1 || X.w.ammo ? `<label class="cb-ammo"><span class="sh-k">Munizioni</span><select data-cb-ammo ${A} ${X.edit ? "" : "disabled"} title="${X.mag ? "Cambiando tipo, i colpi nel caricatore tornano nelle scorte e ricarichi con il nuovo tipo; quelle che non hai si comprano" : "Tipo di munizioni"}">${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}${X.mag ? ((n => n || a.id === (X.w.ammo || "") || a.mod ? ` (${n})` : " · 🛒 compra")(ammoStockN(X.ent, X.fam, a.id))) : ""}</option>`).join("")}</select></label>` : ""}
       ${X.mag && X.edit && mkCanBuyFor(X.ent) ? btn(`data-action="cb-ammo-shop" data-id="${esc(X.id)}" data-i="${X.i}"`, "🛒 Munizioni", "btn small ghost", `Compra munizioni ${X.fam} per ${X.w.name}`) : ""}
       ${X.mag && X.edit ? btn(`data-action="cb-reload" data-id="${esc(X.id)}" data-i="${X.i}"`, `⟳ Ricarica <small>${ammoStockN(state.entries.find(x => x.id === X.id), X.fam, X.ammo.id)} in scorta</small>`, "btn small ghost cyan", `Riempie il caricatore con le munizioni ${X.fam} · ${X.ammo.name} dell'inventario`) : ""}
       ${X.weakness ? `<label class="check cb-aim" title="Individuare Debolezze: +${X.weakness} al danno del primo colpo a segno del round (prima dell'armatura)"><input type="checkbox" data-cb-weak ${A} ${M.weak ? "checked" : ""}> 1° colpo del round +${X.weakness}</label>` : ""}
@@ -218,6 +219,31 @@ function cbCard(X) {
     ${X.kind === "pc" && !X.isSub ? attAttacks(X.ent, X.i).map(x => cbCard(pcSrc(X.ent, `${X.i}.${x.k}`))).join("") : ""}
     ${M.aim ? `<p class="hint">${esc((CPR.AIMED.find(a => a.id === (M.loc || "head")) || {}).eff || "")}</p>` : ""}
     ${cbTable(X, L)}
+  </div>`;
+}
+// versione ridotta per il pannello del token sulla mappa: niente qualità, accessori, note e tabella intera
+function cbMini(X, M, L, A, btn, ammoOpts, dmg) {
+  const stock = X.mag ? ammoStockN(X.ent, X.fam, X.ammo.id) : 0;
+  const hits = L && L.bands.length ? `<div class="cb-hits">${L.bands.map((b, j) => b.dv == null ? "" : `<span class="${b.hit ? "hit" : "miss"}" title="VD ${b.dv}">${esc(CPR.RANGE_BANDS[j].replace(" m", ""))} ${b.hit ? (b.mult ? `✓×${b.mult}` : "✓") : "✗"}</span>`).join("")}</div>` : "";
+  return `<div class="wpn cb-wpn cb-mini ${X.isSub ? "cb-sub" : ""}">
+    <div class="cb-wh"><span class="wpn-n"><span class="nd-name">${esc(X.w.name)}</span><small>${esc(X.skillLabel)} · ${X.ammo.nodmg ? "niente danni" : esc(X.autoOnly ? X.afDmg : X.dmg)}${X.ammo.id ? ` · ${esc(X.ammo.name)}` : ""}</small></span>
+      ${X.mag ? `<span class="cb-mag ${X.loaded ? X.loaded < Math.min(10, X.mag) && X.autoMax ? "low" : "" : "empty"}" title="Colpi nel caricatore">${X.loaded}/${X.mag}</span>` : ""}
+      ${L ? `<span class="cb-last ${L.crit ? "c-" + L.crit : ""}" title="Ultimo tiro">${L.total}</span>` : ""}</div>
+    <div class="cb-ctl">
+      ${X.autoOnly ? "" : btn(`data-action="cb-roll" ${A} data-mode="single"`, `⌖ <b>${X.base}</b>`, "btn small", "Attacco")}
+      ${X.autoMax ? btn(`data-action="cb-roll" ${A} data-mode="auto"`, `AF <b>${X.afBase}</b>`, "btn small ghost", `Autofire ×${X.autoMax}`) + btn(`data-action="cb-roll" ${A} data-mode="supp"`, "Sopp.", "btn small ghost", "Fuoco di soppressione") : ""}
+      ${X.noAim || X.ammo.noAim || X.autoOnly ? "" : `<label class="check cb-aim" title="Colpo mirato: −8 al tiro"><input type="checkbox" data-cb-aim ${A} ${M.aim ? "checked" : ""}> Mir.</label>
+      ${M.aim ? `<select class="cb-loc" data-cb-loc ${A} aria-label="Dove miri">${CPR.AIMED.map(a => `<option value="${a.id}" ${a.id === (M.loc || "head") ? "selected" : ""}>${a.label}</option>`).join("")}</select>` : ""}`}
+      <span class="cb-dmg">${dmg}</span>
+    </div>
+    ${X.mag && X.edit ? `<div class="cb-ctl">
+      ${ammoOpts.length > 1 || X.w.ammo ? `<select data-cb-ammo ${A} aria-label="Munizioni" title="Munizioni: quelle segnate 🛒 si comprano">${ammoOpts.map(a => `<option value="${esc(a.id)}" ${a.id === (X.ammo.id || "") ? "selected" : ""}>${esc(a.name)}${((n => n || a.id === (X.w.ammo || "") || a.mod ? ` (${n})` : " 🛒")(ammoStockN(X.ent, X.fam, a.id)))}</option>`).join("")}</select>` : ""}
+      ${btn(`data-action="cb-reload" data-id="${esc(X.id)}" data-i="${X.i}"`, `⟳ ${stock}`, "btn small ghost cyan", `Ricarica: ${stock} ${X.ammo.name} in scorta`)}
+      ${mkCanBuyFor(X.ent) ? btn(`data-action="cb-ammo-shop" data-id="${esc(X.id)}" data-i="${X.i}"`, "🛒", "btn small ghost", `Compra munizioni ${X.fam}`) : ""}
+    </div>` : ""}
+    ${X.kind === "pc" && !X.isSub ? spHtml(X) : ""}
+    ${hits}
+    ${X.kind === "pc" && !X.isSub ? attAttacks(X.ent, X.i).map(x => cbCard(pcSrc(X.ent, `${X.i}.${x.k}`), true)).join("") : ""}
   </div>`;
 }
 // tiri rapidi (Party, token): attacco e danno
