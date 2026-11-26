@@ -7,7 +7,10 @@
 // ogni impianto può avere ref (voce del catalogo), on (effetto a comando attivo), param (abilità del Chip Abilità)
 const rawBody = e => num((sheetOf(e).stats || {}).BODY);
 // quanti chip possono essere montati: gli slot dell'Alveolo attivo (più gli Alveoli delle schede vecchie, inseriti come impianto)
-const alveoliOf = e => alveoloSlots(e) + cyberItems(e).filter(it => it.installed !== false && (CW.byId(it.ref) || CW.byName(it.name) || {}).id === "chipslot").length;
+const alveoliOf = e => alveoloSlots(e) + cyberItems(e).filter(it => it.installed !== false && CW.isSocket(CW.byId(it.ref) || CW.byName(it.name))).length;
+// schiva i proiettili: REF 8 o più, oppure un impianto che lo permette (Reflex Co-Processor)
+const dodgesBullets = e => statEff(e, "REF") >= 8 || !!cyberFx(e).dodge;
+const dodgeTxt = e => statEff(e, "REF") >= 8 ? " · schivi anche i proiettili" : cyberFx(e).dodge ? ` · schivi anche i proiettili (${cyberFx(e).dodge})` : "";
 const cyberFx = e => gearFx(e, CW.effects(cyberItems(e), rawBody(e), { chipCap: alveoliOf(e) }));
 // ---------- OGGETTI DELL'INVENTARIO CON EFFETTI (campo fx delle voci del Night Market) ----------
 // skill (+v alle abilità, «nc» = non cumulativo con un impianto o un oggetto con quel nome), immune (stato che non penalizza),
@@ -58,6 +61,16 @@ function cyberFxHtml(e, compact = false) {
   fx.immune.forEach(i => lines.push(`${esc(i.name)}: lo stato «${esc(i.status)}» non ti penalizza`));
   if (fx.smart) lines.push("Smartgun: +1 a colpire con le armi che hanno lo Smartgun Link (scritto nel nome o nelle note dell'arma)");
   if (fx.run) lines.push(`Corsa +${fx.run} m`);
+  if (fx.dodge) lines.push(`${esc(fx.dodge)}: schivi i proiettili qualunque sia il tuo REF`);
+  fx.critImmune.forEach(x => lines.push(`${esc(x.name)}: immune a ${esc(x.crit)}${x.limb ? ` (solo ${esc(slotDef(e, x.slot).label.toLowerCase())})` : ""}`));
+  // Neo-Soviet Cyberarm senza BODY 8: −1 ai tiri con quel braccio (il braccio lo sa solo chi gioca)
+  slotsOf(e).forEach(sl => { const b = baseState(e, sl.id), V = b && b.on && b.vref ? CW.byId(b.vref) : null;
+    if (V && V.minBody && fx.body < V.minBody) lines.push(`⚠ ${esc(V.name)} (${esc(sl.label.toLowerCase())}): BODY ${fx.body}, serve ${V.minBody}: −1 a tutti i tiri che usano questo braccio`); });
+  const alv = baseState(e, "alveolo"), bud = (alv && alv.on ? num(alv.budget) : 0) + cyberItems(e).filter(it => it.installed !== false && (cwOf(it) || {}).budget).length;
+  if (bud) lines.push(`Budget Chipware Socket: quando subisci danni alla testa il chip salta via (1d10: con 1 si distrugge)${edit ? ` <button type="button" class="btn ghost small" data-action="cy-eject" data-id="${id}" title="Tira 1d10 per il chip espulso">⚄ Chip espulso</button>` : ""}`);
+  if (fx.nano) { const used = Math.min(num(s.nanoUsed), fx.nano), sk = fx.armor.length;
+    lines.push(sk ? `Trauma Response Nanomatrix: SP sottopelle al massimo con un'Azione, ${fx.nano - used}/${fx.nano} usi oggi${edit ? ` <button type="button" class="btn ghost small" data-action="cy-nano" data-id="${id}" ${used >= fx.nano ? "disabled" : ""} title="Un'Azione: Skin Weave o Armatura Subdermale alla SP piena">⟲ SP piena</button>${used ? ` <button type="button" class="btn ghost small" data-action="cy-nano-day" data-id="${id}" title="Nuovo giorno: usi di nuovo disponibili">↺ Nuovo giorno</button>` : ""}` : ""}`
+      : `⚠ Trauma Response Nanomatrix non ha effetto: serve Skin Weave o Armatura Subdermale`); }
   fx.armor.forEach(a => lines.push(`${esc(a.name)}: SP ${a.sp}${a.up ? " (upgrade +1)" : ""} sottopelle a testa e corpo, già combinata con l'armatura indossata (vale la più alta, si ablano insieme; 🛌 = +1 per giorno di riposo)` + (edit ? (() => { const x = items.find(y => y.c && y.c.name === a.name && (y.c.fx || []).some(f => f.t === "armor")); return x ? " " + cyUpBtn(id, x.slot, x.i, x.it) : ""; })() : "")));
   const have = new Set((s.weapons || []).map(w => norm(w.name)));
   const wpn = fx.weapons.map(w => `${esc(w.name)} (${esc(w.dmg)})${have.has(norm(w.name)) ? " ✓ nelle armi" : edit ? ` <button type="button" class="btn ghost small" data-action="cy-weapon" data-id="${id}" data-name="${esc(w.name)}">+ alle armi</button>` : ""}`);
@@ -82,7 +95,7 @@ const cwOptions = slotId => {
   if (slotKind(slotId) === "alveolo") return `<option value="">+ chip dal catalogo…</option>` + CW.all().filter(c => c.chip).map(c => `<option value="${esc(c.id)}">${c.custom ? "★ " : ""}${esc(c.name)} · ${c.cost.toLocaleString("it-IT")} E$ · PU ${c.pu}${c.dice && c.dice !== "N/A" ? ` (${c.dice})` : ""}</option>`).join("");
   const g0 = slotGroup(slotId), groups = [...CW.GROUPS].sort((a, b) => (b.id === g0) - (a.id === g0) || (g0 === "arm" && b.id === "limbcover") - (g0 === "arm" && a.id === "limbcover"));
   return `<option value="">+ dal catalogo…</option>` + groups.map(g => {
-    const list = CW.all().filter(c => c.g === g.id && !c.base && !c.chip && c.id !== "chipslot"); if (!list.length) return "";   // la base si attiva sullo slot, i chip vanno nell'Alveolo
+    const list = CW.all().filter(c => c.g === g.id && !c.base && !c.chip && !CW.isSocket(c)); if (!list.length) return "";   // la base si attiva sullo slot, i chip vanno nell'Alveolo
     return `<optgroup label="${esc(g.label)}">${list.map(c => `<option value="${esc(c.id)}">${c.custom ? "★ " : ""}${esc(c.name)} · ${c.cost.toLocaleString("it-IT")} E$ · PU ${c.pu}${c.dice && c.dice !== "N/A" ? ` (${c.dice})` : ""}</option>`).join("")}</optgroup>`;
   }).join("");
 };

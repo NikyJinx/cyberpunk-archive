@@ -82,12 +82,14 @@ function baseState(e, slotId) {
   if (!B && !F) return null;
   const saved = ((e.cyber || {}).bases || {})[slotId];
   if (F) return { fixed: true, on: true, slots: saved && hasVal(saved.slots) ? num(saved.slots) : F, std: F };
-  const c = CW.byId(B[0]) || { cost: 0, pu: 0 };
+  // vref = variante della base (Neo-Soviet Cyberarm, Discount Cyberaudio Suite): nome, slot standard e dadi della PU suoi
+  const V = saved && saved.vref ? CW.byId(saved.vref) : null, c = V || CW.byId(B[0]) || { cost: 0, pu: 0 }, std = V ? num(V.bslots) : B[1];
   const pick = (v, d) => hasVal(v) ? num(v) : d;
-  if (saved) return { on: !!saved.on, stored: !saved.on && !!saved.stored, slots: pick(saved.slots, B[1]), std: B[1], cost: pick(saved.cost, c.cost), hl: pick(saved.hl, c.pu), max: pick(saved.max, 2), name: B[2], ref: B[0] };
+  if (saved) return { on: !!saved.on, stored: !saved.on && !!saved.stored, slots: pick(saved.slots, std), std, cost: pick(saved.cost, c.cost), hl: pick(saved.hl, c.pu), max: pick(saved.max, 2), name: V ? V.name : B[2], ref: V ? V.id : B[0], kind,
+    ...(V ? { vref: V.id } : {}), ...(num(saved.budget) ? { budget: num(saved.budget) } : {}) };
   // schede vecchie: la base era inserita come impianto dentro lo slot
   const old = (((e.cyber || {}).slots || {})[slotId] || []).find(it => isBaseItem(it) && it.installed !== false);
-  return { on: !!old, slots: B[1], std: B[1], cost: old && hasVal(old.cost) ? num(old.cost) : c.cost, hl: old && hasVal(old.hl) ? num(old.hl) : c.pu, max: old && hasVal(old.max) ? num(old.max) : 2, name: B[2], ref: B[0], legacy: !!old };
+  return { on: !!old, slots: B[1], std: B[1], cost: old && hasVal(old.cost) ? num(old.cost) : c.cost, hl: old && hasVal(old.hl) ? num(old.hl) : c.pu, max: old && hasVal(old.max) ? num(old.max) : 2, name: B[2], ref: B[0], kind, legacy: !!old };
 }
 const baseCyber = e => slotsOf(e).map(sl => ({ slot: sl.id, b: baseState(e, sl.id) })).filter(x => x.b && !x.b.fixed && x.b.on);
 const gearItems = e => (e.gear && e.gear.items) || [];
@@ -463,8 +465,9 @@ const cyRow = (it = {}, def = 2) => `
 const zoneSelect = (z = "") => `<select data-slot-f="zone" title="Punto acceso sulla sagoma">${BODY_ZONES.map(([v, l]) => `<option value="${v}" ${v === z ? "selected" : ""}>${l}</option>`).join("")}</select>`;
 const cyBaseRow = b => !b ? "" : b.fixed ? `<div class="cy-base-edit" data-base>
     <label>Slot opzioni <input data-base-f="slots" type="number" min="0" max="20" value="${b.slots}" title="Standard ${b.std}; si possono aumentare con gli upgrade"></label><span class="hint">standard ${b.std}</span></div>`
-  : `<div class="cy-base-edit" data-base data-base-ref="${esc(b.ref)}" data-base-name="${esc(b.name)}">
+  : `<div class="cy-base-edit" data-base data-base-ref="${esc(b.ref)}" data-base-name="${esc(b.name)}" data-base-budget="${num(b.budget) || ""}">
     <label class="check"><input type="checkbox" data-base-f="on" ${b.on ? "checked" : ""}> <b>${esc(b.name)}</b> installato</label>
+    ${CW.baseVariants(b.kind).length ? `<label>Modello <select data-base-f="vref" title="Variante del cyberware fondamentale">${[[SLOT_BASE[b.kind][0], SLOT_BASE[b.kind][2]], ...CW.baseVariants(b.kind).map(v => [v.id, v.name])].map(([v, l]) => `<option value="${esc(v)}" ${v === b.ref ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>` : ""}
     <label>eb <input data-base-f="cost" type="number" min="0" value="${b.cost}"></label>
     <label>HL <input data-base-f="hl" type="number" min="0" value="${b.hl}"></label>
     <button type="button" class="gp-btn" data-base-pu title="Tira la Perdita d'Umanità" aria-label="Tira la Perdita d'Umanità">⚄</button>
@@ -617,7 +620,8 @@ function editCyber(id) {
   });
   // contatore degli slot opzioni, aggiornato a ogni modifica
   const readBase = fs => { const box = $("[data-base]", fs); if (!box) return null; const f = k => $(`[data-base-f=${k}]`, box);
-    return f("on") ? { on: f("on").checked, slots: num(f("slots").value), cost: num(f("cost").value), hl: num(f("hl").value), max: num(f("max").value), name: box.dataset.baseName }
+    const vr = f("vref") && CW.byId(f("vref").value), vb = vr && vr.base && vr.baseOf ? { vref: vr.id } : {}, bud = num(box.dataset.baseBudget) ? { budget: num(box.dataset.baseBudget) } : {};
+    return f("on") ? { on: f("on").checked, slots: num(f("slots").value), cost: num(f("cost").value), hl: num(f("hl").value), max: num(f("max").value), name: box.dataset.baseName, ...vb, ...bud }
       : { fixed: true, on: true, slots: num(f("slots").value) }; };
   const capCount = () => $$("fieldset[data-slot]", form).forEach(fs => {
     const items = readRows(fs, ".cy-row").map(r => ({ name: r.name, ref: r.ref, installed: r.installed }));
@@ -629,10 +633,14 @@ function editCyber(id) {
   capCount();
   // voce scelta dal catalogo: riga compilata (nome, costo, PU media, nota)
   form.addEventListener("change", ev => {
+    const vsel = ev.target.closest("[data-base-f=vref]");
+    if (vsel) { const box = vsel.closest("[data-base]"), c = CW.byId(vsel.value), B = SLOT_BASE[slotKind(vsel.closest("fieldset").dataset.slot)];
+      if (c) { box.dataset.baseRef = c.id; box.dataset.baseName = c.name; $("b", box).textContent = c.name; $("[data-base-f=slots]", box).value = c.base && c.baseOf ? num(c.bslots) : B[1]; $("[data-base-f=cost]", box).value = c.cost; }
+      return; }
     const sel = ev.target.closest("[data-cy-pick]");
     if (sel && sel.value) {
       const c = CW.byId(sel.value), fs = sel.closest("fieldset"), box = $(".cy-rows", fs);
-      if (c.base) { const bb = $("[data-base]", fs); if (bb && bb.dataset.baseRef === c.id) $("[data-base-f=on]", bb).checked = true; else toast(`${c.name} è cyberware fondamentale: attivalo in testa al suo slot`, "err"); sel.value = ""; return; }
+      if (c.base) { const bb = $("[data-base]", fs); if (bb && bb.dataset.baseRef === c.id) $("[data-base-f=on]", bb).checked = true; else toast(`${c.name} è cyberware fondamentale: attivalo in testa al suo slot${c.baseOf ? " (scegli il modello)" : ""}`, "err"); sel.value = ""; return; }
       const def = fs.classList.contains("custom") ? num($("[data-slot-f=max]", fs).value) : num(fs.dataset.max);
       box.insertAdjacentHTML("beforeend", cyRow({ name: c.name, ref: c.id, cost: c.cost, hl: c.pu, note: shortDesc(c), max: c.g === "fashion" || c.pu === 0 ? 0 : null }, def));
       sel.value = ""; return;

@@ -160,7 +160,7 @@ function deckShopBody(q, name, desc, buyTh) {
 // slot adatti al gruppo del cyberware (le parti doppie destra e sinistra)
 const mkCySlots = (e, c) => {
   const pairs = { optics: ["occhio_dx", "occhio_sx", "occhiali"], audio: ["audio", "orecchie"], arm: ["braccio_dx", "braccio_sx", "guanto"], leg: ["gamba_dx", "gamba_sx"], limbcover: ["guanto", "braccio_dx", "braccio_sx", "gamba_dx", "gamba_sx"] };
-  const g = CW.GROUPS.find(x => x.id === c.g) || {}, want = c.chip || c.id === "chipslot" ? ["alveolo"] : pairs[c.g] || [g.slot].filter(Boolean);
+  const g = CW.GROUPS.find(x => x.id === c.g) || {}, want = c.chip || CW.isSocket(c) ? ["alveolo"] : pairs[c.g] || [g.slot].filter(Boolean);
   const all = slotsOf(e), fit = all.filter(s => want.includes(s.id));
   return { fit: fit.length ? fit : all, other: all.filter(s => !fit.includes(s)) };
 };
@@ -202,8 +202,8 @@ function mkBuy(key, who) {
   if (it.type === "ammo") extra = `<div class="field"><label>${it.lot > 1 ? `Scatole da ${it.lot} colpi` : "Quantità"}</label><input name="qty" type="number" min="1" max="99" value="1"></div><p class="hint field full">In scorta: ${ammoStockN(e, it.fam, it.ammo)}. Vanno nell'Equipaggiamento; si caricano con «⟳ Ricarica» nella tab Combattimento.</p>`;
   if (it.type === "gear") extra = `<div class="field"><label>Quantità</label><input name="qty" type="number" min="1" max="99" value="1"></div>`;
   if (it.type === "cyber") {
-    const { fit, other } = mkCySlots(e, it), base = !!it.base || it.id === "chipslot";
-    const opt = s => { const b = base ? baseState(e, s.id) : null, on = b && !b.fixed && b.on, more = on && it.id === "chipslot";
+    const { fit, other } = mkCySlots(e, it), base = !!it.base || CW.isSocket(it);
+    const opt = s => { const b = base ? baseState(e, s.id) : null, on = b && !b.fixed && b.on, more = on && CW.isSocket(it);
       return `<option value="${esc(s.id)}" ${on && !more ? "disabled" : ""}>${esc(s.label)}${more ? ` (ne hai già ${b.slots}: +1 slot)` : on ? " (già attivo)" : ""}</option>`; };
     const pu = CW.rollPu(it);
     extra = `<div class="field"><label>${base ? "Si attiva su" : "Slot"}</label><select name="slot">${fit.map(opt).join("")}${other.length && !base ? `<optgroup label="Altri slot">${other.map(opt).join("")}</optgroup>` : ""}${base ? "" : `<option value="idle">⏸ Idle: non installato, lo installi dopo</option>`}</select></div>
@@ -248,7 +248,7 @@ function mkBuy(key, who) {
     if (cap && it.type === "cyber") {
       const sl = F("slot").value, items = (((e.cyber || {}).slots || {})[sl]) || [];
       if (it.base) cap.textContent = "";
-      else if (it.id === "chipslot") { const b = baseState(e, "alveolo"); cap.textContent = b && b.on ? `Hai già un Alveolo da ${b.slots} slot: questo ne aggiunge uno (${b.slots + 1} chip).` : "Attiva l'Alveolo: tiene 1 chip e occupa 1 slot del Collegamento Neurale."; }
+      else if (CW.isSocket(it)) { const b = baseState(e, "alveolo"); cap.textContent = b && b.on ? `Hai già un Alveolo da ${b.slots} slot: questo ne aggiunge uno (${b.slots + 1} chip).` : "Attiva l'Alveolo: tiene 1 chip e occupa 1 slot del Collegamento Neurale."; }
       else if (sl === "idle") cap.textContent = "In idle: niente effetti e niente umanità persa finché non lo installi (in qualsiasi slot, dall'Equipaggiamento o dalla tab Cyberware).";
       else { const u = slotUse(sl, [...items, { name: it.name, ref: it.id }], baseState(e, sl)), art = n => /^[aeiou]/i.test(n) ? "l'" : "il ";
         cap.textContent = !u ? "" : u.missing ? `Manca ${art(u.missing)}${u.missing}: attivalo prima o insieme.` : u.over ? `Slot pieno: ${u.label} ${u.used}/${u.cap}.` : `${u.label === "chip" ? "Chip" : "Opzioni"} dopo l'acquisto: ${u.used}/${u.cap}.`; }
@@ -310,12 +310,19 @@ async function mkCommit(e0, it, paid, qty, o) {
   }
   if (it.type === "cyber") {
     const cy = e.cyber = e.cyber || {};
-    if (it.base || it.id === "chipslot") {
+    if (it.base || CW.isSocket(it)) {
       cy.bases = cy.bases || {}; undo = { k: "base", slot: o.slot, prev: cy.bases[o.slot] || null };
       const B = SLOT_BASE[slotKind(o.slot)], was = baseState(e0, o.slot);
       // un altro Alveolo: +1 slot, e costo, umanità persa e umanità massima si sommano
-      if (it.id === "chipslot" && was && was.on) cy.bases[o.slot] = { on: true, slots: was.slots + 1, cost: was.cost + (paid || num(it.cost)), hl: was.hl + o.hl, max: was.max + 2 };
-      else cy.bases[o.slot] = { ...(cy.bases[o.slot] || {}), on: true, slots: (cy.bases[o.slot] || {}).slots ?? (B ? B[1] : 3), cost: paid || it.cost, hl: o.hl, max: 2 };
+      // Budget Chipware Socket: conta quanti Alveoli economici ci sono (espellono il chip)
+      const bud = it.budget ? { budget: num(was && was.on ? was.budget : 0) + 1 } : was && was.on && num(was.budget) ? { budget: num(was.budget) } : {};
+      if (CW.isSocket(it) && was && was.on) cy.bases[o.slot] = { on: true, slots: was.slots + 1, cost: was.cost + (paid || num(it.cost)), hl: was.hl + o.hl, max: was.max + 2, ...bud };
+      else {
+        // variante della base (Neo-Soviet Cyberarm, Discount Cyberaudio Suite): i suoi slot; il modello standard torna ai suoi
+        const prev = { ...(cy.bases[o.slot] || {}) }, V = it.baseOf ? { vref: it.id } : {}, sameModel = (prev.vref || "") === (V.vref || "");
+        delete prev.vref; delete prev.budget;
+        cy.bases[o.slot] = { ...prev, on: true, slots: it.baseOf ? num(it.bslots) : sameModel && prev.slots != null ? prev.slots : (B ? B[1] : 3), cost: paid || it.cost, hl: o.hl, max: 2, ...V, ...bud };
+      }
     } else {
       cy.slots = cy.slots || {};
       // in idle: non montato, l'umanità (già tirata) si perde quando si installa
