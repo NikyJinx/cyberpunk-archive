@@ -1519,6 +1519,34 @@ a.quest-tag:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .tt-hpblock.w-serious .sh-hpbar i { background: #ff8a3d; box-shadow: 0 0 10px #ff8a3d; }
 .tt-hpblock.w-mortal .sh-hpbar i { background: var(--red); }
 .tt-quick { margin-top: 10px; }
+.tt-luck { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; }
+.tt-luck b { color: var(--green); }
+#tt-sel .cy-fx { margin-top: 8px; }
+.tt-wpns { margin-top: 10px; border-top: 1px solid var(--line, rgba(255,255,255,.12)); padding-top: 6px; }
+.tt-wh { background: none; border: 0; color: var(--cyan); font: inherit; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; padding: 4px 0; }
+.tt-wh small { color: var(--muted, #888); margin-left: 4px; }
+#tt-sel .sh-weapons { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+#tt-sel .cb-wpn, #tt-sel .cb-wh, #tt-sel .cb-ctl { min-width: 0; max-width: 100%; }
+#tt-sel .cb-ammo { max-width: 100%; min-width: 0; }
+#tt-sel .cb-ammo select { min-width: 0; max-width: 100%; flex: 1 1 auto; }
+/* armi compatte nel pannello del token */
+.cb-mini { gap: 5px; padding: 6px 8px; }
+.cb-mini .cb-wh { gap: 6px; align-items: center; }
+.cb-mini .nd-name { font-size: 14px; }
+.cb-mini .wpn-n small { display: block; font-size: 11px; }
+.cb-mini .cb-ctl { gap: 4px 6px; }
+.cb-mini .btn.small { font-size: 11px; padding: 2px 7px; min-height: 0; }
+.cb-mini .cb-ctl select { font-size: 12px; padding: 2px 4px; min-width: 0; max-width: 100%; flex: 1 1 0; }
+.cb-mini .cb-aim { font-size: 12px; }
+.cb-mini .cb-mag { font-size: 11px; padding: 0 4px; }
+.cb-mini .cb-last { font-size: 15px; padding: 0 5px; }
+.cb-mini .cb-sp { font-size: 12px; }
+.cb-mini .cb-sp [data-action="sp-edit"], .cb-mini .cb-att-note { display: none; }
+.cb-hits { display: flex; flex-wrap: wrap; gap: 3px; font-family: var(--font-mono); font-size: 11px; }
+.cb-hits span { border: 1px solid var(--line); padding: 0 4px; }
+.cb-hits .hit { color: var(--green); border-color: rgba(61,255,154,.4); }
+.cb-hits .miss { color: var(--red); opacity: .75; }
+.cb-mini.cb-sub { margin: 4px 0 0 6px; padding-left: 8px; }
 
 /* nemici */
 .section-title .en-actions { order: 3; display: flex; gap: 6px; flex-wrap: wrap; }

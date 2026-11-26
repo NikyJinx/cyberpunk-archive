@@ -16,7 +16,7 @@ async function entryPatch(id, fn, msg) {
   try {
     const saved = await Store.save("entries", e);
     upsert(state.entries, saved); liveSend("entries", saved);
-    refreshSheetView(id); refreshParty();
+    refreshSheetView(id); refreshParty(); if (onTable()) { renderTokens(); renderSide(); }
     if (msg) toast(msg, "ok");
     return saved;
   } catch (err) { fail(err); }
