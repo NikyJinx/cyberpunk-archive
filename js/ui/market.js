@@ -249,7 +249,7 @@ function mkBuy(key, who) {
       const sl = F("slot").value, items = (((e.cyber || {}).slots || {})[sl]) || [];
       if (it.base) cap.textContent = "";
       else if (CW.isSocket(it)) { const b = baseState(e, "alveolo"); cap.textContent = b && b.on ? `Hai già un Alveolo da ${b.slots} slot: questo ne aggiunge uno (${b.slots + 1} chip).` : "Attiva l'Alveolo: tiene 1 chip e occupa 1 slot del Collegamento Neurale."; }
-      else if (sl === "idle") cap.textContent = "In idle: niente effetti e niente umanità persa finché non lo installi (in qualsiasi slot, dall'Equipaggiamento o dalla tab Cyberware).";
+      else if (sl === "idle") cap.textContent = "In idle: niente effetti e niente umanità persa finché non lo installi (in uno slot adatto, dall'Equipaggiamento o dalla tab Cyberware).";
       else { const u = slotUse(sl, [...items, { name: it.name, ref: it.id }], baseState(e, sl)), art = n => /^[aeiou]/i.test(n) ? "l'" : "il ";
         cap.textContent = !u ? "" : u.missing ? `Manca ${art(u.missing)}${u.missing}: attivalo prima o insieme.` : u.over ? `Slot pieno: ${u.label} ${u.used}/${u.cap}.` : `${u.label === "chip" ? "Chip" : "Opzioni"} dopo l'acquisto: ${u.used}/${u.cap}.`; }
     }
