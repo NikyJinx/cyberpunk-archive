@@ -11,7 +11,7 @@ const alveoliOf = e => alveoloSlots(e) + cyberItems(e).filter(it => it.installed
 // schiva i proiettili: REF 8 o più, oppure un impianto che lo permette (Reflex Co-Processor)
 const dodgesBullets = e => statEff(e, "REF") >= 8 || !!cyberFx(e).dodge;
 const dodgeTxt = e => statEff(e, "REF") >= 8 ? " · schivi anche i proiettili" : cyberFx(e).dodge ? ` · schivi anche i proiettili (${cyberFx(e).dodge})` : "";
-const cyberFx = e => gearFx(e, CW.effects(cyberItems(e), rawBody(e), { chipCap: alveoliOf(e) }));
+const cyberFx = e => { const f = fbcOf(e); return gearFx(e, CW.effects(cyberItems(e), rawBody(e), { chipCap: alveoliOf(e), ...(f ? { fbc: true, fbcFrame: f.B.frame } : {}) })); };
 // ---------- OGGETTI DELL'INVENTARIO CON EFFETTI (campo fx delle voci del Night Market) ----------
 // skill (+v alle abilità, «nc» = non cumulativo con un impianto o un oggetto con quel nome), immune (stato che non penalizza),
 // frame (Telaio Lineare indossato: BODY dei tiri a v, con «plugs» Connettori d'Interfaccia; PF e Death Save non cambiano)

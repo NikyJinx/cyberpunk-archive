@@ -17,6 +17,7 @@ const AMMO_BASE = [
   { id: "smoke", name: "Fumogene", fams: [AM_G], cost: 50, nodmg: true, eff: "Nessun danno: fumo su 10 × 10 m attorno all'impatto per 1 minuto (−4 ad agire nel fumo)." },
   { id: "rubber", name: "In Gomma", fams: [AM_A, ...AM_P, AM_S], cost: 10, eff: "Niente Critical Injury e niente ablazione; se il bersaglio scenderebbe sotto 0 PF resta a 1. Contano come munizioni base per le armi esotiche." },
   { id: "incend", name: "Incendiarie", fams: [AM_S, AM_A, AM_G, ...AM_P, "Lanciafiamme"], cost: 100, eff: "Se il danno supera l'armatura il bersaglio prende fuoco: 2 danni diretti ai PF alla fine di ogni suo turno finché non usa un'Azione per spegnersi (non cumulativo)." },
+  { id: "co2", name: "CO2", fams: [AM_G], cost: 50, nodmg: true, src: "Going Metal", eff: "Nessun danno: spegne tutti i fuochi nell'area dell'esplosione. Va in ogni arma che spara granate fumogene." },
   { id: "tear", name: "Lacrimogene", fams: [AM_G], cost: 50, nodmg: true, dv: 13, eff: "Nessun danno: la vittima supera Resist Torture/Drugs VD {dv} o subisce Damaged Eye per 1 minuto (senza Bonus Damage)." },
   { id: "ap", name: "Perforanti", fams: [...AM_P, AM_S, AM_A, AM_G, AM_R], cost: 100, eff: "Ablano l'armatura di 2 invece che di 1." },
   { id: "smart", name: "Smart", fams: [AM_A, ...AM_P, AM_R, AM_S], cost: 500, eff: "Serve il cyberware Mirino. Colpo singolo fallito di 4 o meno: ritenti subito contro la stessa VD, con 10 al posto del d10 (si può spendere LUCK; chi schiva i proiettili può schivare anche questo)." },

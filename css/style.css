@@ -780,6 +780,19 @@ a.cal-cell:hover { background: rgba(0,240,255,.06); box-shadow: inset 0 0 0 1px 
 .cy-edit.custom legend { color: var(--yellow); }
 .cy-edit legend small { color: var(--muted); font-family: var(--font-mono); letter-spacing: 0; text-transform: none; }
 .cy-slot li.planned { opacity: .55; }
+/* Full Body Conversion */
+.fbc { border: 1px solid rgba(0,240,255,.35); background: rgba(0,240,255,.04); padding: 10px 12px; margin-bottom: 12px; display: grid; gap: 6px; }
+.fbc header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.fbc header b { color: var(--cyan); font-family: var(--font-head); letter-spacing: .04em; }
+.fbc header .btn:first-of-type { margin-left: auto; }
+.fbc-grid { display: grid; gap: 2px; font-size: 13px; }
+.fbc-grid small { color: var(--muted); }
+.fbc .hint { margin: 0; }
+.fbc-rules { margin: 0; padding-left: 16px; font-size: 12px; color: var(--muted); display: grid; gap: 2px; }
+.fbc-off { margin-bottom: 10px; }
+.fbc-pkg { display: grid; gap: 2px; max-height: 240px; overflow-y: auto; font-size: 13px; }
+.fbc-pkg small { color: var(--muted); }
+.cy-base.fbc-part { border-left-color: var(--cyan); }
 .cy-out { display: inline-block; font-size: 11px; line-height: 1.2; padding: 0 4px; min-width: 0; min-height: 0; width: auto; height: auto; margin-left: 5px; vertical-align: baseline; opacity: .6; }
 .cy-slot li:hover .cy-out, .cy-out:focus-visible { opacity: 1; }
 .cy-slot li.planned .cy-name { text-decoration: line-through dashed rgba(255,255,255,.35); }

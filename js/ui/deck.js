@@ -6,7 +6,12 @@
 // ---------- CYBERDECK (Netrunner) ----------
 // sheet.deck = { name, slots, bodyweight, cyberarm, items[{ ref, …campi del personalizzato, cur (REZ attuale), on (Rezzato), used, dead }] }
 // Lo stesso riquadro serve alle schede dei PG (con lo stato della Netrun) e ai nemici Netrunner (solo tiri).
-const decksOf = e => { const s = sheetOf(e); return Array.isArray(s.decks) ? s.decks : s.deck ? [s.deck] : []; };
+// FBC Integrated Bodyweight Coating: 2 slot solo hardware per installazione, condivisi dai deck integrati (nel cyberbraccio)
+// hwShared non si salva (proprietà non enumerabile), serve solo al conto degli slot
+const decksOf = e => { const s = sheetOf(e), list = Array.isArray(s.decks) ? s.decks : s.deck ? [s.deck] : [];
+  const n = fbcOf(e) ? cyberItems(e).filter(it => it.installed !== false && (CW.byId(it.ref) || CW.byName(it.name) || {}).id === "fbcbodyweight").length : 0;
+  list.forEach(d => { if (d && typeof d === "object") Object.defineProperty(d, "hwShared", { value: d.cyberarm ? 2 * n : 0, enumerable: false, configurable: true, writable: true }); });
+  return list; };
 const deckIdx = e => clamp(num(sheetOf(e).deckActive), 0, Math.max(0, decksOf(e).length - 1));
 const activeDeck = e => decksOf(e)[deckIdx(e)] || { name: "Cyberdeck", slots: 7, items: [] };
 // nel salvataggio porto le schede vecchie (deck singolo) all'elenco

@@ -76,8 +76,25 @@ const cyberCount = e => cyberItems(e).filter(it => it.installed !== false && !is
 // non è un impianto dello slot, si attiva sullo slot stesso · e.cyber.bases[slot] = { on, slots, cost, hl, max }
 // Fashionware, Impianti Interni ed Esterni hanno solo il numero di slot (7, modificabile)
 const slotKind = id => String(id).replace(/_(dx|sx)$/, "");
+// ---------- FULL BODY CONVERSION (Going Metal) ----------
+// e.cyber.fbc = { model (id del corpo in CW.FBC), hl (umanità persa per il pacchetto), bio (umanità persa per il Biosystem) }
+// gli impianti con pkg: true sono la dotazione del corpo: la loro umanità è già nel pacchetto (ma tolgono umanità massima)
+const fbcOf = e => { const f = (e && e.cyber && e.cyber.fbc) || null; if (!f || !f.model) return null; const B = CW.fbcBody(f.model); return B ? { ...f, B, F: CW.FRAMES[B.frame] } : null; };
+// parti del corpo FBC: cyberbraccia, cybergambe, cyberudito, collegamento neurale e (se il corpo li ha) i cyberocchi
+const fbcPart = (e, kind) => { const f = fbcOf(e); return !!f && ["braccio", "gamba", "audio", "neural"].concat(f.B.eyes === 2 ? ["occhio"] : []).includes(kind); };
+const FBC_X2 = ["occhio", "braccio", "gamba", "neural", "audio", "interni", "esterni"];
+// umanità persa e massima tolta di un impianto: in una FBC le parti del corpo non costano umanità, la dotazione l'ha già nel pacchetto
+const itemHl = (e, it) => { const c = CW.byId(it.ref) || CW.byName(it.name); return fbcOf(e) && (it.pkg || (c && CW.FBC_NOHL.includes(c.id))) ? 0 : num(it.hl); };
+const itemMaxF = (e, it) => { const c = CW.byId(it.ref) || CW.byName(it.name); return fbcOf(e) && c && CW.FBC_NOHL.includes(c.id) ? 0 : itemMax(e, it); };
 const isBaseItem = it => { const c = CW.byId(it.ref) || CW.byName(it.name); return !!(c && c.base); };
-function baseState(e, slotId) {
+function baseState(e, slotId, raw = false) {
+  const b = baseStateRaw(e, slotId); if (!b || raw || !fbcOf(e)) return b;
+  const kind = slotKind(slotId), x2 = FBC_X2.includes(kind) ? 2 : 1;
+  if (b.fixed) return x2 > 1 ? { ...b, slots: b.slots * x2, std: b.std * x2, fbc: true } : b;
+  if (fbcPart(e, kind)) return { ...b, on: true, stored: false, hl: 0, max: 0, cost: 0, slots: b.slots * x2, std: b.std * x2, fbc: true };
+  return b;
+}
+function baseStateRaw(e, slotId) {
   const kind = slotKind(slotId), B = SLOT_BASE[kind], F = isExtSlot(kind) ? extSlots(e, kind) || SLOT_FIXED[kind] : SLOT_FIXED[kind];
   if (!B && !F) return null;
   const saved = ((e.cyber || {}).bases || {})[slotId];
@@ -173,16 +190,19 @@ function cyberStats(e) {
   const all = cyberItems(e).filter(it => !isBaseItem(it)), inst = all.filter(it => it.installed !== false);
   const plan = all.filter(it => it.installed === false && !it.stored && it.slot !== "idle"), stored = all.filter(it => it.installed === false && it.stored);
   const bases = baseCyber(e), storedBases = slotsOf(e).map(sl => baseState(e, sl.id)).filter(b => b && !b.fixed && b.stored);
-  const cost = inst.reduce((t, it) => t + num(it.cost), 0) + bases.reduce((t, x) => t + x.b.cost, 0);
-  const hl = inst.filter(it => !isExtSlot(it.slot)).reduce((t, it) => t + num(it.hl), 0) + bases.reduce((t, x) => t + x.b.hl, 0)
-    + stored.reduce((t, it) => t + num(it.hl), 0) + storedBases.reduce((t, b) => t + b.hl, 0);
-  const maxLoss = inst.reduce((t, it) => t + itemMax(e, it), 0) + bases.reduce((t, x) => t + x.b.max, 0);
+  const fb = fbcOf(e), fbHl = fb ? num(fb.hl) + num(fb.bio) : 0;
+  const cost = inst.reduce((t, it) => t + num(it.cost), 0) + bases.reduce((t, x) => t + x.b.cost, 0) + (fb ? fb.B.cost + 10000 : 0);
+  const hl = inst.filter(it => !isExtSlot(it.slot)).reduce((t, it) => t + itemHl(e, it), 0) + bases.reduce((t, x) => t + x.b.hl, 0)
+    + stored.reduce((t, it) => t + num(it.hl), 0) + storedBases.reduce((t, b) => t + b.hl, 0) + fbHl;
+  // il Biosystem è Borgware: toglie 4 di umanità massima
+  const maxLoss = inst.reduce((t, it) => t + itemMaxF(e, it), 0) + bases.reduce((t, x) => t + x.b.max, 0) + (fb ? 4 : 0);
   const start = e.cyber && hasVal(e.cyber.humanity) ? num(e.cyber.humanity) : null;
   const therapy = e.cyber ? num(e.cyber.therapy) : 0;          // umanità recuperata con la terapia
-  const max = start == null ? null : start - maxLoss;
+  const maxUp = e.cyber ? num(e.cyber.maxUp) : 0;              // umanità massima in più concessa dal GM (homebrew)
+  const max = start == null ? null : start - maxLoss + maxUp;
   // la terapia restituisce umanità, ma l'attuale non può mai superare la massima
   const current = start == null ? null : Math.min(start - hl + therapy, max);
-  return { inst, plan, stored, bases, cost, hl, maxLoss, therapy, planCost: plan.reduce((t, it) => t + num(it.cost), 0), start, max, current };
+  return { inst, plan, stored, bases, cost, hl, maxLoss, maxUp, therapy, planCost: plan.reduce((t, it) => t + num(it.cost), 0), start, max, current };
 }
 
 // sagoma olografica: limbi = linee spesse semi-trasparenti + linea centrale
@@ -238,21 +258,22 @@ function chipOff(e, it) {
 function slotCard(e, s) {
   const items = ((e.cyber && e.cyber.slots && e.cyber.slots[s.id]) || []).map((it, k) => ({ ...it, slot: s.id, k })).filter(it => !isBaseItem(it)), canOut = Store.canEdit();
   const inst = items.filter(it => it.installed !== false), b = baseState(e, s.id), bOn = b && !b.fixed && b.on;
-  const sumC = inst.reduce((t, it) => t + num(it.cost), 0) + (bOn ? b.cost : 0), sumH = inst.reduce((t, it) => t + num(it.hl), 0) + (bOn ? b.hl : 0);
+  const sumC = inst.reduce((t, it) => t + num(it.cost), 0) + (bOn ? b.cost : 0), sumH = inst.reduce((t, it) => t + itemHl(e, it), 0) + (bOn ? b.hl : 0);
   return `
     <section class="cy-slot ${inst.length || bOn ? "has" : ""} ${items.length || bOn ? "" : "vacant"} ${s.custom ? "custom" : ""}" data-zone="${s.zone}">
       <header><span class="cy-title">${esc(s.label)}</span>${s.ext ? (hasExt(e, s.id) ? `<span class="cy-cap" title="Non è un impianto: niente umanità${s.glasses ? ", le opzioni contano come una coppia" : ""}">esterno</span>` : `<span class="cy-cap over" title="L'oggetto non è nell'inventario: le opzioni non hanno effetto">⚠ non nell'inventario</span>`) : ""}${slotUseHtml(slotUse(s.id, items, b, s.id === "neural" ? alveoloSlots(e) : 0))}
         ${inst.length || bOn ? `<span class="cy-sum">${fmtEb(sumC)} · ${sumH} HL</span>` : ""}</header>
-      ${b && !b.fixed ? `<div class="cy-base ${b.on ? "on" : ""}" title="Cyberware fondamentale: si attiva sullo slot">${b.on ? `◆ <b>${esc(b.name)}</b> · ${b.slots} slot${b.slots !== b.std ? ` (standard ${b.std})` : ""} <small>${b.cost.toLocaleString("it-IT")} eb · ${b.hl} HL · −${b.max}</small>` : b.stored ? `⬚ ${esc(b.name)} disinstallato <small>(in Equipaggiamento · ${b.hl} HL restano)</small>` : `○ ${esc(b.name)} non installato${slotKind(s.id) === "braccio" || slotKind(s.id) === "gamba" ? " <small>(arto di carne: 1 opzione)</small>" : ""}`}</div>`
+      ${b && !b.fixed && b.fbc ? `<div class="cy-base on fbc-part" title="Parte del corpo FBC: niente umanità persa, slot opzioni raddoppiati">◆ <b>${esc(b.name)}</b> · ${b.slots} slot <small>parte del corpo FBC · 0 HL</small></div>`
+        : b && !b.fixed ? `<div class="cy-base ${b.on ? "on" : ""}" title="Cyberware fondamentale: si attiva sullo slot">${b.on ? `◆ <b>${esc(b.name)}</b> · ${b.slots} slot${b.slots !== b.std ? ` (standard ${b.std})` : ""} <small>${b.cost.toLocaleString("it-IT")} eb · ${b.hl} HL · −${b.max}</small>` : b.stored ? `⬚ ${esc(b.name)} disinstallato <small>(in Equipaggiamento · ${b.hl} HL restano)</small>` : `○ ${esc(b.name)} non installato${slotKind(s.id) === "braccio" || slotKind(s.id) === "gamba" ? " <small>(arto di carne: 1 opzione)</small>" : ""}`}</div>`
         : b && b.slots !== b.std ? `<div class="cy-base on"><small>${b.slots} slot opzioni (standard ${b.std})</small></div>` : ""}
       ${items.length ? `<ul>${items.map(it => {
-        const m = itemMax(e, it), changed = hasVal(it.max) && Number(it.max) !== s.max;
+        const m = itemMaxF(e, it), changed = hasVal(it.max) && Number(it.max) !== s.max, fbHl = fbcOf(e) && (it.pkg || itemHl(e, it) !== num(it.hl));
         return `
         <li class="${it.installed === false ? (it.stored ? "planned stored" : "planned") : ""}" ${it.note || cwOf(it) ? `title="${esc([(cwOf(it) || {}).desc, it.note].filter(Boolean).join(" · "))}"` : ""}>
           <span class="cy-chk" aria-label="${it.installed === false ? (it.stored ? "disinstallato" : "pianificato") : "installato"}">${it.installed === false ? (it.stored ? "⬚" : "◇") : "◆"}</span>
           <span class="cy-name">${esc(it.name)}${canOut && (it.installed !== false || it.stored) ? `<button type="button" class="gp-btn cy-out" data-action="gear-cy" data-id="${esc(e.id)}" data-op="out" data-slot="${esc(s.id)}" data-i="${it.k}" title="Disinstalla: va in idle, poi lo installi in uno slot adatto">⇩</button>` : ""}${chipOff(e, it) ? ` <i class="cy-off" title="Non c'è posto nell'Alveolo: il chip non è montato e non ha effetto. Aumenta gli slot dell'Alveolo o installane un altro.">⚠ ${alveoliOf(e) ? "Alveolo pieno" : "senza Alveolo"}</i>` : ""}${cwOf(it) && (cwOf(it).fx || []).length ? ` <i class="gl-fx" title="Effetto applicato ai tiri">⚡</i>` : ""}${it.ref === "skillchip" && it.param ? ` <small>${esc((CPR.skill(it.param) || {}).label || "")} ${+it.lvl === 4 ? 4 : 3}</small>` : ""}${it.note ? `<small>${esc(it.note)}</small>` : ""}</span>
           <span class="cy-cost">${hasVal(it.cost) ? esc(num(it.cost).toLocaleString("it-IT")) : "—"}</span>
-          <span class="cy-hl">${hasVal(it.hl) ? esc(it.hl) : "—"}</span>
+          <span class="cy-hl" ${fbHl ? `title="${it.pkg ? "Dotazione del corpo FBC: l'umanità è nel pacchetto" : "Parte del corpo FBC: niente umanità persa"}"` : ""}>${fbHl ? (it.pkg ? "📦" : "0") : hasVal(it.hl) ? esc(it.hl) : "—"}</span>
           <span class="cy-max ${changed ? "changed" : ""}" title="Umanità massima tolta${changed ? " (modificata, standard " + s.max + ")" : ""}">${m ? "−" + m : "0"}</span>
         </li>`; }).join("")}</ul>` : bOn ? "" : `<div class="cy-free">— slot libero —</div>`}
     </section>`;
@@ -306,6 +327,89 @@ function cyInstall(id, i) {
   });
 }
 
+// riquadro del corpo FBC (tab Cyberware): modello, telaio, umanità del pacchetto, regole e pulsanti
+function fbcHtml(e) {
+  const f = fbcOf(e), edit = Store.canEdit(), id = esc(e.id);
+  if (!f) return edit && isPerson(e) ? `<div class="fbc-off"><button type="button" class="btn ghost small" data-action="fbc-edit" data-id="${id}" title="Full Body Conversion (Going Metal): corpo, telaio, umanità del pacchetto">⚙ Full Body Conversion</button></div>` : "";
+  const B = f.B, inc = B.inc.map(([ref, n]) => { const c = CW.byId(ref); return `${c ? c.name : ref}${n > 1 ? ` ×${n}` : ""}`; });
+  const pk = cyberItems(e).filter(it => it.pkg && it.installed !== false).length;
+  const fx = cyberFx(e), hp = hpMaxOf(e);
+  return `<section class="fbc">
+    <header><span class="cy-title">⬢ Full Body Conversion</span><b>${esc(B.name)}</b>
+      ${edit ? `<button type="button" class="btn ghost small" data-action="fbc-edit" data-id="${id}">✎ Corpo</button><button type="button" class="btn small cyan" data-action="fbc-repair" data-id="${id}" title="Cybertech VD 15, 4 ore: PF al massimo (se fallisce, almeno a metà). Serve un Lifestyle Good Prepak o migliore.">🔧 Ripara</button>` : ""}</header>
+    <div class="fbc-grid">
+      <span><small class="sh-k">Telaio</small> ${esc(f.F.name)} · BODY <b>${fx.body}</b> · PF ${hp}</span>
+      <span><small class="sh-k">Pacchetto</small> ${num(f.hl)} HL <small>(${esc(B.dice)}, media ${B.hl})</small> · Biosystem ${num(f.bio)} HL</span>
+      <span><small class="sh-k">Dotazione</small> ${pk} pezzi segnati 📦 <small>(${esc(inc.join(", "))})</small></span>
+    </div>
+    <p class="hint">${esc(B.desc)}</p>
+    <ul class="fbc-rules">
+      <li>Parti del corpo (braccia, gambe, ${B.eyes === 2 ? "occhi, " : ""}udito, cranio, telaio, collegamento neurale): niente umanità persa · slot opzioni raddoppiati (anche Impianti Interni ed Esterni) · requisiti di Lacci e Muscoli Innestati soddisfatti.</li>
+      <li>Immune a ${CW.FBC_CRITS.join(", ")} · niente malus degli Stati di Ferita (il Death Save resta).</li>
+      <li>Immune a malattie, veleni, farmaci e droghe, salvo un Airhypo nella porta del Biosystem · Cryobag, Cryotank e Speedheal non funzionano · niente fame né aria; Soluzione di Glucosio ogni mese (nelle Spese mensili).</li>
+      <li>Con Lifestyle Good Prepak o migliore: ogni giorno di riposo recupera PF pari al BODY; «🔧 Ripara» li riporta al massimo. Un EMP colpisce i singoli pezzi, non tutto il corpo.</li>
+    </ul>
+  </section>`;
+}
+// modulo del corpo FBC: modello, umanità del pacchetto e del Biosystem, dotazione
+function fbcEdit(id) {
+  const e = state.entries.find(x => x.id === id); if (!e || !Store.canEdit()) return;
+  const f = fbcOf(e) || {}, model = f.model || "alpha";
+  const items = Object.entries(((e.cyber || {}).slots) || {}).flatMap(([slot, list]) => (list || []).map((it, i) => ({ it, slot, i }))).filter(x => x.slot !== "idle" && x.it.installed !== false && !isExtSlot(x.slot) && x.it.name);
+  // prima volta: segna da solo la dotazione del corpo scelto (per tipo, fino al numero incluso)
+  const auto = mid => { const B = CW.fbcBody(mid), left = Object.fromEntries((B ? B.inc : []).map(([r, n]) => [r, n])), out = new Set();
+    items.forEach(x => { const c = CW.byId(x.it.ref) || CW.byName(x.it.name); if (c && left[c.id] > 0) { left[c.id]--; out.add(x.slot + ":" + x.i); } }); return out; };
+  const pre = f.model ? new Set(items.filter(x => x.it.pkg).map(x => x.slot + ":" + x.i)) : auto(model);
+  const B0 = CW.fbcBody(model);
+  openModal(`<form class="form" id="fbc-form">
+    <div class="modal-head"><h2>// FULL BODY CONVERSION</h2><button type="button" class="x" data-action="close" aria-label="Chiudi">×</button></div>
+    <div class="modal-body"><div class="fields">
+      <div class="field full"><label for="fb-model">Corpo</label><select id="fb-model" name="model">${CW.FBC.map(b => `<option value="${b.id}" ${b.id === model ? "selected" : ""}>${esc(b.name)} · ${fmtEb(b.cost)} · ${CW.FRAMES[b.frame].name.split(" (")[0].replace("Telaio Lineare ", "")} BODY ${CW.FRAMES[b.frame].v}</option>`).join("")}</select>
+        <span class="hint" data-fb-desc>${esc(B0.desc)}</span></div>
+      <div class="field"><label for="fb-hl">Umanità persa · pacchetto</label><div class="mk-hl"><input id="fb-hl" name="hl" type="number" min="0" value="${esc(hasVal(f.hl) ? f.hl : B0.hl)}"><button type="button" class="gp-btn" data-fb-roll="hl" title="Tira i dadi del pacchetto">⚄</button></div><span class="hint" data-fb-dice>${esc(B0.dice)}, media ${B0.hl}</span></div>
+      <div class="field"><label for="fb-bio">Umanità persa · Biosystem</label><div class="mk-hl"><input id="fb-bio" name="bio" type="number" min="0" value="${esc(hasVal(f.bio) ? f.bio : 14)}"><button type="button" class="gp-btn" data-fb-roll="bio" title="Tira 4d6">⚄</button></div><span class="hint">4d6, media 14 · 10.000 eb</span></div>
+      <div class="field full"><span class="lbl">Dotazione del corpo 📦 <small>(la loro umanità è già nel pacchetto; tolgono comunque umanità massima)</small></span>
+        <div class="fbc-pkg">${items.length ? items.map(x => `<label class="check"><input type="checkbox" name="pkg" value="${esc(x.slot + ":" + x.i)}" ${pre.has(x.slot + ":" + x.i) ? "checked" : ""}> ${esc(x.it.name)} <small>${esc(slotDef(e, x.slot).label)}${hasVal(x.it.hl) ? ` · ${num(x.it.hl)} HL` : ""}</small></label>`).join("") : `<span class="hint">Nessun impianto installato.</span>`}</div>
+        <span class="hint" data-fb-inc>Il corpo include: ${esc(B0.inc.map(([r, n]) => `${(CW.byId(r) || { name: r }).name}${n > 1 ? " ×" + n : ""}`).join(", "))}.</span></div>
+    </div></div>
+    <div class="modal-foot">${f.model ? `<button type="button" class="btn ghost small danger left" data-action="fbc-remove" data-id="${esc(id)}">Togli la FBC</button>` : ""}<button type="button" class="btn ghost" data-action="close">Annulla</button><button class="btn cyan" type="submit">Salva</button></div>
+  </form>`, true);
+  const form = $("#fbc-form");
+  form.elements.model.addEventListener("change", () => {
+    const B = CW.fbcBody(form.elements.model.value); if (!B) return;
+    form.elements.hl.value = B.hl; $("[data-fb-dice]", form).textContent = `${B.dice}, media ${B.hl}`; $("[data-fb-desc]", form).textContent = B.desc;
+    $("[data-fb-inc]", form).textContent = `Il corpo include: ${B.inc.map(([r, n]) => `${(CW.byId(r) || { name: r }).name}${n > 1 ? " ×" + n : ""}`).join(", ")}.`;
+    const a = auto(B.id); $$("input[name=pkg]", form).forEach(c => { c.checked = a.has(c.value); });
+  });
+  $$("[data-fb-roll]", form).forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.fbRoll, r = k === "bio" ? CW.rollFbc("4d6") : CW.rollFbc(CW.fbcBody(form.elements.model.value).dice);
+    form.elements[k].value = r.total; toast(`Umanità persa: ${r.total}`);
+  }));
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    const pk = new Set($$("input[name=pkg]:checked", form).map(c => c.value));
+    cyberPatch(id, cy => {
+      cy.fbc = { model: form.elements.model.value, hl: num(form.elements.hl.value), bio: num(form.elements.bio.value) };
+      Object.entries(cy.slots || {}).forEach(([slot, list]) => (list || []).forEach((it, i) => { if (pk.has(slot + ":" + i)) it.pkg = true; else delete it.pkg; }));
+      return cy;
+    });
+    closeModal(); openEntry(id, "cyber"); toast("Full Body Conversion salvata", "ok");
+  });
+}
+function fbcRemove(id) {
+  cyberPatch(id, cy => { delete cy.fbc; Object.values(cy.slots || {}).forEach(list => (list || []).forEach(it => { delete it.pkg; })); return cy; });
+  closeModal(); openEntry(id, "cyber"); toast("Full Body Conversion tolta", "ok");
+}
+// riparazione del corpo FBC: Cybertech VD 15, 4 ore · riuscita = PF al massimo, fallita = almeno metà
+function fbcRepair(id) {
+  const e = state.entries.find(x => x.id === id); if (!e || !fbcOf(e) || !Store.canEdit()) return;
+  const k = skillByKey(e, "skill:cybertech") || { label: "Cybertech", stat: "TECH", lvl: 0 };
+  const r = CPR.check([{ l: k.stat, v: statEff(e, k.stat) }, { l: k.label, v: k.lvl }, ...skillBonusAll(e, k), ...sheetExtra(e)]);
+  const ok = r.total > 15, max = hpMaxOf(e), hp = hpOf(e), to = ok ? max : Math.max(hp, Math.ceil(max / 2));
+  postRoll({ kind: "check", who: e.name, entryId: e.id, label: "Riparazione del corpo FBC · Cybertech", ...r,
+    hit: { ok, text: ok ? `VD 15 superata: PF al massimo (${max})` : `VD 15 non superata: 4 ore perse, PF ${to}/${max}` }, note: "4 ore · serve un Lifestyle Good Prepak o migliore" });
+  sheetPatch(id, s => { s.hp = to; return s; });
+}
 function cyberHtml(e) { return `<div class="cy-wrap" data-cyber="${esc(e.id)}">${cyberInner(e)}${cyberFxHtml(e)}</div>`; }
 function cyberInner(e) {
   const st = cyberStats(e);
@@ -324,6 +428,7 @@ function cyberInner(e) {
       <div class="cy-stat hl"><span class="l">Perdita umanità</span><span class="n">${st.hl}</span></div>
       <div class="cy-stat mx"><span class="l">Umanità max persa</span><span class="n">${st.maxLoss}</span></div>
       ${st.therapy ? `<div class="cy-stat th"><span class="l">Recuperata (terapia)</span><span class="n">+${st.therapy}</span></div>` : ""}
+      ${st.maxUp ? `<div class="cy-stat th" title="Concessa dal GM durante la campagna"><span class="l">Massima extra (GM)</span><span class="n">+${st.maxUp}</span></div>` : ""}
       <div class="cy-stat hum">
         ${Store.canEdit() ? `<button type="button" class="cy-hum-edit" data-action="edit-humanity" data-id="${esc(e.id)}" title="Modifica umanità iniziale e terapia">✎ Umanità</button>` : ""}
         ${st.start != null ? `
@@ -334,6 +439,7 @@ function cyberInner(e) {
       </div>
     </div>`;
   return `
+    ${fbcHtml(e)}
     ${idleHtml(e)}
     <div class="cy-legend"><span>◆ installato</span><span>◇ pianificato</span><span>⏸ idle (non installato, va negli slot adatti)</span><span>⬚ disinstallato (resta in Equipaggiamento)</span><span>○ base non installata</span><span>colonne: costo (eb) · HL = umanità persa · −N = umanità massima tolta (in giallo se modificata)</span></div>
     <div class="cy-layout">
@@ -455,7 +561,7 @@ const cyRow = (it = {}, def = 2) => `
   <div class="cy-row ${it.ref === "skillchip" ? "chip" : ""}">
     <label class="cy-inst" title="Installato (togli la spunta se è solo pianificato)"><input type="checkbox" data-f="installed" ${it.installed === false ? "" : "checked"}><span></span></label>
     <input data-f="name" placeholder="Nome impianto" list="dl-cyber" value="${esc(it.name)}">
-    <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="stored" value="${it.stored ? "1" : ""}"><input type="hidden" data-f="withBase" value="${it.withBase ? "1" : ""}"><input type="hidden" data-f="off" value="${it.off ? "1" : ""}"><input type="hidden" data-f="up" value="${it.up ? "1" : ""}">
+    <input type="hidden" data-f="ref" value="${esc(it.ref || "")}"><input type="hidden" data-f="stored" value="${it.stored ? "1" : ""}"><input type="hidden" data-f="withBase" value="${it.withBase ? "1" : ""}"><input type="hidden" data-f="off" value="${it.off ? "1" : ""}"><input type="hidden" data-f="up" value="${it.up ? "1" : ""}"><input type="hidden" data-f="pkg" value="${it.pkg ? "1" : ""}">
     <select data-f="lvl" class="cy-param cy-lvl" title="Livello a cui il chip porta l'abilità">${[3, 4].map(n => `<option value="${n}" ${+it.lvl === n ? "selected" : ""}>liv. ${n}</option>`).join("")}</select>
     <select data-f="param" class="cy-param" title="Abilità del Chip Abilità"><option value="">abilità del chip…</option>${CPR.SKILLS.map(k => `<option value="${k.id}" ${k.id === it.param ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
     <input data-f="cost" type="number" min="0" step="1" placeholder="eb" title="Costo in eddies" value="${esc(it.cost ?? "")}">
@@ -521,9 +627,14 @@ function editHumanity(id) {
             <div class="temp-row"><button type="button" class="gp-btn" data-th="-1" aria-label="Meno uno">−</button>
             <input id="h-th" name="therapy" type="number" min="0" step="1" value="${esc(c.therapy ?? "")}" placeholder="0">
             <button type="button" class="gp-btn" data-th="1" aria-label="Più uno">+</button></div></div>
+          <div class="field"><label for="h-up">Umanità massima extra (GM)</label>
+            <div class="temp-row">${isGm() ? `<button type="button" class="gp-btn" data-up="-1" aria-label="Meno uno">−</button>` : ""}
+            <input id="h-up" name="maxUp" type="number" step="1" value="${esc(c.maxUp ?? "")}" placeholder="0" ${isGm() ? "" : "readonly"} title="Regola della campagna: il GM può alzare l'umanità massima">
+            ${isGm() ? `<button type="button" class="gp-btn" data-up="1" aria-label="Più uno">+</button>` : ""}</div>
+            <span class="hint">Regola della campagna: la concede il GM${isGm() ? "" : " (solo il GM la cambia)"}.</span></div>
         </div>
         <p class="hint" style="margin-top:12px">Impianti installati: perdita umanità <b>${st.hl}</b>, umanità massima tolta <b>${st.maxLoss}</b>.
-          L'umanità attuale = iniziale − perdita + terapia, e non può superare la massima (iniziale − ${st.maxLoss}).</p>
+          L'umanità attuale = iniziale − perdita + terapia, e non può superare la massima (iniziale − ${st.maxLoss} + massima extra del GM).</p>
         <p class="hint hum-preview" aria-live="polite"></p>
       </div>
       <div class="modal-foot">
@@ -535,20 +646,22 @@ function editHumanity(id) {
   const update = () => {
     const s = form.humanity.value === "" ? null : num(form.humanity.value);
     if (s == null) { prev.textContent = ""; return; }
-    const max = s - st.maxLoss, cur = Math.min(s - st.hl + num(form.therapy.value), max);
+    const max = s - st.maxLoss + num(form.maxUp.value), cur = Math.min(s - st.hl + num(form.therapy.value), max);
     prev.innerHTML = `Risultato: umanità <b>${cur}</b> · max <b>${max}</b> · EMP effettiva <b>${Math.max(0, Math.floor(cur / 10))}</b>${cur <= 0 ? " · ⚠ cyberpsicosi" : ""}`;
   };
   form.addEventListener("input", update);
   form.addEventListener("click", ev => {
     const b = ev.target.closest("[data-th]");
     if (b) { form.therapy.value = Math.max(0, num(form.therapy.value) + num(b.dataset.th)); update(); }
+    const u = ev.target.closest("[data-up]");
+    if (u) { form.maxUp.value = num(form.maxUp.value) + num(u.dataset.up); update(); }
   });
   update();
   form.addEventListener("submit", async ev => {
     ev.preventDefault();
-    const h = form.humanity.value, t = form.therapy.value;
+    const h = form.humanity.value, t = form.therapy.value, up = isGm() ? form.maxUp.value : (e.cyber || {}).maxUp;
     try {
-      const saved = await Store.save("entries", { ...e, cyber: { ...(e.cyber || {}), humanity: h === "" ? null : num(h), therapy: t === "" ? null : num(t) } });
+      const saved = await Store.save("entries", { ...e, cyber: { ...(e.cyber || {}), humanity: h === "" ? null : num(h), therapy: t === "" ? null : num(t), ...(num(up) ? { maxUp: num(up) } : { maxUp: null }) } });
       upsert(state.entries, saved); toast("Umanità salvata", "ok"); openEntry(saved.id, "cyber");
     } catch (err) { fail(err); }
   });
@@ -567,7 +680,7 @@ function editCyber(id) {
           <div class="field full"><span class="lbl">Legenda</span><span class="hint">Le parti con slot (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito) sono <b>cyberware fondamentale</b>: si attivano in testa allo slot, con costo, PU e numero di slot (modificabile per gli upgrade). Spunta = installato, senza spunta = pianificato (non conta nei totali). <b>eb</b> = costo · <b>HL</b> = umanità persa · <b>max</b> = umanità massima tolta: vuoto = standard dello slot (2, borgware 4, fashionware 0), oppure scrivi il valore modificato (es. 1).</span></div>
         </div>
         <datalist id="dl-cyber">${allCyberNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
-        <div id="cy-fieldsets">${slotsOf(e).map(s => cyFieldset(s, (slots[s.id] || []).filter(it => !isBaseItem(it)), baseState(e, s.id))).join("")}</div>
+        <div id="cy-fieldsets">${slotsOf(e).map(s => cyFieldset(s, (slots[s.id] || []).filter(it => !isBaseItem(it)), baseState(e, s.id, true))).join("")}</div>
         <div class="cy-slot-tools">
           <button type="button" class="btn ghost small yellow" data-slot-add>+ Aggiungi slot personalizzato</button>
           <div id="cy-restore"></div>
@@ -655,11 +768,11 @@ function editCyber(id) {
     ev.preventDefault();
     const out = {}, extra = [], bases = {};
     for (const fs of $$("fieldset[data-slot]", form)) {
-      const bs = readBase(fs); if (bs) { const { name, fixed, ...keep } = bs, was = baseState(e, fs.dataset.slot); bases[fs.dataset.slot] = fixed ? { slots: keep.slots } : { ...keep, ...(!keep.on && was && was.stored ? { stored: true } : {}) }; }
+      const bs = readBase(fs); if (bs) { const { name, fixed, ...keep } = bs, was = baseState(e, fs.dataset.slot, true); bases[fs.dataset.slot] = fixed ? { slots: keep.slots } : { ...keep, ...(!keep.on && was && was.stored ? { stored: true } : {}) }; }
       const items = readRows(fs, ".cy-row").filter(it => it.name && !isBaseItem(it)).map(it => ({
         name: it.name, installed: it.installed, cost: it.cost === "" ? null : num(it.cost), hl: it.hl === "" ? null : num(it.hl),
         max: it.max === "" ? null : num(it.max), note: it.note,
-        ...(it.ref ? { ref: it.ref } : {}), ...(it.off ? { off: true } : {}), ...(it.up ? { up: 1 } : {}), ...(it.stored && it.installed === false ? { stored: true, ...(it.withBase ? { withBase: true } : {}) } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param, lvl: +it.lvl === 4 ? 4 : 3 } : {}),
+        ...(it.ref ? { ref: it.ref } : {}), ...(it.off ? { off: true } : {}), ...(it.pkg ? { pkg: true } : {}), ...(it.up ? { up: 1 } : {}), ...(it.stored && it.installed === false ? { stored: true, ...(it.withBase ? { withBase: true } : {}) } : {}), ...(it.param && it.ref === "skillchip" ? { param: it.param, lvl: +it.lvl === 4 ? 4 : 3 } : {}),
       }));
       if (fs.classList.contains("custom")) {
         const label = $("[data-slot-f=label]", fs).value.trim();
@@ -682,7 +795,7 @@ function editCyber(id) {
     const hum = form.humanity.value, th = form.therapy.value;
     const hidden = CYBER_SLOTS.filter(s => !s.ext && !$(`fieldset[data-slot="${s.id}"]`, form)).map(s => s.id);   // gli occhiali compaiono da soli
     try {
-      const saved = await Store.save("entries", { ...e, cyber: {
+      const saved = await Store.save("entries", { ...e, cyber: { ...(e.cyber || {}),
         humanity: hum === "" ? null : num(hum), therapy: th === "" ? null : num(th), slots: { ...out, ...(idle.length ? { idle } : {}) }, extra, hidden, bases,
       } });
       upsert(state.entries, saved); const nIdle = idle.length - idleCyber(e).length;

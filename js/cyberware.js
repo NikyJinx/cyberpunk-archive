@@ -32,7 +32,8 @@ window.CW = (() => {
   const TECH7 = ["cybertech", "electronics", "airtech", "landtech", "weaponstech", "seatech", "basictech"];
   // C(id, gruppo, nome, installazione, costo, categoria, pu, dadi, descrizione, extra)
   const C = (id, g, name, inst, cost, cat, pu, dice, desc, x = {}) => ({ id, g, name, inst, cost, cat, pu, dice, desc, slots: 1, ...x });
-  const N = "N/A", CC = "Centro Commerciale", CL = "Clinica", OS = "Ospedale", BC = "Black Chrome";
+  const N = "N/A", CC = "Centro Commerciale", CL = "Clinica", OS = "Ospedale", BC = "Black Chrome", GM = "Going Metal";
+  const FBCONLY = "Solo in una Full Body Conversion.";
   const HARD = "non possono essere disattivati, resi inutilizzabili o distrutti da scosse elettriche, Microwaver, impulsi EMP o programmi che non siano Black ICE.";
   const BASE = [
     // Fashionware
@@ -194,8 +195,61 @@ window.CW = (() => {
     C("extrajointed", "limbcover", "Extra-Jointed Cyberlimb Upgrade", CL, 500, "Expensive", 3, "1d6", "Opzione del cyberarto: +2 a Contortionist. Una sola per cyberarto; valgono al massimo quattro cyberarti, fino a +8.", { src: BC, req: "Cyberbraccio o Cybergamba", fx: [{ t: "skill", skills: ["contortionist"], v: 2, cap: 4 }] }),
     C("reinforcedlimb", "limbcover", "Reinforced Cyberlimb Upgrade", CL, 1000, "Very Expensive", 3, "1d6", "Idrauliche ridondanti e rinforzi: il cyberarto è immune a Broken Arm se è un braccio, a Broken Leg se è una gamba. Il GM decide quale arto subisce la Critical Injury.", { src: BC, req: "Cyberbraccio o Cybergamba", fx: [{ t: "critImmune", limb: true }] }),
     C("borghardened", "borg", "Borgware Hardened Shielding", OS, 1000, "Very Expensive", 14, "4d6", `Un Borgware già installato è rinforzato a standard militare: la schermatura e il Borgware scelto ${HARD}`, { src: BC, req: "un Borgware installato" }),
+    // Going Metal (Interface RED Vol. 3): Full Body Conversion
+    C("biosystem", "borg", "Biosystem", OS, 10000, "Super Luxury", 14, "4d6", "Il cervello (e qualche altro pezzo scelto) in un Biopod con computer e batterie: si installa in un corpo FBC. Rinforzato contro EMP e radiazioni. Fuori da un corpo non può agire, solo osservare e comunicare (guscio = Copertura da 25 PF); un colpo diretto al cervello uccide. Installarlo in un corpo: Cybertech o Surgery VD 17, 4 ore, si può ritentare.", { src: GM, fbcOnly: true, slots: 0 }),
+    C("cyberskull", "internal", "Cyberskull", OS, 5000, "Luxury", 14, "4d6", "Cranio di metallo con Faceplate personalizzato (altri 100 eb). La testa non è più un punto debole ×2 per i colpi mirati; immune a Cracked Skull e Broken Jaw. In una FBC non costa umanità.", { src: GM, slots: 3, fx: [{ t: "critImmune", crits: ["Cracked Skull", "Broken Jaw"] }] }),
+    C("dragoonplating", "external", "Dragoon Plating", OS, 5000, "Luxury", 14, "4d6", "Borgware. Piastre magnetiche: SP 15 a testa e corpo, −2 a REF, DEX e MOVE. Con un'Azione si sganciano (niente SP né malus) e con un'Azione si richiamano entro 6 m. Si riparano di 1 SP a fine giornata se non ne perdono. Set di ricambio 1.000 eb. Serve BODY 16 se non sei una FBC.", { src: GM, fx: [{ t: "armor", sp: 15, type: "plating" }] }),
+    C("dragoonmetalgear", "external", "Dragoon Plating, Metalgear", OS, 15000, "Super Luxury", 14, "4d6", "Borgware. Piastre Metalgear: SP 18 a testa e corpo, −3 a REF, DEX e MOVE. Si sganciano e si richiamano come le Dragoon Plating; si riparano di 1 SP a fine giornata se non ne perdono. Set di ricambio 5.000 eb. Serve BODY 16 se non sei una FBC.", { src: GM, fx: [{ t: "armor", sp: 18, type: "plating" }] }),
+    C("fbcbrimstone", "external", "FBC Brimstone Coating", OS, 1000, "Very Expensive", 7, "2d6", FBCONLY + " Immune ai danni da fuoco (anche munizioni incendiarie e lanciafiamme) e non prende fuoco.", { src: GM, fbcOnly: true }),
+    C("fbcchameleon", "external", "FBC Chameleon Coating", OS, 1000, "Very Expensive", 7, "2d6", FBCONLY + " Fermo per 1 minuto (20 round) attivi senza Azione un mimetismo contro tutti i sensi visivi (anche Bassa Luminosità/IR/UV): serve Perception VD 17 per vederti. Si spegne se ti muovi più di 2 m in un round. Seconda installazione: 30 secondi (10 round); terza: 9 secondi (3 round).", { src: GM, fbcOnly: true }),
+    C("fbcemp", "external", "FBC EMP Coating", OS, 1000, "Very Expensive", 7, "2d6", FBCONLY + " Quando un effetto EMP renderebbe inutilizzabili uno o più pezzi del tuo cyberware, si brucia invece una delle installazioni di EMP Coating. Più installazioni, più strati di protezione.", { src: GM, fbcOnly: true }),
+    C("fbcgemini", "external", "FBC Gemini Sculpt", OS, 1000, "Very Expensive", 0, N, FBCONLY + " Rimodella il corpo in forma umana con un guscio di Realskinn: a vista non si capisce che sei una FBC, solo all'infrarosso (sei freddo come il metallo). Non va su un Telaio Omega o con BODY 16 o più.", { src: GM, fbcOnly: true }),
+    C("fbcbodyweight", "external", "FBC Integrated Bodyweight Coating", OS, 1000, "Very Expensive", 7, "2d6", FBCONLY + " 2 slot solo per hardware, condivisi da tutti i cyberdeck integrati nel cyberware; i deck integrati sono collegati senza Connettori d'Interfaccia (ne usi comunque uno alla volta). Ogni installazione in più: +2 slot hardware condivisi. Con questo coating la Tuta Bodyweight non serve.", { src: GM, fbcOnly: true }),
+    C("heavysubdermal", "external", "Heavy Subdermal Plating", OS, 5000, "Luxury", 14, "4d6", "Borgware. SP 13 a testa e corpo, come Armatura Subdermale. −2 a REF, DEX e MOVE se non hai BODY 14 o più e non sei una FBC. Ogni giorno di riposo completo ripara 1 SP. Serve BODY 10 se non sei una FBC.", { src: GM, fx: [{ t: "armor", sp: 13, type: "subdermal" }] }),
+    C("hydraulics", "internal", "Internal Hydraulics Upgrade", OS, 1000, "Very Expensive", 3, "1d6", FBCONLY + " Con un Telaio Lineare: REF, DEX e MOVE almeno 4 (le armature e le Critical Injury le abbassano comunque).", { src: GM, fbcOnly: true, fx: [{ t: "statMin", stats: ["REF", "DEX", "MOVE"], v: 4, key: "hydraulics" }] }),
+    C("hydraulicstuned", "internal", "Internal Hydraulics Upgrade, Tuned", OS, 5000, "Luxury", 3, "1d6", FBCONLY + " Con un Telaio Lineare: REF, DEX e MOVE almeno 6 (le armature e le Critical Injury le abbassano comunque).", { src: GM, fbcOnly: true, fx: [{ t: "statMin", stats: ["REF", "DEX", "MOVE"], v: 6, key: "hydraulics" }] }),
+    C("hydraulicsperfect", "internal", "Internal Hydraulics Upgrade, Perfected", OS, 20000, "Super Luxury", 3, "1d6", FBCONLY + " Con un Telaio Lineare: REF, DEX e MOVE almeno 8 (le armature e le Critical Injury le abbassano comunque).", { src: GM, fbcOnly: true, fx: [{ t: "statMin", stats: ["REF", "DEX", "MOVE"], v: 8, key: "hydraulics" }] }),
+    C("frameomega", "borg", "Telaio Lineare Ω (Omega) Impiantato", OS, 10000, "Super Luxury", 28, "8d6", "Endoskeleton perfezionato con muscoli idraulici e myomar: BODY 16 (cambiano PF, soglie e Death Save), massimo 16. Conta come due Borgware per l'umanità massima.", { src: GM, req: "BODY 10 e tre Lacci Osseo-Muscolari", max: 8, fx: [{ t: "setBody", v: 16, max: 16, laces: 3, minBody: 10 }] }),
+    C("prehensilefoot", "leg", "Prehensile Cyberfoot", CL, 1000, "Very Expensive", 3, "1d6", "Con un'Azione la Cybergamba diventa un Cyberbraccio e il piede una mano (un'Azione per tornare). Trasformata: −4 a MOVE (minimo 1), tranne in gravità zero.", { src: GM, req: "Cybergamba" }),
+    C("zerogthrusters", "leg", "Zero Gravity Thrusters", CL, 1000, "Very Expensive", 3, "1d6", "Propulsori di precisione: in gravità zero nessuna penalità al movimento. Serbatoi da 100 eb, da cambiare ogni 24 ore d'uso. Servono due Cybergambe, in coppia, 2 slot.", { src: GM, req: "due Cybergambe, in coppia", slots: 2 }),
   ];
   const groupOf = id => GROUPS.find(g => g.id === id) || GROUPS[0];
+
+  // ---------- FULL BODY CONVERSION (Going Metal) ----------
+  // corpi FBC: frame = telaio incluso (BODY), eyes = due Cyberocchi o un Kiroshi MonoVision, arms = cyberbraccia,
+  // noHl = parti senza umanità persa né umanità massima tolta, inc = cyberware incluso che costa umanità (nel pacchetto)
+  const FRAMES = { sigma: { v: 12, max: 13, name: "Telaio Lineare σ (Sigma)" }, beta: { v: 14, max: 15, name: "Telaio Lineare β (Beta)" }, omega: { v: 16, max: 16, name: "Telaio Lineare Ω (Omega)" } };
+  const FB = (id, name, cost, cat, hl, dice, frame, eyes, inc, desc, x = {}) => ({ id, name, cost, cat, hl, dice, frame, eyes, arms: 2, inc, desc, ...x });
+  const FBC = [
+    FB("copernicus", "Cybermatrix Inc. Copernicus", 17300, "Very Expensive", 52, "2d6/2+15d6", "sigma", "mono", [["antidazzle", 1], ["fbcemp", 2], ["grapplehand", 2], ["hydraulics", 1], ["prehensilefoot", 2], ["radarsonar", 1], ["radiocomm", 1], ["toolhand", 2], ["zerogthrusters", 2]], "Il corpo ideale per l'esplorazione e la costruzione nello spazio profondo."),
+    FB("aquarius", "Dynalar Aquarius", 13000, "Very Expensive", 37, "2d6/2+10d6", "sigma", 2, [["lowlight", 2], ["radardetector", 1], ["radiocomm", 1], ["radarsonar", 1], ["subdermal", 1], ["webfoot", 2]], "L'ultima parola per l'esplorazione e la vita sott'acqua."),
+    FB("brimstone", "Dynalar Brimstone", 17600, "Very Expensive", 53, "1d6/2+15d6", "sigma", 2, [["amphearing", 1], ["fbcbrimstone", 1], ["heavysubdermal", 1], ["lowlight", 2], ["radarsonar", 1], ["radiocomm", 1], ["popupgl", 2]], "Creato per sconfiggere il fuoco. Lanciagranate Popup Tech Upgraded (+1 capacità)."),
+    FB("dragoon", "Militech Dragoon Revised War Platform", 35000, "Super Luxury", 64, "3d6/2+18d6", "omega", 2, [["antidazzle", 2], ["chyron", 1], ["dragoonplating", 1], ["fbcemp", 2], ["internalagent", 1], ["lowlight", 2], ["reinforcedlimb", 4], ["subdermalgrip", 2], ["hydraulicstuned", 1]], "Revisione del corpo militare che vinse la 4ª Guerra Corporativa; l'armamento si compra a parte."),
+    FB("eclipse", "Militech Eclipse", 29200, "Luxury", 67, "2d6/2+19d6", "beta", "mono", [["amphearing", 1], ["fbcchameleon", 3], ["gripfoot", 2], ["lowlight", 1], ["radiocomm", 1], ["scrambler", 1], ["subdermal", 1], ["subdermalpocket", 2], ["popupmelee", 1], ["hydraulicstuned", 1]], "Militech nega l'esistenza dei «ninja borg». Arma da Mischia Popup Tech Upgraded (Kendachi Mono-Three)."),
+    FB("enforcer", "Militech Enforcer", 16800, "Very Expensive", 53, "3d6/2+13d6", "sigma", "mono", [["antidazzle", 1], ["audiorecorder", 1], ["heavysubdermal", 1], ["hiddenholster", 1], ["lowlight", 1], ["popupgl", 1], ["popupmelee", 1], ["radiocomm", 1], ["subdermalgrip", 1], ["targetscope", 1], ["stressanalyzer", 1]], "Il corpo per proteggere e servire. Arma da Mischia Popup: Stun Baton."),
+    FB("spyder", "Militech Spyder 2.0", 24900, "Luxury", 73, "1d6/2+22d6", "beta", "mono", [["amphearing", 1], ["artshoulder", 1], ["budgetchipslot", 1], ["fbcchameleon", 1], ["grapplehand", 4], ["gripfoot", 2], ["imageenhance", 1], ["internalagent", 1], ["lowlight", 1], ["microvideo", 1], ["tactile", 1], ["teleoptics", 1], ["hydraulicstuned", 1]], "Il borg da spionaggio perfetto, con quattro cyberbraccia.", { arms: 4 }),
+    FB("sheol", "Moore Technologies Sheol", 19600, "Very Expensive", 32, "1d6/2+9d6", "beta", 2, [["chemanalyzer", 1], ["budgetchipslot", 1], ["chyron", 1], ["heavysubdermal", 1], ["internalagent", 1], ["raddetector", 1]], "Il borg originale per le operazioni pericolose."),
+    FB("samson", "NovelTech Samson", 20500, "Luxury", 39, "3d6/2+10d6", "omega", 2, [["antidazzle", 2], ["chyron", 1], ["internalagent", 1], ["raddetector", 1], ["subdermal", 1], ["techscanner", 1], ["toolhand", 2]], "Il borg industriale più robusto sul mercato."),
+    FB("gemini", "Raven Microcybernetics Gemini", 10200, "Expensive", 14, "4d6", "sigma", 2, [["mrstudd", 1], ["skinweave", 1]], "Tutti i vantaggi di una FBC, nessuno svantaggio sociale. Senza umanità persa anche FBC Gemini Sculpt, Tecnocapelli e Shift Tacts; Mr. Studd o Midnight Lady a scelta.", { noHlExtra: ["fbcgemini", "technohair"] }),
+    FB("wiseman", "Raven Microcybernetics Wiseman", 27480, "Luxury", 70, "3d6/2+19d6", "sigma", 2, [["chyron", 1], ["armdeck", 4], ["fbcbodyweight", 3], ["internalagent", 1], ["armdeckup", 4], ["virtuality", 2]], "Il corpo per Netrunner che uccide i Netrunner nemici. Deck inclusi: due Excellent Quality, Microtech Warrior e Kestrel 2 Tech Upgraded (+1 slot), integrati nelle braccia; hardware nel Bodyweight Coating."),
+    FB("alpha", "Rocklin Augmentics Alpha Class", 9900, "Expensive", 21, "6d6", "sigma", 2, [["interfaceplugs", 1], ["subdermal", 1]], "Il modello d'ingresso per eccellenza: il primo che viene in mente pensando a un «borg»."),
+    FB("kildare", "Trauma Team Kildare", 12200, "Very Expensive", 39, "3d6/2+10d6", "sigma", "mono", [["amphearing", 1], ["chyron", 1], ["imageenhance", 1], ["lowlight", 1], ["medscanner", 1], ["microoptics", 1], ["radiocomm", 1], ["microwaldo", 1], ["toolhand", 1], ["techscanner", 1]], "Il chirurgo che non si stanca mai. Mano Attrezzo Tech Upgraded con Airhypo."),
+  ];
+  const fbcBody = id => FBC.find(b => b.id === id) || null;
+  // cyberware che in una FBC non costa umanità né toglie umanità massima (parti del corpo)
+  const FBC_NOHL = ["cyberarm", "cyberaudio", "cybereye", "cyberleg", "cyberskull", "framesigma", "framebeta", "frameomega", "neurallink", "monovision", "discountaudio", "neosovietarm"];
+  // Critical Injury senza effetto né danni bonus in un corpo FBC
+  const FBC_CRITS = ["Broken Jaw", "Collapsed Lung", "Concussion", "Cracked Skull", "Crushed Windpipe", "Lost Ear", "Spinal Injury", "Torn Muscle", "Whiplash"];
+  // dadi del pacchetto, es. «3d6/2+19d6»: la parte /2 si dimezza per eccesso
+  function rollFbc(dice) {
+    let total = 0; const out = [];
+    for (const part of String(dice || "").split("+")) {
+      const m = part.match(/(\d+)d(\d+)(\/2)?/); if (!m) continue;
+      const d = Array.from({ length: +m[1] }, () => CPR.die(+m[2])), s = d.reduce((a, b) => a + b, 0);
+      total += m[3] ? Math.ceil(s / 2) : s; out.push(...d);
+    }
+    return { total, dice: out };
+  }
 
   // homebrew del GM (meta "cyberhb"): stessi campi del catalogo
   let HB = [];
@@ -222,7 +276,7 @@ window.CW = (() => {
     const w = x => x.it.pair ? 2 : 1;   // negli Occhiali Intelligenti un'opzione conta sempre come una coppia
     const have = id => inst.filter(x => x.c.id === id).reduce((t, x) => t + w(x), 0);
     const count = id => inst.filter(x => x.c.id === id || x.c.as === id).reduce((t, x) => t + w(x), 0);   // «as»: conta come un altro impianto
-    const out = { skill: {}, mods: [], stat: {}, body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0, warn: [], dodge: "", critImmune: [], nano: 0 };
+    const out = { skill: {}, mods: [], stat: {}, body: null, pain: false, armor: [], weapons: [], cond: [], immune: [], smart: false, run: 0, warn: [], dodge: "", critImmune: [], nano: 0, statMin: {}, fbc: !!opts.fbc };
     let body = +baseBody || 0, frame = null; const frames = [];
     // effetti validi; con la stessa chiave resta il più forte (es. Analizzatore di Stress potenziato sul normale)
     const ok = [], best = {}, capN = {};
@@ -234,6 +288,7 @@ window.CW = (() => {
       if (f.min && count(f.count || c.id) < f.min) continue;
       // cap: l'effetto conta al massimo per N installazioni (es. quattro cyberarti Extra-Jointed)
       if (f.cap && (capN[c.id + fi] = (capN[c.id + fi] || 0) + 1) > f.cap) continue;
+      if (c.fbcOnly && !opts.fbc) continue;   // pezzi solo per FBC: senza corpo FBC non fanno niente
       const x = { it, c, f }; ok.push(x);
       if (f.key && (!best[f.key] || num(f.v) > num(best[f.key].f.v))) best[f.key] = x;
     }
@@ -257,6 +312,7 @@ window.CW = (() => {
       if (f.t === "weapon") out.weapons.push({ ...f, src: c.name });
       if (f.t === "dodge") out.dodge = out.dodge || c.name;                               // schivi i proiettili con qualsiasi REF
       if (f.t === "nano") out.nano += 1;                                                  // usi al giorno della Nanomatrix
+      if (f.t === "statMin") f.stats.forEach(s => { out.statMin[s] = Math.max(out.statMin[s] || 0, num(f.v)); });   // Idrauliche FBC
       // Critical Injury senza effetto; limb: solo quella dell'arto dove è installato (braccio → Broken Arm, gamba → Broken Leg)
       if (f.t === "critImmune") {
         const limb = /^braccio/.test(it.slot || "") ? "Broken Arm" : /^gamba/.test(it.slot || "") ? "Broken Leg" : "";
@@ -266,13 +322,24 @@ window.CW = (() => {
     }
     // requisiti del telaio: il BODY già alzato dai Lacci (es. 4 + Laccio = 6 basta per il Sigma) e il numero di Lacci
     for (const { f, c } of frames) {
+      // in una FBC i requisiti di Lacci e BODY sono soddisfatti (il telaio fa parte del corpo)
+      if (opts.fbc) { if (!frame || f.v > frame.v) frame = f; continue; }
       const miss = [f.minBody && body < f.minBody ? `BODY ${f.minBody} (ora ${body})` : "", f.laces && have("bonelace") < f.laces ? `${f.laces > 1 ? f.laces + " Lacci" : "un Laccio"} Osseo-Muscolar${f.laces > 1 ? "i" : "e"} (ne hai ${have("bonelace")})` : ""].filter(Boolean);
       if (miss.length) out.warn.push({ name: c.name, miss });
       else if (!frame || f.v > frame.v) frame = f;
     }
     // il telaio fissa il BODY (12 o 14), anche se i Lacci da soli si fermano a 10
+    // FBC: il BODY viene dal telaio del corpo (anche se nello slot non c'è); le parti senza carne ignorano 9 Critical Injury
+    if (opts.fbc) {
+      const F = FRAMES[opts.fbcFrame] || FRAMES.sigma;
+      if (!frame || F.v > frame.v) frame = F;
+      body = frame.v;
+      FBC_CRITS.filter(n => !out.critImmune.some(x => x.crit === n && !x.limb)).forEach(n => out.critImmune.push({ crit: n, name: "Full Body Conversion", limb: false, slot: "" }));
+    }
     if (frame) body = Math.min(Math.max(body, frame.v), frame.max);
     out.body = body;
+    // pezzi solo per FBC installati senza corpo FBC
+    if (!opts.fbc) inst.filter(x => x.c.fbcOnly).forEach(x => out.warn.push({ name: x.c.name, miss: ["un corpo Full Body Conversion"] }));
     return out;
   }
   // bonus di un'abilità al suo livello: i Chip Abilità portano il livello a 3 se è più basso
@@ -285,5 +352,5 @@ window.CW = (() => {
   const isSocket = c => !!c && (c.id === "chipslot" || !!c.socket);
   // varianti del cyberware fondamentale per un tipo di slot (braccio, audio…)
   const baseVariants = kind => all().filter(c => c.base && c.baseOf === kind);
-  return { GROUPS, groupOf, BASE, all, byId, byName, setHomebrew, rollPu, effects, skillBonus, isSocket, baseVariants };
+  return { GROUPS, groupOf, BASE, all, byId, byName, setHomebrew, rollPu, effects, skillBonus, isSocket, baseVariants, FBC, FRAMES, fbcBody, FBC_NOHL, FBC_CRITS, rollFbc };
 })();
