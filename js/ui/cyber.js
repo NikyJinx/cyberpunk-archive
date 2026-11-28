@@ -169,7 +169,8 @@ function armorUp(id, gi, d) {
   }, d > 0 ? `${it.name}: upgrade, SP ${armorInfo(it).sp + 1}` : `${it.name}: upgrade tolto, SP ${armorInfo(it).sp - 1}`);
 }
 // upgrade del cyberware che fa da armatura (Armatura Subdermale, Skin Weave…): +1 SP sottopelle, anche quella attuale
-const cyUpBtn = (id, slot, i, it) => `<button type="button" class="btn ghost small g-act" data-action="cy-up" data-id="${id}" data-slot="${esc(slot)}" data-i="${i}" data-d="${num(it.up) ? -1 : 1}" title="${num(it.up) ? "Toglie l'upgrade: −1 SP" : "Impianto migliorato: +1 SP"}">${num(it.up) ? "⬇ Togli upgrade" : "⬆ Upgrade +1 SP"}</button>`;
+const upTog = (on, attrs, what) => `<button type="button" class="up-tog ${on ? "on" : ""}" ${attrs} data-d="${on ? -1 : 1}" aria-pressed="${on}" title="${on ? `${what} migliorata (+1 SP): clicca per togliere l'upgrade` : `Upgrade: +1 SP alla ${what.toLowerCase()}`}">${on ? "✓ +1 SP" : "+1 SP"}</button>`;
+const cyUpBtn = (id, slot, i, it) => upTog(!!num(it.up), `data-action="cy-up" data-id="${id}" data-slot="${esc(slot)}" data-i="${i}"`, "Armatura sottopelle");
 function cyUp(id, slot, i, d) {
   const e = state.entries.find(x => x.id === id), it = e && ((((e.cyber || {}).slots || {})[slot]) || [])[i]; if (!it || !Store.canEdit()) return;
   entryPatch(id, x => {
@@ -487,7 +488,7 @@ function gearInner(e) {
     const btn = (l, label) => `<button type="button" class="btn ghost small g-act" data-action="armor-wear" data-id="${id}" data-i="${gi}" data-loc="${l}">${label}</button>`;
     const act = !edit ? "" : [
       ...free.map(l => btn(l, A.fixed ? "🛡 Indossa" : `🛡 Indossa: ${LOC[l]}`)),
-      `<button type="button" class="btn ghost small g-act" data-action="armor-up" data-id="${id}" data-i="${gi}" data-d="${num(it.up) ? -1 : 1}" title="${num(it.up) ? "Toglie l'upgrade: −1 SP" : "Armatura migliorata: +1 SP"}">${num(it.up) ? "⬇ Togli upgrade" : "⬆ Upgrade +1 SP"}</button>`,
+      upTog(!!num(it.up), `data-action="armor-up" data-id="${id}" data-i="${gi}"`, "Armatura"),
       ...(on.length ? [`<button type="button" class="btn ghost small g-act" data-action="armor-off" data-id="${id}" data-loc="${on.join(",")}">Togli${on.length > 1 || A.fixed ? "" : ` (${LOC[on[0]]})`}</button>`] : []),
     ].join("");
     rows.armature.push({ ...fromGear(it), detail: [num(it.up) ? String(it.detail || "").replace(/SP\s*\d+/i, `SP ${A.sp} (upgrade +1)`) || `SP ${A.sp} (upgrade +1)` : it.detail || (A.sp ? `SP ${A.sp}${A.pen ? ` · ${A.pen} REF/DEX/MOVE` : ""}` : "SP non indicata"), A.fixed && !/testa|corpo/i.test(it.detail || "") ? `per ${ARMOR_LOC[A.both ? "both" : A.locs[0]]}` : ""].filter(Boolean).join(" · "), tag: on.length ? `indossata${A.fixed ? "" : `: ${on.map(l => LOC[l]).join(", ")}`}` : "", act });
@@ -573,15 +574,14 @@ const cyRow = (it = {}, def = 2) => `
   </div>`;
 const zoneSelect = (z = "") => `<select data-slot-f="zone" title="Punto acceso sulla sagoma">${BODY_ZONES.map(([v, l]) => `<option value="${v}" ${v === z ? "selected" : ""}>${l}</option>`).join("")}</select>`;
 const cyBaseRow = b => !b ? "" : b.fixed ? `<div class="cy-base-edit" data-base>
-    <label>Slot opzioni <input data-base-f="slots" type="number" min="0" max="20" value="${b.slots}" title="Standard ${b.std}; si possono aumentare con gli upgrade"></label><span class="hint">standard ${b.std}</span></div>`
+    <label class="cy-bf"><span>Slot opzioni</span><input data-base-f="slots" type="number" min="0" max="40" value="${b.slots}" title="Standard ${b.std}; si possono aumentare con gli upgrade"></label><span class="hint">standard ${b.std}</span></div>`
   : `<div class="cy-base-edit" data-base data-base-ref="${esc(b.ref)}" data-base-name="${esc(b.name)}" data-base-budget="${num(b.budget) || ""}">
-    <label class="check"><input type="checkbox" data-base-f="on" ${b.on ? "checked" : ""}> <b>${esc(b.name)}</b> installato</label>
-    ${CW.baseVariants(b.kind).length ? `<label>Modello <select data-base-f="vref" title="Variante del cyberware fondamentale">${[[SLOT_BASE[b.kind][0], SLOT_BASE[b.kind][2]], ...CW.baseVariants(b.kind).map(v => [v.id, v.name])].map(([v, l]) => `<option value="${esc(v)}" ${v === b.ref ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>` : ""}
-    <label>eb <input data-base-f="cost" type="number" min="0" value="${b.cost}"></label>
-    <label>HL <input data-base-f="hl" type="number" min="0" value="${b.hl}"></label>
-    <button type="button" class="gp-btn" data-base-pu title="Tira la Perdita d'Umanità" aria-label="Tira la Perdita d'Umanità">⚄</button>
-    <label>max <input data-base-f="max" type="number" min="0" value="${b.max}" title="Umanità massima tolta"></label>
-    <label>Slot <input data-base-f="slots" type="number" min="0" max="20" value="${b.slots}" title="Standard ${b.std}; si possono aumentare con gli upgrade"></label>
+    <label class="check cy-bon"><input type="checkbox" data-base-f="on" ${b.on ? "checked" : ""}> <b>${esc(b.name)}</b> <small>installato</small></label>
+    ${CW.baseVariants(b.kind).length ? `<label class="cy-bf wide"><span>Modello</span><select data-base-f="vref" title="Variante del cyberware fondamentale">${[[SLOT_BASE[b.kind][0], SLOT_BASE[b.kind][2]], ...CW.baseVariants(b.kind).map(v => [v.id, v.name])].map(([v, l]) => `<option value="${esc(v)}" ${v === b.ref ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>` : ""}
+    <label class="cy-bf"><span>eb</span><input data-base-f="cost" type="number" min="0" value="${b.cost}"></label>
+    <label class="cy-bf"><span>HL</span><span class="cy-bpu"><input data-base-f="hl" type="number" min="0" value="${b.hl}"><button type="button" class="gp-btn" data-base-pu title="Tira la Perdita d'Umanità" aria-label="Tira la Perdita d'Umanità">⚄</button></span></label>
+    <label class="cy-bf"><span>−Max</span><input data-base-f="max" type="number" min="0" value="${b.max}" title="Umanità massima tolta"></label>
+    <label class="cy-bf"><span>Slot</span><input data-base-f="slots" type="number" min="0" max="40" value="${b.slots}" title="Standard ${b.std}; si possono aumentare con gli upgrade"></label>
   </div>`;
 const cyFieldset = (s, items, base = null) => `
   <fieldset class="cy-edit ${s.custom ? "custom" : ""} ${s.id === "alveolo" ? "nested" : ""}" data-slot="${esc(s.id)}" data-max="${s.max}">
@@ -593,6 +593,7 @@ const cyFieldset = (s, items, base = null) => `
       <input data-slot-f="max" type="number" min="0" step="1" value="${esc(s.max)}" title="Umanità massima standard per questo slot">
       <button type="button" class="btn ghost small" data-slot-del>Elimina slot</button>
     </div>` : ""}
+    <div class="cy-row cy-head" aria-hidden="true"><span title="Installato">◆</span><span>Impianto</span><span class="cy-param">Livello</span><span class="cy-param">Abilità</span><span>eb</span><span>HL</span><span></span><span title="Umanità massima tolta">−Max</span><span>Nota</span><span></span></div>
     <div class="cy-rows">${items.map(it => cyRow(it, s.max)).join("")}</div>
     <div class="cy-edit-actions">
       <select class="cy-pick" data-cy-pick aria-label="Aggiungi dal catalogo">${cwOptions(s.id)}</select>
@@ -677,7 +678,8 @@ function editCyber(id) {
         <div class="fields">
           <div class="field"><label for="cy-hum">Umanità iniziale</label><input id="cy-hum" name="humanity" type="number" min="0" step="1" value="${esc(e.cyber && e.cyber.humanity != null ? e.cyber.humanity : "")}" placeholder="EMP × 10, es. 70"></div>
           <div class="field"><label for="cy-th">Recuperata con la terapia</label><input id="cy-th" name="therapy" type="number" min="0" step="1" value="${esc(e.cyber && e.cyber.therapy != null ? e.cyber.therapy : "")}" placeholder="0"></div>
-          <div class="field full"><span class="lbl">Legenda</span><span class="hint">Le parti con slot (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito) sono <b>cyberware fondamentale</b>: si attivano in testa allo slot, con costo, PU e numero di slot (modificabile per gli upgrade). Spunta = installato, senza spunta = pianificato (non conta nei totali). <b>eb</b> = costo · <b>HL</b> = umanità persa · <b>max</b> = umanità massima tolta: vuoto = standard dello slot (2, borgware 4, fashionware 0), oppure scrivi il valore modificato (es. 1).</span></div>
+          ${(st => st.start != null ? `<div class="field full cy-now"><span>Ora: umanità <b>${st.current}</b> · max <b>${st.max}</b> · persa <b>${st.hl}</b> · massima tolta <b>${st.maxLoss}</b>${st.maxUp ? ` · extra GM <b>+${st.maxUp}</b>` : ""}</span><small>si aggiorna quando salvi</small></div>` : "")(cyberStats(e))}
+          <div class="field full cy-key"><span>◆ spunta = installato (senza = pianificato)</span><span><b>eb</b> costo</span><span><b>HL</b> umanità persa (⚄ tira i dadi)</span><span><b>−Max</b> umanità massima tolta: vuoto = standard dello slot</span><span>Le parti con slot (Cyberocchio, Cyberbraccio, Cybergamba, Collegamento Neurale, Sistema Cyberudito) si attivano in testa allo slot</span></div>
         </div>
         <datalist id="dl-cyber">${allCyberNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
         <div id="cy-fieldsets">${slotsOf(e).map(s => cyFieldset(s, (slots[s.id] || []).filter(it => !isBaseItem(it)), baseState(e, s.id, true))).join("")}</div>
