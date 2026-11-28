@@ -5,10 +5,12 @@
 
 // ---------- MAPPA: disegno, righello e forme ----------
 // m.draw = [{ id, k: "free" | "line" | "rect" | "square" | "circle", pts [[x, y]…] (matita), x1, y1, x2, y2, c (colore), nf (senza riempimento), by }]
-// Coordinate in caselle. Le forme si salvano nella mappa e le vedono tutti; il righello resta solo sul mio schermo.
+// Coordinate in caselle. Le forme si salvano nella mappa e le vedono tutti; righello e ping non si salvano ma passano
+// sul canale in tempo reale, così li vede chi è sulla stessa mappa.
 // by = codice casuale di questo dispositivo (non l'email: le mappe viaggiano sul canale pubblico).
 const DRAW_TOOLS = [
-  ["move", "✋", "Muovi token e mappa"], ["ruler", "📏", "Righello: trascina per misurare (lo vedi solo tu)"], ["free", "✏", "Matita"],
+  ["move", "✋", "Muovi token e mappa"], ["ruler", "📏", "Righello: trascina per misurare (lo vedono tutti)"],
+  ["ping", "📍", "Ping: clicca per segnalare un punto, trascina per un'area (lo vedono tutti) · anche Alt + clic"], ["free", "✏", "Matita"],
   ["line", "╱", "Linea con la misura"], ["rect", "▭", "Rettangolo"], ["square", "◻", "Quadrato"], ["circle", "◯", "Cerchio: trascina dal centro"],
   ["shift", "✥", "Sposta: trascina un disegno o una forma (clic = selezionala per cambiarne colore e riempimento)"],
   ["erase", "⌫", "Gomma: clicca una forma per cancellarla"],
@@ -148,7 +150,7 @@ function drawBarFull() {
   const bgCtl = L === "map" && m && m.image ? `<span class="tt-sep"></span><button type="button" class="tt-tool tt-txt" data-action="tt-bg-fit" title="Rimetti l'immagine a coprire tutta la mappa">↺ Adatta</button>
     <label class="tt-chk" title="Acceso: l'immagine si sposta e si ridimensiona di casella in casella. Spento: libera"><input type="checkbox" data-bg-snap ${ls.get("nc-bg-snap", true) ? "checked" : ""}> griglia</label>
     <label class="tt-chk" title="Ridimensionando, l'immagine tiene le sue proporzioni"><input type="checkbox" data-bg-keep ${ls.get("nc-bg-keep", true) ? "checked" : ""}> proporzioni</label>` : "";
-  return `${layers}${DRAW_TOOLS.filter(([k]) => draw || k === "move" || k === "ruler").map(([k, ic, tip]) => `<button type="button" class="tt-tool ${tt.tool === k ? "on" : ""}" data-action="tt-tool" data-tool="${k}" title="${esc(tip)}" aria-label="${esc(tip)}">${ic}</button>`).join("")}
+  return `${layers}${DRAW_TOOLS.filter(([k]) => draw || k === "move" || k === "ruler" || k === "ping").map(([k, ic, tip]) => `<button type="button" class="tt-tool ${tt.tool === k ? "on" : ""}" data-action="tt-tool" data-tool="${k}" title="${esc(tip)}" aria-label="${esc(tip)}">${ic}</button>`).join("")}
     ${draw ? `<span class="tt-sep"></span>${DRAW_COLORS.map(c => `<button type="button" class="tt-color ${c === tt.color ? "on" : ""}" data-action="tt-color" data-c="${c}" style="--c:${c}" aria-label="Colore ${c}"></button>`).join("")}${fillBtn}
       ${sel ? `<span class="tt-sep"></span><span class="tt-zbar" title="Piano della forma selezionata nel suo layer">${[["back", "⤓", "Porta in fondo"], ["down", "↓", "Scendi di un piano"], ["up", "↑", "Sali di un piano"], ["front", "⤒", "Porta in primo piano"]]
         .map(([z, ic, tip]) => `<button type="button" class="tt-tool" data-action="tt-shape-z" data-z="${z}" title="${tip}" aria-label="${tip}">${ic}</button>`).join("")}</span>` : ""}
@@ -162,6 +164,7 @@ function renderDrawBar() {
   renderDraw(); renderBgFrame();
 }
 function setTool(k) {
+  if (tt.tool === "ruler" && k !== "ruler") rulerSend(null);   // il mio righello sparisce anche dagli schermi degli altri
   tt.tool = DRAW_TOOLS.some(t => t[0] === k) ? k : "move";
   tt.selShape = null; drawCur = null; drawTmp(null); drawLabel(null, "");
   renderDrawBar();
@@ -234,6 +237,7 @@ function drawDown(ev, cellAt) {
     try { $("#tt-wrap").setPointerCapture(ev.pointerId); } catch {}
     return true;
   }
+  if (tt.tool === "ping") { const p = cellAt(ev); drawCur = { k: "ping", a: p, b: p, id: ev.pointerId }; try { $("#tt-wrap").setPointerCapture(ev.pointerId); } catch {} return true; }
   if (tt.tool !== "ruler" && !canDraw()) return true;
   const p = cellAt(ev);
   drawCur = { k: tt.tool, a: p, b: p, pts: [[p.x, p.y]], id: ev.pointerId };
@@ -252,9 +256,15 @@ function drawMove(ev, cellAt) {
     drawLabel(ev, d.dx || d.dy ? sqLabel(Math.max(Math.abs(Math.round(d.dx)), Math.abs(Math.round(d.dy)))) : "");
     return true;
   }
+  if (d.k === "ping") {
+    const r = pingR(d.a, p);
+    drawTmp(r ? { k: "circle", x1: d.a.x, y1: d.a.y, x2: d.a.x + r, y2: d.a.y } : null); drawLabel(ev, r ? `ping · raggio ${r} caselle · ${r * 2} m` : "");
+    return true;
+  }
   if (d.k === "free") { const [lx, ly] = d.pts[d.pts.length - 1]; if (Math.hypot(p.x - lx, p.y - ly) > 0.12) d.pts.push([p.x, p.y]); }
   const s = drawShape(d.k, d.a, p, d.pts);
   drawTmp(s); drawLabel(ev, s.label || "");
+  if (d.k === "ruler") rulerSend(s);
   return true;
 }
 function drawUp(ev, cancel) {
@@ -267,7 +277,9 @@ function drawUp(ev, cancel) {
     saveDraw(l => l.map(x => x.id === id ? moveShape(x, dx, dy) : x));
     return true;
   }
-  if (d.k === "ruler") { drawLabel(ev, ""); return true; }   // il righello resta disegnato finché non ne tracci un altro
+  if (d.k === "ping") { drawTmp(null); drawLabel(ev, ""); if (!cancel) pingAt(d.a, pingR(d.a, d.b)); return true; }
+  // il righello resta disegnato finché non ne tracci un altro (o cambi strumento)
+  if (d.k === "ruler") { drawLabel(ev, ""); rulerSend(cancel ? null : drawShape("ruler", d.a, d.b), true); return true; }
   drawTmp(null); drawLabel(ev, "");
   if (cancel) return true;
   const s = drawShape(d.k, d.a, d.b, d.pts);
@@ -343,4 +355,109 @@ function bgFit() {
   const m = curMap(); if (!m) return;
   const { bg, ...rest } = state.maps.find(x => x.id === m.id) || m;
   saveMap(rest);
+}
+
+// ---------- PING, RIGHELLO CONDIVISO E MENÙ DEL TASTO DESTRO ----------
+// Ping e righello non si salvano: passano sul canale in tempo reale e li vede chi guarda la stessa mappa.
+// Su una mappa nascosta ai giocatori non si mandano.
+tt.rulers = {};
+const fxShared = m => !!m && !m.hidden;
+const fxWho = () => { const e = rollAs(); return e ? e.name : Store.user ? Store.user.split("@")[0] : ""; };
+// raggio del ping trascinato: a mezze caselle; sotto mezza casella è un ping su un punto
+const pingR = (a, b) => { const r = Math.round(Math.hypot(b.x - a.x, b.y - a.y) * 2) / 2; return r >= 1 ? r : 0; };
+function pingAt(p, r = 0, send = true, who = "", c = "") {
+  const m = curMap(), box = $("#tt-fx .fx-pings"); if (!m) return;
+  const x = r2(num(p.x)), y = r2(num(p.y)), rr = clamp(r2(num(r)), 0, 60), col = safeColor(c || tt.color), P = v => v * CELL;
+  if (send && fxShared(m)) Store.send({ t: "ping", map: m.id, x, y, r: rr, c: col, who: fxWho() });
+  if (!box) return;
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.setAttribute("class", "fx-ping" + (rr ? " area" : "")); g.style.setProperty("--pc", col);
+  g.innerHTML = (rr ? `<circle class="a" cx="${P(x)}" cy="${P(y)}" r="${P(rr)}"/>` : `<circle class="r1" cx="${P(x)}" cy="${P(y)}" r="${CELL * .7}"/><circle class="r2" cx="${P(x)}" cy="${P(y)}" r="${CELL * .7}"/>`)
+    + `<circle class="dot" cx="${P(x)}" cy="${P(y)}" r="7"/>` + (who ? `<text x="${P(x)}" y="${P(y - (rr || .7)) - 10}">${esc(who)}</text>` : "");
+  box.appendChild(g);
+  setTimeout(() => g.remove(), 3600);
+}
+// il mio righello agli altri (al massimo ogni 80 ms; final = posizione finale, s = null = toglilo)
+let rulerLast = 0, rulerTimer = null;
+function rulerSend(s, final = false) {
+  const m = curMap(); if (!fxShared(m)) return;
+  const msg = s ? { t: "ruler", map: m.id, by: drawMe(), who: fxWho(), s: { x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, label: s.label } } : { t: "ruler", map: m.id, by: drawMe(), clear: true };
+  clearTimeout(rulerTimer);
+  const go = () => { rulerLast = Date.now(); Store.send(msg); };
+  if (final || !s || Date.now() - rulerLast > 80) go(); else rulerTimer = setTimeout(go, 80);
+}
+function rulerLive(msg) {
+  const by = String(msg.by || ""); if (!by || by === drawMe()) return;
+  if (msg.clear) delete tt.rulers[by];
+  else { const q = msg.s || {}; tt.rulers[by] = { map: String(msg.map || ""), who: String(msg.who || "").slice(0, 40), at: Date.now(),
+    s: { x1: num(q.x1), y1: num(q.y1), x2: num(q.x2), y2: num(q.y2), label: String(q.label || "").slice(0, 60) } }; }
+  if (onTable()) renderFx();
+}
+function renderFx() {
+  const box = $("#tt-fx .fx-rulers"), m = curMap(); if (!box || !m) return;
+  box.innerHTML = Object.values(tt.rulers).filter(x => x.map === m.id).map(x => shapeSvg({ ...x.s, k: "ruler", c: "#f3e600" }, true)
+    + shapeTxt({ ...x.s, k: "ruler", label: `${x.who ? x.who + " · " : ""}${x.s.label}` })).join("");
+}
+// i righelli degli altri spariscono dopo 15 secondi senza movimenti
+setInterval(() => {
+  const old = Object.keys(tt.rulers).filter(k => Date.now() - tt.rulers[k].at > 15000);
+  if (old.length) { old.forEach(k => delete tt.rulers[k]); if (onTable()) renderFx(); }
+}, 2000);
+
+// menù del tasto destro: cosa si può fare sul token, sulla forma o sul punto cliccato
+function closeCtx() { const c = $("#tt-ctx"); if (c) c.remove(); }
+function openCtx(ev, p) {
+  closeCtx();
+  const m = curMap(); if (!m) return;
+  const el = ev.target.closest(".tt-token"), t = el && state.tokens.find(x => x.id === el.dataset.tok);
+  const shape = !t && canDraw() ? nearShape(layerShapes(m), p) : null;
+  const B = (action, label, attrs = "", cls = "") => `<button type="button" class="ctx-it ${cls}" role="menuitem" data-action="${action}" ${attrs}>${label}</button>`;
+  const items = [];
+  if (t) {
+    selectToken(t.id);
+    const e = tokEntry(t), gm = gmTools() && tokLayer(t) === curLayer();
+    items.push(`<div class="ctx-h">${esc(tokName(t))}</div>`);
+    if (e && isPerson(e)) items.push(B("open-entry-tab", "📄 Scheda", `data-id="${esc(e.id)}" data-tab="sheet"`));
+    if (gm) items.push(B("tt-size", "➕ Ingrandisci", `data-d="1"`) + B("tt-size", "➖ Riduci", `data-d="-1"`) + B("tt-z", "⤒ In primo piano", `data-z="front"`) + B("tt-z", "⤓ In fondo", `data-z="back"`));
+    if (gm && !tokSheet(t)) items.push(B("tt-dup", "⧉ Duplica"));
+    if (gm) items.push(B("tt-edit-token", "✎ Modifica") + B("tt-del-token", "🗑 Rimuovi", "", "danger"));
+  } else if (shape && drawMine(shape)) {
+    const id = `data-id="${esc(shape.id)}"`;
+    items.push(`<div class="ctx-h">${esc(shape.label || "Disegno")}</div>`);
+    if (isArea(shape)) items.push(B("tt-shape", "➕ Ingrandisci", `${id} data-op="grow"`) + B("tt-shape", "➖ Riduci", `${id} data-op="shrink"`));
+    items.push(B("tt-shape", "🎨 Colore attuale", `${id} data-op="color"`) + B("tt-shape", "⤒ In primo piano", `${id} data-op="front"`) + B("tt-shape", "⤓ In fondo", `${id} data-op="back"`) + B("tt-shape", "🗑 Elimina", `${id} data-op="del"`, "danger"));
+  }
+  items.push(B("tt-ping-here", "📍 Ping qui", `data-x="${r2(p.x)}" data-y="${r2(p.y)}"`));
+  const menu = document.createElement("div");
+  menu.id = "tt-ctx"; menu.className = "tt-ctx"; menu.setAttribute("role", "menu");
+  menu.innerHTML = items.join("");
+  document.body.appendChild(menu);
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  menu.style.left = clamp(ev.clientX, 4, innerWidth - w - 4) + "px"; menu.style.top = clamp(ev.clientY, 4, innerHeight - h - 4) + "px";
+  menu.addEventListener("click", ev2 => { if (ev2.target.closest(".ctx-it")) setTimeout(closeCtx); });
+  const first = menu.querySelector(".ctx-it"); if (first) first.focus({ preventScroll: true });
+}
+// fuori dal menù, Esc, rotella o cambio pagina: si chiude
+document.addEventListener("pointerdown", ev => { if (!ev.target.closest || !ev.target.closest("#tt-ctx")) closeCtx(); }, true);
+document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeCtx(); });
+window.addEventListener("wheel", () => closeCtx(), { passive: true });
+window.addEventListener("hashchange", closeCtx);
+// operazioni su una forma dal menù: ingrandire e ridurre le aree, colore, piano, eliminare
+function shapeOp(id, op) {
+  const s = layerShapes(curMap()).find(x => x.id === id); if (!s || !drawMine(s) || !canDraw()) return;
+  if (op === "del") return saveDraw(l => l.filter(x => x.id !== id));
+  if (op === "color") return saveDraw(l => l.map(x => x.id === id ? { ...x, c: tt.color } : x));
+  if (op === "front" || op === "back") return saveDraw(l => { const x = l.find(y => y.id === id), o = l.filter(y => y.id !== id); return op === "front" ? [...o, x] : [x, ...o]; });
+  const d = op === "grow" ? 1 : -1;
+  if (s.k === "circle") {
+    const r = Math.max(0.5, Math.abs(s.x2 - s.x1) + d * 0.5), n = drawShape("circle", { x: s.x1, y: s.y1 }, { x: s.x1 + r, y: s.y1 });
+    return saveDraw(l => l.map(x => x.id === id ? { ...x, x2: n.x2, y2: n.y2, n: n.n, label: n.label } : x));
+  }
+  if (s.k === "rect" || s.k === "square") {
+    // si allarga o si stringe di una casella per lato, attorno al centro
+    const x1 = Math.min(s.x1, s.x2) - d, y1 = Math.min(s.y1, s.y2) - d, x2 = Math.max(s.x1, s.x2) + d, y2 = Math.max(s.y1, s.y2) + d;
+    if (x2 - x1 < 1 || y2 - y1 < 1) return;
+    const n = drawShape(s.k, { x: x1, y: y1 }, { x: x2, y: y2 });
+    return saveDraw(l => l.map(x => x.id === id ? { ...x, x1: n.x1, y1: n.y1, x2: n.x2, y2: n.y2, n: n.n, label: n.label } : x));
+  }
 }

@@ -67,7 +67,7 @@ function viewTable() {
       <div class="tt-main">
         <div class="tt-drawbar" id="tt-drawbar" role="toolbar" aria-label="Strumenti della mappa">${drawBarHtml()}</div>
         <div class="tt-wrap" id="tt-wrap"><div class="tt-sizer" id="tt-sizer"><div class="tt-board" id="tt-board">
-          <div class="tt-bg" id="tt-bg"></div><div class="tt-grid"></div><svg class="tt-draw" id="tt-draw" aria-hidden="true"></svg><svg class="tt-arrows" id="tt-arrows" aria-hidden="true"></svg><div class="tt-tokens" id="tt-tokens"></div><svg class="tt-draw tmp" id="tt-draw-tmp" aria-hidden="true"></svg>
+          <div class="tt-bg" id="tt-bg"></div><div class="tt-grid"></div><svg class="tt-draw" id="tt-draw" aria-hidden="true"></svg><svg class="tt-arrows" id="tt-arrows" aria-hidden="true"></svg><div class="tt-tokens" id="tt-tokens"></div><svg class="tt-draw tmp" id="tt-draw-tmp" aria-hidden="true"></svg><svg class="tt-draw tt-fx" id="tt-fx" aria-hidden="true"><g class="fx-rulers"></g><g class="fx-pings"></g></svg>
         </div></div><div class="tt-ruler" id="tt-ruler" hidden></div></div>
         <div class="tt-zoom">
           <button type="button" class="gp-btn" data-action="tt-zoom" data-d="-1" aria-label="Riduci">−</button>
@@ -159,7 +159,7 @@ function renderBoard() {
   }
   if (!tt.bgDrag) placeBg($("img", bg), bgOf(m));
   renderBgFrame();
-  applyZoom(); renderTokens(); renderSide();
+  applyZoom(); renderTokens(); renderSide(); renderFx();
 }
 function applyZoom() {
   const m = curMap(), board = $("#tt-board"); if (!m || !board) return;
@@ -388,6 +388,7 @@ function bindTable() {
   let pan = null, lastSend = 0;
   wrap.classList.toggle("drawing", tt.tool !== "move");
   wrap.addEventListener("pointerdown", ev => {
+    if (ev.altKey && ev.button === 0) { ev.preventDefault(); pingAt(cellAt(ev)); return; }   // Alt + clic: ping
     if (curLayer() === "map" && tt.tool === "move" && bgDown(ev, cellAt)) return;
     if (drawDown(ev, cellAt)) return;
     if (ev.pointerType === "mouse" && ev.button !== 0) return;
@@ -447,6 +448,7 @@ function bindTable() {
   wrap.addEventListener("pointerup", ev => end(ev, false));
   wrap.addEventListener("pointercancel", ev => end(ev, true));
   wrap.addEventListener("wheel", ev => { ev.preventDefault(); setZoom(tt.zoom * (ev.deltaY < 0 ? 1.15 : 1 / 1.15), ev.clientX, ev.clientY); }, { passive: false });
+  wrap.addEventListener("contextmenu", ev => { ev.preventDefault(); if (tt.drag || drawCur) return; openCtx(ev, cellAt(ev)); });
   wrap.addEventListener("dblclick", ev => {
     const el = ev.target.closest(".tt-token"); if (!el) return;
     const t = state.tokens.find(x => x.id === el.dataset.tok), e = t && tokEntry(t);
@@ -663,6 +665,9 @@ async function tableAction(a, el) {
       return;
     }
     case "tt-select": return selectToken(el.dataset.tok);
+    case "tt-size": { if (!t || !gmTools()) return; const n = clamp(tokSize(t) + num(el.dataset.d), 1, 6); if (n !== tokSize(t)) await saveToken({ ...t, size: n }); return; }
+    case "tt-shape": return shapeOp(el.dataset.id, el.dataset.op);
+    case "tt-ping-here": return pingAt({ x: num(el.dataset.x), y: num(el.dataset.y) });
     case "tt-hp": {
       if (!t || (!tokSheet(t) && !gmTools())) return;   // nemici e token generici: solo il GM
       const e = tokSheet(t), d = num(el.dataset.d);
@@ -750,6 +755,8 @@ const unknownEntries = () => state.tokens.some(t => t.entryId && !state.entries.
 // messaggi in tempo reale dagli altri giocatori
 function onLive(msg) {
   if (!msg || typeof msg !== "object") return;
+  if (msg.t === "ping") { const m = curMap(); if (onTable() && m && m.id === msg.map) pingAt({ x: num(msg.x), y: num(msg.y) }, num(msg.r), false, String(msg.who || "").slice(0, 40), msg.c); return; }
+  if (msg.t === "ruler") { rulerLive(msg); return; }
   if (msg.t === "move" || msg.t === "move-end") {
     const id = String(msg.id);
     if (tt.drag && tt.drag.t.id === id) return;
