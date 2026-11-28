@@ -13,7 +13,10 @@ let secretRoll = ls.get("nc-secret", false);
 async function postRoll(r) {
   const ent = r.entryId && state.entries.find(e => e.id === r.entryId);
   const secret = isGm() && Store.gmReady && !!(r.gmOnly || secretRoll || (ent && ent.gmOnly));
-  const rec = { ...r, gmOnly: secret, by: Store.user || "", at: new Date().toISOString() };
+  // l'ora la scrive il dispositivo: se il suo orologio è indietro il tiro finirebbe sopra quelli già fatti,
+  // quindi un tiro nuovo viene sempre dopo l'ultimo del log
+  const last = state.rolls.reduce((m, x) => { const t = Date.parse(x.at || x.createdAt || ""); return t > m ? t : m; }, 0);
+  const rec = { ...r, gmOnly: secret, by: Store.user || "", at: new Date(Math.max(Date.now(), last + 1)).toISOString() };
   let out = { ...rec, id: "loc-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), local: true };
   if (Store.canEdit()) {
     try { out = await Store.save("rolls", rec); liveSend("rolls", out); }
@@ -54,8 +57,9 @@ function rollCard(r) {
     ${r.local ? `<div class="rl-note">solo su questo dispositivo · accedi per condividere i tiri</div>` : ""}
   </div>`;
 }
+const logList = () => { const cut = ls.get("nc-log-cleared", ""); return cut ? state.rolls.filter(r => (r.at || r.createdAt || "") > cut) : state.rolls; };
 const logItems = () => {
-  const cut = ls.get("nc-log-cleared", ""), list = cut ? state.rolls.filter(r => (r.at || r.createdAt || "") > cut) : state.rolls;
+  const cut = ls.get("nc-log-cleared", ""), list = logList();
   return list.length ? list.map(rollCard).join("") : `<div class="rl-empty">// ${cut && state.rolls.length ? "log pulito." : "nessun tiro ancora."}<br>Clicca un'abilità nella scheda o scrivi <b>2d6+3</b> qui sotto.${cut && state.rolls.length ? `<br><button type="button" class="btn ghost small" data-action="log-unclear">Mostra di nuovo i tiri vecchi</button>` : ""}</div>`;
 };
 // cancella tutti i tiri dal database (solo GM): gli altri ricevono un avviso e svuotano il loro log
@@ -89,11 +93,25 @@ function logWidget() {
       </div>
     </form>`;
 }
+// il log resta in fondo finché chi legge non scorre verso l'alto (stick); se ha scorso, resta sul tiro che stava leggendo.
+// Non si ricalcola dalla posizione: quando il log viene nascosto o spostato in una finestra il browser lo riporta in cima.
 function renderLogs() {
   for (const box of $$(".roll-log")) {
-    const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-    box.innerHTML = logItems();
-    if (atEnd || box.dataset.init !== "1") { box.scrollTop = box.scrollHeight; box.dataset.init = "1"; }
+    if (!box.dataset.wired) {
+      box.dataset.wired = "1";
+      // conta solo lo scorrimento fatto da chi legge (rotella, dito, barra, tastiera), non quello del browser
+      const user = () => { box._u = Date.now(); };
+      ["wheel", "touchstart", "touchmove", "pointerdown", "keydown"].forEach(t => box.addEventListener(t, user, { passive: true }));
+      box.addEventListener("scroll", () => { if (box.clientHeight && box.isConnected && Date.now() - (box._u || 0) < 1500) box.dataset.stick = box.scrollHeight - box.scrollTop - box.clientHeight < 60 ? "1" : "0"; }, { passive: true });
+    }
+    // chi legge un tiro più in alto resta su quel tiro (anche se ne arrivano di nuovi o i vecchi escono dal log)
+    const stick = box.dataset.stick !== "0", kids = [...box.children], ids = box._ids || [];
+    const k = stick ? -1 : kids.findIndex(c => c.offsetTop + c.offsetHeight > box.scrollTop);
+    const anchor = k >= 0 ? { id: ids[k], off: kids[k].offsetTop - box.scrollTop } : null, top = box.scrollTop;
+    box.innerHTML = logItems(); box._ids = logList().map(r => r.id);
+    if (stick) { box.scrollTop = box.scrollHeight; continue; }
+    const j = anchor ? box._ids.indexOf(anchor.id) : -1;
+    box.scrollTop = j >= 0 && box.children[j] ? box.children[j].offsetTop - anchor.off : top;
   }
 }
 
